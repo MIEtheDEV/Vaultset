@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: #080b14;
+  --color-surface: #0f1424;
+  --color-surface-raised: #161d30;
+  --color-foreground: #eef0ff;
+  --color-foreground-muted: #6b7194;
+  --color-gold: #e8b84b;
+  --color-gold-light: #f5d07a;
+  --color-border: #1e2440;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/*
+  Spinning border animation.
+  @property registers --spin-angle as an animatable <angle> so the browser can
+  interpolate it inside conic-gradient. The pseudo-element stays fixed; only the
+  gradient's origin point rotates — the pill/rect shape never tilts.
+
+  .spin-border       — always animating (badges, tags)
+  .spin-border-hover — fades in and spins only on hover (buttons, cards)
+*/
+@property --spin-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes spin-border {
+  to { --spin-angle: 360deg; }
+}
+
+.spin-border,
+.spin-border-hover {
+  position: relative;
+  isolation: isolate;
+}
+
+.spin-border::before,
+.spin-border-hover::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--spin-angle),
+    transparent 0%,
+    #e8b84b 22%,
+    #f5d07a 34%,
+    transparent 50%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: destination-out;
+  mask-composite: exclude;
+  animation: spin-border 3s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.spin-border-hover::before {
+  opacity: 0;
+  animation-play-state: paused;
+  transition: opacity 0.3s ease;
+}
+
+.spin-border-hover:hover::before {
+  opacity: 1;
+  animation-play-state: running;
+}
+
+/* Print styles — hide chrome, show only the report */
+@media print {
+  @page { size: landscape; margin: 1.5cm; }
+  body { background: white !important; color: black !important; }
+  nav, .print\:hidden { display: none !important; }
+  * { overflow: visible !important; }
+  table { width: 100% !important; page-break-inside: auto; }
+  tr { page-break-inside: avoid; }
+  .print-section { page-break-before: auto; }
+}
+
+/* Remove native number input spinners */
+.no-spinner { -moz-appearance: textfield; appearance: textfield; }
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
