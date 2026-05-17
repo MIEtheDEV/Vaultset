@@ -1,0 +1,66 @@
+import { PokemonTCGProvider } from "@/lib/search/PokemonTCGProvider";
+
+describe("PokemonTCGProvider", () => {
+  let provider: PokemonTCGProvider;
+
+  beforeEach(() => {
+    provider = new PokemonTCGProvider();
+  });
+
+  describe("game", () => {
+    it("identifies as pokemon", () => {
+      expect(provider.game).toBe("pokemon");
+    });
+  });
+
+  describe("mapRarity", () => {
+    it("maps basic rarities correctly", () => {
+      expect(provider.mapRarity("common")).toBe("common");
+      expect(provider.mapRarity("uncommon")).toBe("uncommon");
+      expect(provider.mapRarity("rare")).toBe("rare");
+    });
+
+    it("maps modern Scarlet & Violet rarities correctly", () => {
+      expect(provider.mapRarity("double rare")).toBe("double_rare");
+      expect(provider.mapRarity("ultra rare")).toBe("ultra_rare");
+      expect(provider.mapRarity("illustration rare")).toBe("illustration_rare");
+      expect(provider.mapRarity("special illustration rare")).toBe(
+        "special_illustration_rare"
+      );
+      expect(provider.mapRarity("hyper rare")).toBe("hyper_rare");
+      expect(provider.mapRarity("secret rare")).toBe("secret_rare");
+      expect(provider.mapRarity("ace spec rare")).toBe("ace_spec_rare");
+    });
+
+    it("maps legacy Sword & Shield / Sun & Moon rarities correctly", () => {
+      expect(provider.mapRarity("rare holo")).toBe("rare_holo");
+      expect(provider.mapRarity("rare holo v")).toBe("rare_holo_v");
+      expect(provider.mapRarity("rare holo vmax")).toBe("rare_holo_vmax");
+      expect(provider.mapRarity("rare holo vstar")).toBe("rare_holo_vstar");
+      expect(provider.mapRarity("rare ultra")).toBe("rare_ultra");
+      expect(provider.mapRarity("rare rainbow")).toBe("rare_rainbow");
+      expect(provider.mapRarity("rare secret")).toBe("rare_secret");
+      expect(provider.mapRarity("rare shiny")).toBe("rare_shiny");
+      expect(provider.mapRarity("rare shiny gx")).toBe("rare_shiny_gx");
+    });
+
+    it("is case-insensitive", () => {
+      expect(provider.mapRarity("Common")).toBe("common");
+      expect(provider.mapRarity("RARE HOLO")).toBe("rare_holo");
+      expect(provider.mapRarity("Double Rare")).toBe("double_rare");
+      expect(provider.mapRarity("Special Illustration Rare")).toBe(
+        "special_illustration_rare"
+      );
+    });
+
+    it("maps both hyper rare aliases to the same internal key", () => {
+      expect(provider.mapRarity("hyper rare")).toBe("hyper_rare");
+      expect(provider.mapRarity("mega hyper rare")).toBe("hyper_rare");
+    });
+
+    it("returns an empty string for unknown rarity strings", () => {
+      expect(provider.mapRarity("some made up rarity")).toBe("");
+      expect(provider.mapRarity("")).toBe("");
+    });
+  });
+});
