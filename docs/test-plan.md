@@ -28,6 +28,7 @@ Out of scope for this iteration: marketplace transactions, real-time pricing, co
 | Browser (E2E) | Chromium (via Playwright) |
 | Database | Supabase (cloud, free tier) |
 | Dev server | `pnpm dev` → localhost:3000 |
+| E2E teardown | Automatic — `e2e/global-teardown.ts` deletes all `collection_items` for the test account after each run |
 
 ---
 

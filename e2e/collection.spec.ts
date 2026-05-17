@@ -26,7 +26,7 @@ test.describe("Collection Management", () => {
 
     // Results appear as buttons inside a dropdown ul
     await expect(page.locator("ul.absolute li button").first()).toBeVisible({
-      timeout: 10000,
+      timeout: 15000,
     });
   });
 
@@ -36,7 +36,7 @@ test.describe("Collection Management", () => {
     await page.getByPlaceholder("Card name…").fill("Pikachu");
 
     const firstResult = page.locator("ul.absolute li button").first();
-    await firstResult.waitFor({ timeout: 10000 });
+    await firstResult.waitFor({ timeout: 15000 });
     await firstResult.click();
 
     // Card name field should now be populated

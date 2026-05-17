@@ -5,6 +5,7 @@ config({ path: ".env.local" });
 
 export default defineConfig({
   testDir: "./e2e",
+  globalTeardown: "./e2e/global-teardown.ts",
   fullyParallel: false,
   retries: 1,
   timeout: 30000,

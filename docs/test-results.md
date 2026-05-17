@@ -143,3 +143,5 @@
 | Updated edit/delete selectors to use `.group` container with `hasText` | Test fix | `e2e/collection.spec.ts` | Previous DOM traversal selectors were too fragile |
 | Added `dotenv` dependency and loaded `.env.local` in Playwright config | Configuration fix | `playwright.config.ts` | E2E test credentials were not reaching the test process |
 | Updated duplicate username test to use `"Tester99"` | Test fix | `e2e/auth.spec.ts` | Hardcoded username did not match an existing account |
+| Increased search dropdown timeout from 10 s to 15 s on E-10 and E-11 | Test fix | `e2e/collection.spec.ts` | TCG API response time variability caused intermittent timeout failures on first run |
+| Added `e2e/global-teardown.ts` and registered in `playwright.config.ts` | Test infrastructure | `e2e/global-teardown.ts`, `playwright.config.ts` | Test cards added during each run were persisting in the database; teardown now deletes all `collection_items` for the E2E test account automatically after each run |

@@ -13,7 +13,8 @@ Vaultset is an all-in-one platform for trading card collectors. It lets you mana
 1. Go to the Vaultset homepage and click **Start for Free**
 2. Enter a username, email address, and password
 3. Click **Create Account**
-4. You will be signed in and redirected to your Dashboard
+4. Check your inbox for a confirmation email and click the link to activate your account
+5. You will be redirected to your Dashboard
 
 ### Signing In
 
