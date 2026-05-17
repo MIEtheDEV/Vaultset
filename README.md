@@ -1,5 +1,19 @@
 # Vaultset — Setup & Maintenance Guide
 
+## Live Application
+
+**Hosted URL:** [https://www.vaultset.app](https://www.vaultset.app)
+
+```html
+<a href="https://www.vaultset.app">Vaultset — The Ultimate Trading Card Platform</a>
+```
+
+## Repository
+
+**GitLab:** [https://gitlab.com/wgu-gitlab-environment/student-repos/MIEtheDEV/vaultset](https://gitlab.com/wgu-gitlab-environment/student-repos/MIEtheDEV/vaultset)
+
+---
+
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) v18 or higher
