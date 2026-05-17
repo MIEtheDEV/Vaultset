@@ -113,6 +113,17 @@
 | E-15 | Edit card and changes persist | PASS |
 | E-16 | Delete card and removed from grid | PASS |
 
+### Suite 6 — Inventory Filter and Sort
+
+| ID | Test Case | Result |
+|---|---|---|
+| E-17 | Search filters by name | PASS |
+| E-18 | Clear search restores grid | PASS |
+| E-19 | Name A–Z sort | PASS |
+| E-20 | Name Z–A sort | PASS |
+| E-21 | Search empty state | PASS |
+| E-22 | Filter empty state | PASS |
+
 ---
 
 ## Bug Log
@@ -145,3 +156,5 @@
 | Updated duplicate username test to use `"Tester99"` | Test fix | `e2e/auth.spec.ts` | Hardcoded username did not match an existing account |
 | Increased search dropdown timeout from 10 s to 15 s on E-10 and E-11 | Test fix | `e2e/collection.spec.ts` | TCG API response time variability caused intermittent timeout failures on first run |
 | Added `e2e/global-teardown.ts` and registered in `playwright.config.ts` | Test infrastructure | `e2e/global-teardown.ts`, `playwright.config.ts` | Test cards added during each run were persisting in the database; teardown now deletes all `collection_items` for the E2E test account automatically after each run |
+| Added Suite 6 — Inventory Filter and Sort (E-17 – E-22) | New tests | `e2e/inventory-filter-sort.spec.ts` | Filter and sort acceptance criteria were not covered by any existing test |
+| Increased `addCard` helper redirect timeout from 15 s to 20 s | Test fix | `e2e/inventory-filter-sort.spec.ts` | E-20 was intermittently flaky when Supabase inserts were slow under sequential test load |

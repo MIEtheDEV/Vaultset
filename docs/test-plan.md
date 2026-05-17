@@ -123,6 +123,17 @@ E2E tests run against the live dev server using a pre-existing test account. The
 | E-15 | Edit card and save | AC: editing a card persists changes | Add card, edit notes, save | Redirected to inventory |
 | E-16 | Delete card from grid | AC: deleting removes card from grid | Add card, click Remove, confirm | Card no longer visible |
 
+### Suite 6 — Inventory Filter and Sort (`e2e/inventory-filter-sort.spec.ts`)
+
+| ID | Test Case | Acceptance Criterion | Steps | Expected Outcome |
+|---|---|---|---|---|
+| E-17 | Search filters by name | Filter/sort controls produce correct output | Add two cards, search for one by name | Matching card visible, non-matching card hidden |
+| E-18 | Clear search restores grid | Filter/sort controls produce correct output | Search for a card, then clear the input | Both cards visible again |
+| E-19 | Name A–Z sort | Filter/sort controls produce correct output | Add two cards, apply Name A–Z sort | Cards ordered alphabetically ascending |
+| E-20 | Name Z–A sort | Filter/sort controls produce correct output | Add two cards, apply Name Z–A sort | Cards ordered alphabetically descending |
+| E-21 | Search empty state | Filter/sort controls produce correct output | Search for a string that matches no cards | "No cards found for…" message visible |
+| E-22 | Filter empty state | Filter/sort controls produce correct output | Add ungraded card, apply Graded filter | "No cards match this filter." message visible |
+
 ---
 
 ## 6. Screenshot Checklist
