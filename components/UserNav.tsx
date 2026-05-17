@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 
-export function UserNav({ username }: { username: string }) {
+export function UserNav({ username, showSettings = true }: { username: string; showSettings?: boolean }) {
   const router = useRouter();
 
   async function signOut() {
@@ -22,15 +22,17 @@ export function UserNav({ username }: { username: string }) {
       >
         @{username}
       </Link>
-      <Link
-        href="/account"
-        className="text-sm text-foreground-muted hover:text-foreground transition-colors"
-      >
-        Settings
-      </Link>
+      {showSettings && (
+        <Link
+          href="/account"
+          className="hidden md:block text-sm text-foreground-muted hover:text-foreground transition-colors"
+        >
+          Settings
+        </Link>
+      )}
       <button
         onClick={signOut}
-        className="text-sm text-foreground-muted hover:text-foreground transition-colors"
+        className="hidden md:block text-sm text-foreground-muted hover:text-foreground transition-colors"
       >
         Sign out
       </button>

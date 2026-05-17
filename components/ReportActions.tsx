@@ -62,7 +62,7 @@ export function ReportActions({ rows, columns, username, generatedAt }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-3 flex-shrink-0">
+    <div className="flex items-center justify-center sm:justify-start gap-3 w-full sm:w-auto sm:flex-shrink-0">
       <button
         type="button"
         onClick={handleCSV}

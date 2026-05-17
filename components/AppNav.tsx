@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { UserNav } from "@/components/UserNav";
+import { MobileMenu } from "@/components/MobileMenu";
 
 const navLinks = [
   { label: "Dashboard", href: "/dashboard" },
@@ -31,7 +32,10 @@ export function AppNav({ username }: { username: string }) {
           ))}
         </div>
 
-        <UserNav username={username} />
+        <div className="flex items-center gap-1">
+          <UserNav username={username} />
+          <MobileMenu />
+        </div>
       </div>
     </nav>
   );

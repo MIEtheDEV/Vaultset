@@ -8,8 +8,7 @@ const stats = [
     value: "0",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="3" width="20" height="14" rx="2" />
-        <path d="M8 21h8M12 17v4" />
+        <rect x="2" y="5" width="14" height="18" rx="2" /><rect x="8" y="1" width="14" height="18" rx="2" />
       </svg>
     ),
   },
@@ -119,7 +118,7 @@ export default async function DashboardPage() {
     { data: recentItems },
     { data: watchlistData },
   ] = await Promise.all([
-    supabase.from("collection_items").select("quantity").eq("user_id", user!.id),
+    supabase.from("collection_items").select("quantity, list_price").eq("user_id", user!.id),
     supabase.from("collection_items").select("*", { count: "exact", head: true }).eq("user_id", user!.id).eq("for_sale", true),
     supabase.from("product_purchases").select("*", { count: "exact", head: true }).eq("user_id", user!.id).or("for_sale.eq.true,for_trade.eq.true"),
     supabase.from("collection_items").select("*", { count: "exact", head: true }).eq("user_id", user!.id).eq("for_trade", true),
@@ -136,12 +135,14 @@ export default async function DashboardPage() {
     `).eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
   ]);
 
-  const totalCards     = quantityData?.reduce((sum, r) => sum + (r.quantity ?? 1), 0) ?? 0;
+  const totalCards       = quantityData?.reduce((sum, r) => sum + (r.quantity ?? 1), 0) ?? 0;
+  const collectionValue  = quantityData?.reduce((sum, r) =>
+    sum + (r.list_price != null ? Number(r.list_price) * (r.quantity ?? 1) : 0), 0) ?? 0;
   const activeListings = (cardListings ?? 0) + (sealedListings ?? 0);
 
   const dashboardStats = [
     { ...stats[0], value: String(totalCards) },
-    { ...stats[1], value: "$0.00" },
+    { ...stats[1], value: `$${collectionValue.toFixed(2)}` },
     { ...stats[2], value: String(activeListings ?? 0) },
     { ...stats[3], value: String(pendingTrades  ?? 0) },
   ];
@@ -189,7 +190,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {dashboardStats.map(({ label, value, icon }) => (
           <div key={label} className="rounded-2xl border border-border bg-surface p-5">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-start justify-between mb-3 min-h-8">
               <span className="text-xs font-medium text-foreground-muted uppercase tracking-wide">{label}</span>
               <span className="text-foreground-muted">{icon}</span>
             </div>

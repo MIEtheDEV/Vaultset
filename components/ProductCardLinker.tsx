@@ -99,18 +99,29 @@ export function ProductCardLinker({
     <div className="space-y-6">
 
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link href="/inventory/products" className="text-foreground-muted hover:text-foreground transition-colors">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-          </svg>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Link Cards to Product</h1>
-          <p className="mt-0.5 text-sm text-foreground-muted">
-            {product.name} · {linkedCount} card{linkedCount !== 1 ? "s" : ""} linked
-          </p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Link href="/inventory/products" className="text-foreground-muted hover:text-foreground transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Link Cards to Product</h1>
+            <p className="mt-0.5 text-sm text-foreground-muted">
+              {product.name} · {linkedCount} card{linkedCount !== 1 ? "s" : ""} linked
+            </p>
+          </div>
         </div>
+        <Link
+          href="/inventory"
+          className="inline-flex w-fit items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="5" width="14" height="18" rx="2" /><rect x="8" y="1" width="14" height="18" rx="2" />
+          </svg>
+          Cards
+        </Link>
       </div>
 
       {/* Search + actions */}

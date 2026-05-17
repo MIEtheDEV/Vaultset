@@ -24,12 +24,12 @@ export function ReportSortSelect() {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 w-full sm:w-auto">
       <label className="text-sm text-foreground-muted whitespace-nowrap">Sort by</label>
       <select
         value={current}
         onChange={(e) => handleChange(e.target.value)}
-        className="rounded-xl border border-border bg-surface-raised px-3 py-2 text-sm text-foreground focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors"
+        className="flex-1 sm:flex-none rounded-xl border border-border bg-surface-raised px-3 py-2 text-sm text-foreground focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors"
       >
         {SORT_OPTIONS.map(({ value, label }) => (
           <option key={value} value={value}>{label}</option>

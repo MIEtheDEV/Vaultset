@@ -121,7 +121,7 @@ export default async function Home() {
           </div>
           <div className="flex items-center gap-4">
             {username ? (
-              <UserNav username={username} />
+              <UserNav username={username} showSettings={false} />
             ) : (
               <>
                 <Link href="/login" className="hidden sm:block text-sm text-foreground-muted hover:text-foreground transition-colors">
@@ -192,7 +192,9 @@ export default async function Home() {
         <div className="mx-auto max-w-7xl px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
           {stats.map(({ value, label }) => (
             <div key={label} className="flex flex-col gap-1">
-              <span className={`font-bold text-gold ${value === "Coming Soon" ? "text-lg" : "text-3xl"}`}>{value}</span>
+              <div className="flex items-center justify-center h-10">
+                <span className={`font-bold text-gold ${value === "Coming Soon" ? "text-lg" : "text-3xl"}`}>{value}</span>
+              </div>
               <span className="text-sm text-foreground-muted">{label}</span>
             </div>
           ))}
@@ -218,10 +220,12 @@ export default async function Home() {
                 key={title}
                 className="group rounded-2xl border border-border bg-surface p-6 hover:border-gold/30 hover:bg-surface-raised transition-all duration-200"
               >
-                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 text-gold group-hover:bg-gold/15 transition-colors">
-                  {icon}
+                <div className="flex items-center gap-3 mb-3 sm:flex-col sm:items-start sm:gap-0 sm:mb-0">
+                  <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold group-hover:bg-gold/15 transition-colors sm:mb-4">
+                    {icon}
+                  </div>
+                  <h3 className="font-semibold text-foreground sm:mb-2">{title}</h3>
                 </div>
-                <h3 className="mb-2 font-semibold text-foreground">{title}</h3>
                 <p className="text-sm text-foreground-muted leading-relaxed">
                   {description}
                 </p>

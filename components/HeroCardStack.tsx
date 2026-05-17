@@ -51,7 +51,7 @@ export function HeroCardStack() {
   }, []);
 
   return (
-    <div className="hidden lg:flex items-center justify-center relative h-[540px]">
+    <div className="flex items-center justify-center relative h-[320px] lg:h-[540px]">
       {CARDS.map((card, i) => {
         const position = (i - frontIndex + 3) % 3;
         const isFront  = position === 0;
@@ -59,7 +59,7 @@ export function HeroCardStack() {
         return (
           <div
             key={card.id}
-            className="absolute w-56 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            className="absolute w-40 lg:w-56 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
             style={{
               transform:    TRANSFORMS[position],
               zIndex:       Z_INDICES[position],
@@ -76,6 +76,7 @@ export function HeroCardStack() {
               className="w-full h-auto block rounded-xl mb-2"
             />
             <div
+              className="hidden lg:block"
               style={{
                 opacity:    isFront ? 1 : 0,
                 transition: "opacity 0.5s ease",

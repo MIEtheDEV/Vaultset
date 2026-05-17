@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -25,12 +25,12 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh the session — must be called before any logic that reads the user.
-  const { data: { user } } = await supabase.auth.getUser();
+  // getSession() reads the cookie locally — no network call, ~0ms.
+  // Protected pages call getUser() themselves for full server-side verification.
+  const { data: { session } } = await supabase.auth.getSession();
 
-  // Protect authenticated routes.
-  const protectedPaths = ["/dashboard", "/inventory"];
-  if (!user && protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p))) {
+  const protectedPaths = ["/dashboard", "/inventory", "/account"];
+  if (!session && protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p))) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

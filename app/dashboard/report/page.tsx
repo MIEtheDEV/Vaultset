@@ -185,7 +185,7 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
     <div className="space-y-6">
 
       {/* Screen-only header */}
-      <div className="flex items-start justify-between gap-4 print:hidden">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 print:hidden">
         <div className="flex items-center gap-4">
           <Link href="/dashboard" className="text-foreground-muted hover:text-foreground transition-colors">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -199,7 +199,7 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-6 sm:gap-3 w-full sm:w-auto">
           <Suspense>
             <ReportSortSelect />
           </Suspense>
@@ -285,8 +285,47 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
                 </div>
               </div>
 
-              {/* Detail row */}
-              <table className="w-full text-sm print:text-xs">
+              {/* Detail row — mobile */}
+              <div className="sm:hidden print:hidden px-5 py-3 grid grid-cols-2 gap-x-6 gap-y-3 text-sm border-t border-border">
+                <div>
+                  <p className="text-xs text-foreground-muted">Condition</p>
+                  <p className="text-foreground">{row.condition}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-foreground-muted">Qty</p>
+                  <p className="text-foreground">{row.quantity}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-foreground-muted">Purchase Price</p>
+                  <p className="text-foreground">{row.paid_price}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-foreground-muted">List Price</p>
+                  <p className="text-foreground">{row.list_price}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-foreground-muted">Proj. P/L</p>
+                  <p className={`font-medium ${
+                    row.pl_raw == null ? "text-foreground-muted" :
+                    row.pl_raw > 0 ? "text-emerald-400" : row.pl_raw < 0 ? "text-red-400" : "text-foreground"
+                  }`}>
+                    {row.pl_raw == null ? "—" : `${row.pl_raw >= 0 ? "+" : ""}$${row.pl_raw.toFixed(2)}`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-foreground-muted">For Sale / Trade</p>
+                  <p className="text-foreground">{row.for_sale} / {row.for_trade}</p>
+                </div>
+                {row.cert_number !== "—" && (
+                  <div>
+                    <p className="text-xs text-foreground-muted">Cert #</p>
+                    <p className="text-foreground">{row.cert_number}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Detail row — desktop */}
+              <table className="w-full text-sm print:text-xs hidden sm:table print:table">
                 <thead>
                   <tr className="border-b border-border print:border-gray-200">
                     {[
@@ -331,7 +370,69 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
         <div className="space-y-4">
           <h2 className="text-lg font-bold text-foreground print:text-black">Product Investments</h2>
           <div className="rounded-2xl border border-border bg-surface overflow-hidden print:border print:border-gray-400 print:rounded-none">
-            <table className="w-full text-sm print:text-xs">
+
+            {/* Mobile product list */}
+            <div className="sm:hidden print:hidden divide-y divide-border">
+              {products.map((product) => {
+                const status   = (product as any).status ?? "sealed";
+                const forSale  = !!(product as any).for_sale;
+                const forTrade = !!(product as any).for_trade;
+                const askPrice = (product as any).list_price != null ? Number((product as any).list_price) : null;
+                const cost      = Number(product.cost);
+                const linked    = (product.collection_items ?? []) as any[];
+                const pullValue = linked.reduce((sum: number, c: any) =>
+                  sum + (c.list_price != null ? Number(c.list_price) * (c.quantity ?? 1) : 0), 0);
+                const listDisplay = forSale && askPrice != null
+                  ? `$${askPrice.toFixed(2)}`
+                  : status === "opened" && pullValue > 0
+                    ? `$${pullValue.toFixed(2)} (pull)`
+                    : "—";
+                const pl: number | null = forSale && askPrice != null
+                  ? askPrice - cost
+                  : status === "opened" && pullValue > 0
+                    ? pullValue - cost
+                    : null;
+                return (
+                  <div key={product.id} className="px-4 py-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-foreground">{product.name}</p>
+                        <p className="text-xs text-foreground-muted mt-0.5">
+                          {new Date(product.purchased_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                      </div>
+                      {status === "opened"
+                        ? <span className="rounded-full border border-border px-2 py-0.5 text-xs text-foreground-muted shrink-0">Opened</span>
+                        : <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-400 shrink-0">Sealed</span>
+                      }
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                      <div>
+                        <p className="text-xs text-foreground-muted">Purchase Price</p>
+                        <p className="text-foreground">${cost.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-foreground-muted">List Price</p>
+                        <p className="text-foreground">{listDisplay}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-foreground-muted">Proj. P/L</p>
+                        <p className={`font-medium ${pl == null ? "text-foreground-muted" : pl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {pl == null ? "—" : `${pl >= 0 ? "+" : ""}$${pl.toFixed(2)}`}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-foreground-muted">For Sale / Trade</p>
+                        <p className="text-foreground">{forSale ? "Yes" : "No"} / {forTrade ? "Yes" : "No"}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop product table */}
+            <table className="w-full text-sm print:text-xs hidden sm:table print:table">
               <thead>
                 <tr className="border-b border-border bg-surface-raised print:bg-gray-100">
                   {["Product", "Date", "Status", "Purchase Price", "List Price", "Proj. P/L", "For Sale", "For Trade"].map((label) => (
@@ -351,21 +452,16 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
                   const linked    = (product.collection_items ?? []) as any[];
                   const pullValue = linked.reduce((sum: number, c: any) =>
                     sum + (c.list_price != null ? Number(c.list_price) * (c.quantity ?? 1) : 0), 0);
-
-                  // List Price column: asking price for for_sale, pull value for opened
                   const listDisplay = forSale && askPrice != null
                     ? `$${askPrice.toFixed(2)}`
                     : status === "opened" && pullValue > 0
                       ? `$${pullValue.toFixed(2)} (pull value)`
                       : "—";
-
-                  // P/L: for_sale uses asking price; opened uses pull value; sealed = —
                   const pl: number | null = forSale && askPrice != null
                     ? askPrice - cost
                     : status === "opened" && pullValue > 0
                       ? pullValue - cost
                       : null;
-
                   return (
                     <tr key={product.id} className="hover:bg-surface-raised transition-colors print:hover:bg-transparent">
                       <td className="px-4 py-2.5 font-medium text-foreground print:text-black">{product.name}</td>
