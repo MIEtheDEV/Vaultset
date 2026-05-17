@@ -99,7 +99,7 @@ export default async function Home() {
 
   const stats = [
     { value: formatCount(totalCards), label: "Cards Tracked" },
-    { value: formatCount(collectors), label: "Collectors" },
+    { value: formatCount(collectors ?? 0), label: "Collectors" },
     { value: "Coming Soon", label: "Market Volume" },
     { value: formatCount(supportedGames), label: "Supported Games" },
   ];

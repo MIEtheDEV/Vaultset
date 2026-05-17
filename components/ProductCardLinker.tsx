@@ -64,16 +64,20 @@ export function ProductCardLinker({
 
     if (toLink.length) {
       ops.push(
-        supabase.from("collection_items")
-          .update({ product_purchase_id: product.id })
-          .in("id", toLink)
+        Promise.resolve(
+          supabase.from("collection_items")
+            .update({ product_purchase_id: product.id })
+            .in("id", toLink)
+        )
       );
     }
     if (toUnlink.length) {
       ops.push(
-        supabase.from("collection_items")
-          .update({ product_purchase_id: null })
-          .in("id", toUnlink)
+        Promise.resolve(
+          supabase.from("collection_items")
+            .update({ product_purchase_id: null })
+            .in("id", toUnlink)
+        )
       );
     }
 
