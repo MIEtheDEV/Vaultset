@@ -15,6 +15,7 @@ export default async function InventoryPage() {
       quantity,
       paid_price,
       list_price,
+      market_price,
       for_sale,
       for_trade,
       grader,

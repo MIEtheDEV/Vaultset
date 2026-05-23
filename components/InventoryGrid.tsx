@@ -8,6 +8,7 @@ import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
 const raritySystem = new PokemonRaritySystem();
 import { CardImage } from "@/components/CardImage";
 import { RemoveCardButton } from "@/components/RemoveCardButton";
+import { ListAtMarketButton } from "@/components/ListAtMarketButton";
 
 const conditionLabel: Record<string, string> = {
   mint: "Mint",
@@ -61,6 +62,7 @@ export interface InventoryItem {
   quantity: number;
   paid_price: number | null;
   list_price: number | null;
+  market_price: number | null;
   for_sale: boolean;
   for_trade: boolean;
   grader: string | null;
@@ -311,16 +313,35 @@ export function InventoryGrid({ items }: { items: InventoryItem[] }) {
                       )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {item.for_sale && item.list_price != null && (
-                        <span className="text-sm font-semibold text-gold">
-                          ${item.list_price.toFixed(2)}
-                        </span>
-                      )}
                       {item.quantity > 1 && (
                         <span className="text-xs text-foreground-muted">×{item.quantity}</span>
                       )}
                     </div>
                   </div>
+
+                  <div className="flex items-center justify-between">
+                    {item.market_price != null ? (
+                      <span className="text-xs text-foreground-muted">
+                        Mkt <span className="font-medium text-foreground">${item.market_price.toFixed(2)}</span>
+                      </span>
+                    ) : (
+                      <span />
+                    )}
+                    {item.for_sale && item.list_price != null && (
+                      <span className="text-sm font-semibold text-gold">
+                        ${item.list_price.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+
+                  {item.market_price != null && (
+                    <ListAtMarketButton
+                      itemId={item.id}
+                      marketPrice={item.market_price}
+                      listPrice={item.list_price}
+                      forSale={item.for_sale}
+                    />
+                  )}
 
                   <div className="flex items-center gap-2">
                     <Link

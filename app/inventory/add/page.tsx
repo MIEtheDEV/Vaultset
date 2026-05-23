@@ -8,6 +8,7 @@ import { createClient } from "@/utils/supabase/client";
 import { PokemonCardSearch } from "@/components/PokemonCardSearch";
 import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
 import { PokemonTCGProvider } from "@/lib/search/PokemonTCGProvider";
+import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
 
 // Instantiated once at module level — demonstrates encapsulation:
 // all game-specific rarity and search logic lives inside these classes.
@@ -112,6 +113,8 @@ export default function AddCardPage() {
   const [certNumber, setCertNumber] = useState("");
   const [notes, setNotes]           = useState("");
 
+  const [tcgplayerData, setTcgplayerData] = useState<TcgPlayerData | null>(null);
+
   const [sets, setSets]             = useState<{ id: string; name: string; series: string }[]>([]);
   const [setsLoading, setSetsLoading] = useState(true);
   const [products, setProducts]           = useState<{ id: string; name: string; product_type: string }[]>([]);
@@ -148,6 +151,15 @@ export default function AddCardPage() {
   const [loading, setLoading]               = useState(false);
   const [error, setError]                   = useState("");
   const [duplicateWarning, setDuplicateWarning] = useState(false);
+
+  const computedMarketHint = tcgplayerData
+    ? searchProvider.getMarketPrice(
+        tcgplayerData, finish || null, edition || null,
+        graded ? null        : condition || null,
+        graded ? grader || null : null,
+        graded && grade ? Number(grade) : null,
+      )
+    : null;
 
   // Derived from rarity via the rarity system — demonstrates polymorphism:
   // swapping raritySystem for a different game's implementation changes
@@ -186,9 +198,11 @@ export default function AddCardPage() {
     subtypes?: string[];
     set: { id: string; name: string };
     images: { small: string; large: string };
+    tcgplayer?: TcgPlayerData | null;
   }) {
     setDuplicateWarning(false);
     setPokemonApiId(card.id);
+    setTcgplayerData(card.tcgplayer ?? null);
     setName(card.name);
     setCardSet(card.set.name);
     setSetCode(card.set.id);
@@ -284,21 +298,29 @@ export default function AddCardPage() {
       return;
     }
 
+    const marketPrice = searchProvider.getMarketPrice(
+      tcgplayerData, finish || null, edition || null,
+      graded ? null        : condition || null,
+      graded ? grader || null : null,
+      graded && grade ? Number(grade) : null,
+    );
+
     const { error: itemError } = await supabase.from("collection_items").insert({
-      user_id:     user!.id,
-      card_id:     card.id,
-      condition:   graded ? null : condition || null,
-      finish:      finish || null,
-      quantity:    Number(quantity),
-      paid_price:  paidPrice ? Number(paidPrice) : null,
-      list_price:  listPrice ? Number(listPrice) : null,
-      for_sale:    forSale,
-      for_trade:   forTrade,
-      grader:      graded ? grader || null : null,
-      grade:       graded && grade ? Number(grade) : null,
+      user_id:      user!.id,
+      card_id:      card.id,
+      condition:    graded ? null : condition || null,
+      finish:       finish || null,
+      quantity:     Number(quantity),
+      paid_price:   paidPrice ? Number(paidPrice) : null,
+      list_price:   listPrice ? Number(listPrice) : null,
+      market_price: marketPrice,
+      for_sale:     forSale,
+      for_trade:    forTrade,
+      grader:       graded ? grader || null : null,
+      grade:        graded && grade ? Number(grade) : null,
       cert_number:         graded ? certNumber || null : null,
       product_purchase_id: linkedProduct || null,
-      notes:       notes || null,
+      notes:        notes || null,
     });
 
     if (itemError) {
@@ -373,7 +395,6 @@ export default function AddCardPage() {
               <select
                 value={setCode}
                 onChange={(e) => handleSetSelect(e.target.value)}
-                disabled={setsLoading}
                 className={selectClass()}
               >
                 <option value="">{setsLoading ? "Loading sets…" : "Select set"}</option>
@@ -578,17 +599,43 @@ export default function AddCardPage() {
             <div>
               <label className={labelClass()}>Purchase Price ($)</label>
               <input type="number" step="0.01" placeholder="0.00" value={paidPrice} onChange={(e) => setPaidPrice(e.target.value)} className={`${inputClass()} no-spinner`} />
+              {computedMarketHint != null && (
+                <p className="mt-1.5 text-xs text-foreground-muted">
+                  TCGPlayer market (est.): <span className="font-medium text-foreground">${computedMarketHint.toFixed(2)}</span>
+                </p>
+              )}
             </div>
           </div>
 
           <div className="flex items-center gap-6">
-            <Toggle on={forSale}  onToggle={() => setForSale((v) => !v)}  label="List for Sale" />
+            <Toggle
+              on={forSale}
+              onToggle={() => {
+                const next = !forSale;
+                setForSale(next);
+                if (next && !listPrice && computedMarketHint != null) {
+                  setListPrice(String(computedMarketHint));
+                }
+              }}
+              label="List for Sale"
+            />
             <Toggle on={forTrade} onToggle={() => setForTrade((v) => !v)} label="Available to Trade" />
           </div>
 
           {forSale && (
             <div>
-              <label className={labelClass()}>List Price ($)</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm font-medium text-foreground-muted">List Price ($)</span>
+                {computedMarketHint != null && (
+                  <button
+                    type="button"
+                    onClick={() => setListPrice(String(computedMarketHint))}
+                    className="rounded-full border border-gold/30 bg-gold/5 px-2 py-0.5 text-xs font-medium text-gold hover:bg-gold/15 transition-colors"
+                  >
+                    mkt · ${computedMarketHint.toFixed(2)}
+                  </button>
+                )}
+              </div>
               <input type="number" step="0.01" placeholder="0.00" value={listPrice} onChange={(e) => setListPrice(e.target.value)} className={`${inputClass()} no-spinner`} />
             </div>
           )}

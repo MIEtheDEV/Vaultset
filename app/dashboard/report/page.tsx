@@ -59,7 +59,7 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
   const { data: items } = await supabase
     .from("collection_items")
     .select(`
-      id, condition, finish, quantity, paid_price, list_price,
+      id, condition, finish, quantity, paid_price, list_price, market_price,
       for_sale, for_trade, grader, grade, cert_number, notes, created_at,
       cards ( game, name, set_name, card_number, game_data )
     `)
@@ -70,12 +70,12 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
   // All prices multiplied by quantity (per-unit × copies owned)
   const totalInvested = items?.reduce((sum, i) =>
     sum + (i.paid_price != null ? Number(i.paid_price) * (i.quantity ?? 1) : 0), 0) ?? 0;
-  const listedValue   = items?.reduce((sum, i) =>
-    sum + (i.list_price != null ? Number(i.list_price) * (i.quantity ?? 1) : 0), 0) ?? 0;
-  // P/L only on cards where both prices are known
+  const marketValue   = items?.reduce((sum, i) =>
+    sum + (i.market_price != null ? Number(i.market_price) * (i.quantity ?? 1) : 0), 0) ?? 0;
+  // P/L only on cards where both paid and market price are known
   const profitLoss    = items?.reduce((sum, i) => {
-    if (i.paid_price == null || i.list_price == null) return sum;
-    return sum + (Number(i.list_price) - Number(i.paid_price)) * (i.quantity ?? 1);
+    if (i.paid_price == null || i.market_price == null) return sum;
+    return sum + (Number(i.market_price) - Number(i.paid_price)) * (i.quantity ?? 1);
   }, 0) ?? 0;
   // Sealed product totals — folded into the combined summary
   const sealedInvestedAll = (products ?? []).reduce((sum, p) => sum + Number(p.cost), 0);
@@ -99,8 +99,8 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
 
   // Combined totals — simple arithmetic, no card-product linkage needed
   const combinedInvested = totalInvested + sealedInvestedAll;
-  const combinedListed   = listedValue   + sealedListedValue;
-  const combinedPL       = combinedListed - combinedInvested;
+  const combinedValue    = marketValue   + sealedListedValue;
+  const combinedPL       = combinedValue - combinedInvested;
   const returnPct        = combinedInvested > 0 ? (combinedPL / combinedInvested) * 100 : 0;
 
   const rows = (items ?? []).map((item) => {
@@ -124,21 +124,25 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
       paid_price:   item.paid_price != null
                       ? `$${(Number(item.paid_price) * item.quantity).toFixed(2)}`
                       : "—",
+      market_price: item.market_price != null
+                      ? `$${(Number(item.market_price) * item.quantity).toFixed(2)}`
+                      : "—",
       list_price:   item.list_price != null
                       ? `$${(Number(item.list_price) * item.quantity).toFixed(2)}`
                       : "—",
-      // Per-card projected P/L (only when both prices are set)
-      pl_raw:       item.paid_price != null && item.list_price != null
-                      ? (Number(item.list_price) - Number(item.paid_price)) * item.quantity
+      // P/L against TCGPlayer market price (only when both prices are known)
+      pl_raw:       item.paid_price != null && item.market_price != null
+                      ? (Number(item.market_price) - Number(item.paid_price)) * item.quantity
                       : null,
       for_sale:     item.for_sale  ? "Yes" : "No",
       for_trade:    item.for_trade ? "Yes" : "No",
-      notes:            item.notes ?? "—",
+      notes:             item.notes ?? "—",
       // Raw values for sorting (per-unit, for consistent ordering)
-      rarity_key:       (gd.rarity as string) ?? "",
-      paid_price_raw:   item.paid_price != null ? Number(item.paid_price) * item.quantity : -1,
-      list_price_raw:   item.list_price  != null ? Number(item.list_price)  * item.quantity : -1,
-      date_added_raw:   item.created_at,
+      rarity_key:        (gd.rarity as string) ?? "",
+      paid_price_raw:    item.paid_price    != null ? Number(item.paid_price)    * item.quantity : -1,
+      market_price_raw:  item.market_price  != null ? Number(item.market_price)  * item.quantity : -1,
+      list_price_raw:    item.list_price    != null ? Number(item.list_price)    * item.quantity : -1,
+      date_added_raw:    item.created_at,
     };
   });
 
@@ -155,6 +159,8 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
         return raritySystem.getSortOrder(a.rarity_key) - raritySystem.getSortOrder(b.rarity_key);
       case "price_purchase_high":
         return b.paid_price_raw - a.paid_price_raw;
+      case "price_market_high":
+        return b.market_price_raw - a.market_price_raw;
       case "price_list_high":
         return b.list_price_raw - a.list_price_raw;
       default: // name_asc
@@ -173,10 +179,11 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
     { key: "finish"      as const, label: "Finish" },
     { key: "condition"   as const, label: "Condition / Grade" },
     { key: "cert_number" as const, label: "Cert #" },
-    { key: "quantity"    as const, label: "Qty" },
-    { key: "paid_price"  as const, label: "Purchase Price" },
-    { key: "list_price"  as const, label: "List Price" },
-    { key: "for_sale"    as const, label: "For Sale" },
+    { key: "quantity"     as const, label: "Qty" },
+    { key: "paid_price"   as const, label: "Purchase Price" },
+    { key: "market_price" as const, label: "Market Price" },
+    { key: "list_price"   as const, label: "List Price" },
+    { key: "for_sale"     as const, label: "For Sale" },
     { key: "for_trade"   as const, label: "For Trade" },
     { key: "notes"       as const, label: "Notes" },
   ];
@@ -226,12 +233,12 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
               <span className="ml-1 text-xs italic print:text-gray-400"> (cards + sealed products)</span>
             </span>
             <span>
-              Listed Value:{" "}
-              <span className="font-semibold text-gold print:text-black">${combinedListed.toFixed(2)}</span>
-              <span className="ml-1 text-xs italic print:text-gray-400"> (listed cards + sealed for sale — market values in a future update)</span>
+              Market Value:{" "}
+              <span className="font-semibold text-gold print:text-black">${combinedValue.toFixed(2)}</span>
+              <span className="ml-1 text-xs italic print:text-gray-400"> (TCGPlayer market price × qty; sealed products use list price)</span>
             </span>
             <span>
-              Projected Profit / Loss:{" "}
+              Unrealized P/L:{" "}
               <span className={`font-semibold print:text-black ${
                 combinedPL > 0 ? "text-emerald-400" : combinedPL < 0 ? "text-red-400" : "text-foreground"
               }`}>
@@ -242,7 +249,6 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
               }`}>
                 ({returnPct >= 0 ? "+" : ""}{returnPct.toFixed(1)}%)
               </span>
-              <span className="ml-1.5 text-xs italic text-foreground-muted print:text-gray-400"> (will reflect market values in a future update)</span>
             </span>
           </div>
         </div>
@@ -300,11 +306,15 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
                   <p className="text-foreground">{row.paid_price}</p>
                 </div>
                 <div>
+                  <p className="text-xs text-foreground-muted">Market Price</p>
+                  <p className="text-foreground">{row.market_price}</p>
+                </div>
+                <div>
                   <p className="text-xs text-foreground-muted">List Price</p>
                   <p className="text-foreground">{row.list_price}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-foreground-muted">Proj. P/L</p>
+                  <p className="text-xs text-foreground-muted">Market P/L</p>
                   <p className={`font-medium ${
                     row.pl_raw == null ? "text-foreground-muted" :
                     row.pl_raw > 0 ? "text-emerald-400" : row.pl_raw < 0 ? "text-red-400" : "text-foreground"
@@ -330,7 +340,7 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
                   <tr className="border-b border-border print:border-gray-200">
                     {[
                       "Condition / Grade", "Cert #", "Qty",
-                      "Purchase Price", "List Price", "Proj. P/L",
+                      "Purchase Price", "Market Price", "List Price", "Market P/L",
                       "For Sale", "For Trade",
                     ].map((label) => (
                       <th
@@ -348,6 +358,7 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
                     <td className="px-4 py-2.5 text-foreground-muted print:text-gray-600 print:py-2">{row.cert_number}</td>
                     <td className="px-4 py-2.5 text-foreground print:text-black print:py-2">{row.quantity}</td>
                     <td className="px-4 py-2.5 text-foreground print:text-black print:py-2">{row.paid_price}</td>
+                    <td className="px-4 py-2.5 text-foreground print:text-black print:py-2">{row.market_price}</td>
                     <td className="px-4 py-2.5 text-foreground print:text-black print:py-2">{row.list_price}</td>
                     <td className={`px-4 py-2.5 font-medium print:py-2 print:text-black ${
                       row.pl_raw == null ? "text-foreground-muted" :

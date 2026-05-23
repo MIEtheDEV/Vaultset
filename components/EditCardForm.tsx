@@ -54,6 +54,7 @@ interface Props {
     quantity: number;
     paid_price: number | null;
     list_price: number | null;
+    market_price: number | null;
     for_sale: boolean;
     for_trade: boolean;
     grader: string;
@@ -278,14 +279,45 @@ export function EditCardForm({ item, card }: Props) {
             </div>
           </div>
 
+          {item.market_price != null && (
+            <div className="flex items-center justify-between rounded-xl border border-border bg-surface-raised/50 px-4 py-3">
+              <div>
+                <p className="text-xs text-foreground-muted mb-0.5">TCGPlayer Market (at add)</p>
+                <p className="text-sm font-medium text-foreground">${item.market_price.toFixed(2)}</p>
+              </div>
+              <span className="text-xs text-foreground-muted">read-only</span>
+            </div>
+          )}
+
           <div className="flex items-center gap-6">
-            <Toggle on={forSale}  onToggle={() => setForSale((v) => !v)}  label="List for Sale" />
+            <Toggle
+              on={forSale}
+              onToggle={() => {
+                const next = !forSale;
+                setForSale(next);
+                if (next && item.market_price != null && !listPrice) {
+                  setListPrice(String(item.market_price));
+                }
+              }}
+              label="List for Sale"
+            />
             <Toggle on={forTrade} onToggle={() => setForTrade((v) => !v)} label="Available to Trade" />
           </div>
 
           {forSale && (
             <div>
-              <label className={labelClass()}>List Price ($)</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm font-medium text-foreground-muted">List Price ($)</span>
+                {item.market_price != null && (
+                  <button
+                    type="button"
+                    onClick={() => setListPrice(String(item.market_price!))}
+                    className="rounded-full border border-gold/30 bg-gold/5 px-2 py-0.5 text-xs font-medium text-gold hover:bg-gold/15 transition-colors"
+                  >
+                    mkt · ${item.market_price.toFixed(2)}
+                  </button>
+                )}
+              </div>
               <input type="number" step="0.01" placeholder="0.00" value={listPrice} onChange={(e) => setListPrice(e.target.value)} className={`${inputClass()} no-spinner`} />
             </div>
           )}

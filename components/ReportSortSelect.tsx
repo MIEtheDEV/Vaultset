@@ -9,7 +9,8 @@ const SORT_OPTIONS = [
   { value: "date_oldest",         label: "Date Added (oldest first)" },
   { value: "rarity_high",         label: "Rarity (highest first)" },
   { value: "price_purchase_high", label: "Purchase Price (high – low)" },
-  { value: "price_list_high",     label: "List Price (high – low)" },
+  { value: "price_market_high",  label: "Market Price (high – low)" },
+  { value: "price_list_high",    label: "List Price (high – low)" },
 ];
 
 export function ReportSortSelect() {

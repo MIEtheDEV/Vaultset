@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\micha\\\\Documents\\\\code\\\\trade-platform\" -Force)",
+      "Bash(Select-Object Name, Mode)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\micha\\\\Documents\\\\code\\\\trade-platform\\\\app\" -Recurse -Depth 3 | Where-Object { $_.PSIsContainer } | Select-Object FullName)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

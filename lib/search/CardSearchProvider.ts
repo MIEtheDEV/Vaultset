@@ -3,6 +3,20 @@
 // allowing the rest of the application to treat all providers uniformly
 // — the concrete game logic stays encapsulated inside each subclass.
 
+export interface TcgPlayerPricePoint {
+  low: number | null;
+  mid: number | null;
+  high: number | null;
+  market: number | null;
+  directLow: number | null;
+}
+
+export interface TcgPlayerData {
+  url: string;
+  updatedAt: string;
+  prices: Record<string, TcgPlayerPricePoint>;
+}
+
 export interface SearchResult {
   id: string;
   name: string;
@@ -11,10 +25,12 @@ export interface SearchResult {
   subtypes?: string[];
   set: { id: string; name: string };
   images: { small: string; large: string };
+  tcgplayer?: TcgPlayerData | null;
 }
 
 export interface SearchOptions {
   set?: string;
+  number?: string;
   promoRequested?: boolean;
 }
 

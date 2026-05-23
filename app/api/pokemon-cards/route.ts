@@ -3,8 +3,9 @@ import { getSearchProvider } from "@/lib/search";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const raw = searchParams.get("q")?.trim() ?? "";
-  const set = searchParams.get("set")?.trim();
+  const raw    = searchParams.get("q")?.trim() ?? "";
+  const set    = searchParams.get("set")?.trim()    || undefined;
+  const number = searchParams.get("number")?.trim() || undefined;
 
   const promoRequested = /\bpromo\b/i.test(raw);
   const nameQuery      = raw.replace(/\bpromo\b/gi, "").trim();
@@ -17,6 +18,6 @@ export async function GET(request: Request) {
   // search implementation without touching any other code.
   const provider = getSearchProvider("pokemon");
 
-  const results = await provider.search(nameQuery, { set, promoRequested });
+  const results = await provider.search(nameQuery, { set, number, promoRequested });
   return NextResponse.json({ data: results });
 }

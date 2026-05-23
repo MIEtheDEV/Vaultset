@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
 
 interface PokemonCard {
   id: string;
@@ -10,6 +11,7 @@ interface PokemonCard {
   subtypes?: string[];
   set: { id: string; name: string; releaseDate: string };
   images: { small: string; large: string };
+  tcgplayer?: TcgPlayerData | null;
 }
 
 interface Props {
@@ -17,13 +19,14 @@ interface Props {
 }
 
 export function PokemonCardSearch({ onSelect }: Props) {
-  const [query, setQuery]       = useState("");
-  const [setName, setSetName]   = useState("");
-  const [results, setResults]   = useState<PokemonCard[]>([]);
-  const [loading, setLoading]   = useState(false);
-  const [open, setOpen]         = useState(false);
-  const containerRef            = useRef<HTMLDivElement>(null);
-  const timerRef                = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [query,      setQuery]      = useState("");
+  const [setName,    setSetName]    = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+  const [results,    setResults]    = useState<PokemonCard[]>([]);
+  const [loading,    setLoading]    = useState(false);
+  const [open,       setOpen]       = useState(false);
+  const containerRef                = useRef<HTMLDivElement>(null);
+  const timerRef                    = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -32,8 +35,10 @@ export function PokemonCardSearch({ onSelect }: Props) {
     timerRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const url = `/api/pokemon-cards?q=${encodeURIComponent(query)}${setName.length >= 2 ? `&set=${encodeURIComponent(setName)}` : ""}`;
-        const res = await fetch(url);
+        const params = new URLSearchParams({ q: query });
+        if (setName.length    >= 2) params.set("set",    setName);
+        if (cardNumber.length >= 1) params.set("number", cardNumber);
+        const res  = await fetch(`/api/pokemon-cards?${params}`);
         const json = await res.json();
         setResults(json.data ?? []);
         setOpen(true);
@@ -41,7 +46,7 @@ export function PokemonCardSearch({ onSelect }: Props) {
         setLoading(false);
       }
     }, 350);
-  }, [query, setName]);
+  }, [query, setName, cardNumber]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -61,33 +66,41 @@ export function PokemonCardSearch({ onSelect }: Props) {
 
   return (
     <div ref={containerRef} className="relative space-y-2">
-      <div className="grid sm:grid-cols-2 gap-2">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Card name…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => results.length > 0 && setOpen(true)}
-            className="w-full rounded-xl border border-border bg-surface-raised px-4 py-3 pr-10 text-sm text-foreground placeholder:text-foreground-muted focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors"
-          />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground-muted pointer-events-none">
-            {loading ? (
-              <svg className="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-              </svg>
-            ) : (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-            )}
-          </span>
-        </div>
+      <div className="relative">
         <input
           type="text"
-          placeholder="Set name (optional)…"
+          placeholder="Card name…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => results.length > 0 && setOpen(true)}
+          className="w-full rounded-xl border border-border bg-surface-raised px-4 py-3 pr-10 text-sm text-foreground placeholder:text-foreground-muted focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors"
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground-muted pointer-events-none">
+          {loading ? (
+            <svg className="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+          ) : (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          )}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          type="text"
+          placeholder="Set (optional)…"
           value={setName}
           onChange={(e) => setSetName(e.target.value)}
+          className="w-full rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm text-foreground placeholder:text-foreground-muted focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors"
+        />
+        <input
+          type="text"
+          placeholder="Card # (optional)…"
+          value={cardNumber}
+          onChange={(e) => setCardNumber(e.target.value)}
+          autoComplete="off"
           className="w-full rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm text-foreground placeholder:text-foreground-muted focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors"
         />
       </div>

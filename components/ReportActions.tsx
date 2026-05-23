@@ -13,6 +13,7 @@ interface Row {
   cert_number: string;
   quantity: number;
   paid_price: string;
+  market_price: string;
   list_price: string;
   for_sale: string;
   for_trade: string;
