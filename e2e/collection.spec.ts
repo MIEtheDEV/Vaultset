@@ -31,15 +31,38 @@ test.describe("Collection Management", () => {
   });
 
   test("selecting a search result pre-populates card name", async ({ page }) => {
+    await page.route("**/api/pokemon-cards*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            {
+              id: "swsh4-57",
+              name: "Pikachu",
+              number: "57",
+              rarity: "Common",
+              subtypes: ["Basic"],
+              set: { id: "swsh4", name: "Vivid Voltage", releaseDate: "2020/11/13" },
+              images: {
+                small: "https://images.pokemontcg.io/swsh4/57.png",
+                large: "https://images.pokemontcg.io/swsh4/57_hires.png",
+              },
+              tcgplayer: null,
+            },
+          ],
+        }),
+      })
+    );
+
     await page.goto("/inventory/add");
 
     await page.getByPlaceholder("Card name…").fill("Pikachu");
 
     const firstResult = page.locator("ul.absolute li button").first();
-    await firstResult.waitFor({ timeout: 15000 });
+    await firstResult.waitFor({ timeout: 5000 });
     await firstResult.click();
 
-    // Card name field should now be populated
     await expect(page.getByPlaceholder("Charizard")).not.toHaveValue("");
   });
 
