@@ -8,7 +8,9 @@
       "Bash(gh run *)",
       "Bash(Get-ChildItem C:\\\\Users\\\\micha\\\\Documents\\\\code\\\\trade-platform\\\\public *)",
       "Bash(pnpm tsc *)",
-      "Bash(Remove-Item *)"
+      "Bash(Remove-Item *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\micha\\\\Documents\\\\code\\\\trade-platform\\\\app\\\\\\(auth\\)\")",
+      "Bash(Select-Object Name)"
     ]
   }
 }

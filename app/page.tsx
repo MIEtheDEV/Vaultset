@@ -2,12 +2,13 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { UserNav } from "@/components/UserNav";
 import { HeroCardStack } from "@/components/HeroCardStack";
+import { KofiButton } from "@/components/KofiButton";
 
 const features = [
   {
     title: "Smart Inventory",
     description:
-      "Scan cards to auto-populate details. Track condition, grade, and set completion — raw or graded (PSA, BGS, CGC).",
+      "Search our card database to auto-populate details. Track condition, quantity, and set — raw or graded (PSA, BGS, CGC, SGC).",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -18,9 +19,9 @@ const features = [
     ),
   },
   {
-    title: "Live Market Data",
+    title: "Market Price Tracking",
     description:
-      "Real-time pricing pulled from sales history. View price charts, sales velocity, and population reports by grade.",
+      "Pricing synced daily from TCGPlayer market data. See what you paid vs. current market value, with P&L calculated across your entire collection.",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
@@ -29,9 +30,9 @@ const features = [
     ),
   },
   {
-    title: "Safe Marketplace",
+    title: "Marketplace",
     description:
-      "Buy, sell, or bundle cards with platform-held escrow, verified seller tiers, and integrated shipping labels.",
+      "List your cards for sale or trade and browse what the community has available. Offers and secure transactions are coming soon.",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
@@ -40,9 +41,22 @@ const features = [
     ),
   },
   {
-    title: "Trade Matching",
+    title: "Sealed Product Tracking",
     description:
-      "Build a want list and a have list. Vaultset automatically surfaces trade opportunities across the entire community.",
+      "Log ETBs, booster boxes, and bundles. Record what you pull, track your cost-per-card, and see the P&L on every product you open.",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+        <line x1="12" y1="22.08" x2="12" y2="12" />
+      </svg>
+    ),
+  },
+  {
+    title: "Trade Matching",
+    comingSoon: true,
+    description:
+      "Build a wishlist of cards you want and flag what you have for trade. Vaultset will surface matching opportunities across the community automatically.",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="17 1 21 5 17 9" />
@@ -53,21 +67,10 @@ const features = [
     ),
   },
   {
-    title: "Collector Profiles",
-    description:
-      "Showcase master sets, top pulls, and collection milestones on a fully customizable public profile page.",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    ),
-  },
-  {
     title: "Price Alerts",
+    comingSoon: true,
     description:
-      "Set watchlists and get notified when a card hits your target price, a trade match appears, or an offer arrives.",
+      "Set a target price on any card in your watchlist and get notified the moment the market hits it.",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -239,13 +242,13 @@ export default async function Home() {
               Everything your collection deserves
             </h2>
             <p className="text-foreground-muted text-lg max-w-2xl mx-auto">
-              From the moment you scan a card to the day you make the perfect
-              trade, Vaultset has you covered.
+              From the moment you add your first card to the day you make the
+              perfect trade, Vaultset has you covered.
             </p>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {features.map(({ icon, title, description }) => (
+            {features.map(({ icon, title, description, comingSoon }) => (
               <div
                 key={title}
                 className="group rounded-2xl border border-border bg-surface p-6 hover:border-gold/30 hover:bg-surface-raised transition-all duration-200"
@@ -254,7 +257,14 @@ export default async function Home() {
                   <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold group-hover:bg-gold/15 transition-colors sm:mb-4">
                     {icon}
                   </div>
-                  <h3 className="font-semibold text-foreground sm:mb-2">{title}</h3>
+                  <div className="flex items-center gap-2 sm:mb-2">
+                    <h3 className="font-semibold text-foreground">{title}</h3>
+                    {comingSoon && (
+                      <span className="inline-flex items-center rounded-full border border-gold/30 bg-gold/5 px-2 py-0.5 text-xs font-medium text-gold">
+                        Coming Soon
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <p className="text-sm text-foreground-muted leading-relaxed">
                   {description}
@@ -273,8 +283,8 @@ export default async function Home() {
               Ready to open the vault?
             </h2>
             <p className="text-foreground-muted text-lg max-w-xl mx-auto">
-              Join thousands of collectors who manage, trade, and grow their
-              collections on Vaultset.
+              Join collectors who manage, track, and grow their collections on
+              Vaultset — free, forever.
             </p>
           </div>
           <div className="flex flex-wrap justify-center gap-4">
@@ -298,9 +308,7 @@ export default async function Home() {
       <footer className="border-t border-border bg-background">
         <div className="mx-auto max-w-7xl px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <span className="text-lg font-bold tracking-widest text-gold">VAULTSET</span>
-          <p className="text-sm text-foreground-muted">
-            © 2026 Vaultset. All rights reserved.
-          </p>
+          <KofiButton />
           <div className="flex gap-6 text-sm text-foreground-muted">
             <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
             <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>

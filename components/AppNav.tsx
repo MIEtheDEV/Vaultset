@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { UserNav } from "@/components/UserNav";
 import { MobileMenu } from "@/components/MobileMenu";
+import { KofiButton } from "@/components/KofiButton";
 
 const navLinks = [
   { label: "Dashboard", href: "/dashboard" },
@@ -33,6 +34,7 @@ export function AppNav({ username }: { username: string }) {
         </div>
 
         <div className="flex items-center gap-1">
+          <KofiButton variant="icon" />
           <UserNav username={username} />
           <MobileMenu />
         </div>
