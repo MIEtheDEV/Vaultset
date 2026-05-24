@@ -1,7 +1,39 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
 import { MarketplaceGrid } from "@/components/MarketplaceGrid";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}): Promise<Metadata> {
+  const { username } = await params;
+  const supabase = await createClient();
+
+  const { data: seller } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("username", username)
+    .single();
+
+  if (!seller) return { title: "Seller Not Found", robots: { index: false } };
+
+  const title = `@${seller.username}'s Listings`;
+  const description = `Browse trading cards and sealed products listed by @${seller.username} on Vaultset Marketplace.`;
+
+  return {
+    title,
+    description,
+    robots: { index: false },
+    openGraph: {
+      title,
+      description,
+      type: "profile",
+    },
+  };
+}
 
 export default async function UserListingsPage({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;

@@ -4,7 +4,10 @@
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\micha\\\\Documents\\\\code\\\\trade-platform\" -Force)",
       "Bash(Select-Object Name, Mode)",
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\micha\\\\Documents\\\\code\\\\trade-platform\\\\app\" -Recurse -Depth 3 | Where-Object { $_.PSIsContainer } | Select-Object FullName)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(gh run *)",
+      "Bash(Get-ChildItem C:\\\\Users\\\\micha\\\\Documents\\\\code\\\\trade-platform\\\\public *)",
+      "Bash(pnpm tsc *)"
     ]
   }
 }

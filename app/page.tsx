@@ -104,8 +104,38 @@ export default async function Home() {
     { value: formatCount(supportedGames), label: "Supported Games" },
   ];
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://vaultset.app/#website",
+        name: "Vaultset",
+        url: "https://vaultset.app",
+        description:
+          "The all-in-one platform for trading card collectors. Manage inventory, track market values, buy and sell cards.",
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://vaultset.app/#organization",
+        name: "Vaultset",
+        url: "https://vaultset.app",
+        logo: {
+          "@type": "ImageObject",
+          url: "https://vaultset.app/img/icon.png",
+        },
+        description:
+          "The all-in-one platform for trading card collectors. Manage inventory, track live market values, buy and sell with confidence.",
+      },
+    ],
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
 
       {/* Navbar */}
       <nav className="fixed top-0 inset-x-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">

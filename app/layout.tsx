@@ -13,13 +13,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://vaultset.app"),
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
       { url: "/icon-32.png", sizes: "32x32", type: "image/png" },
     ],
   },
-  title: "Vaultset — The Ultimate Trading Card Platform",
+  title: {
+    default: "Vaultset — The Ultimate Trading Card Platform",
+    template: "%s — Vaultset",
+  },
   description:
     "Manage your collection, track live market values, buy and sell cards, and connect with a passionate community. Vaultset is the all-in-one platform for trading card collectors.",
   keywords: [
@@ -32,10 +36,16 @@ export const metadata: Metadata = {
     "card market",
     "card inventory",
   ],
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true },
+  },
   openGraph: {
     title: "Vaultset — The Ultimate Trading Card Platform",
     description:
       "Manage your collection, track live market values, buy and sell cards, and connect with a passionate community.",
+    url: "https://vaultset.app",
     type: "website",
     siteName: "Vaultset",
   },

@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
+
+export const metadata: Metadata = {
+  title: "Community",
+  robots: { index: false },
+};
 
 export default async function CommunityPage() {
   const supabase = await createClient();

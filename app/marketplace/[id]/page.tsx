@@ -1,6 +1,52 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { ListingDetail } from "@/components/ListingDetail";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const supabase = await createClient();
+
+  const { data: listing } = await supabase
+    .from("collection_items")
+    .select("condition, finish, list_price, cards(name, set_name, image_url)")
+    .eq("id", id)
+    .or("for_sale.eq.true,for_trade.eq.true")
+    .single();
+
+  if (!listing) return { title: "Listing Not Found", robots: { index: false } };
+  const card = Array.isArray(listing.cards) ? listing.cards[0] : listing.cards;
+  if (!card) return { title: "Listing", robots: { index: false } };
+
+  const finish = (listing as Record<string, unknown>).finish as string | null;
+  const conditionParts = [listing.condition, finish].filter(Boolean).join(" ");
+  const title = card.name;
+  const description = `${card.name} from ${card.set_name}${listing.list_price != null ? ` for $${listing.list_price}` : ""}. ${conditionParts} condition. Available on Vaultset Marketplace.`;
+
+  return {
+    title,
+    description,
+    robots: { index: false },
+    openGraph: {
+      title: `${title} — Vaultset`,
+      description,
+      type: "website",
+      images: card.image_url
+        ? [{ url: card.image_url, alt: card.name }]
+        : [],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: card.image_url ? [card.image_url] : [],
+    },
+  };
+}
 
 export default async function ListingPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

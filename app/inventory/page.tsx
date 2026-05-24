@@ -1,6 +1,12 @@
+import type { Metadata } from "next";
 import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
 import { InventoryGrid } from "@/components/InventoryGrid";
+
+export const metadata: Metadata = {
+  title: "Inventory",
+  robots: { index: false },
+};
 
 export default async function InventoryPage() {
   const supabase = await createClient();

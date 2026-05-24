@@ -1,6 +1,20 @@
+import type { Metadata } from "next";
 import { createClient } from "@/utils/supabase/server";
 import { MarketplaceGrid } from "@/components/MarketplaceGrid";
 import { SealedProductsGrid } from "@/components/SealedProductsGrid";
+
+export const metadata: Metadata = {
+  title: "Marketplace",
+  description:
+    "Browse trading cards and sealed products listed for sale and trade. Find Pokémon TCG, MTG, and more from collectors on Vaultset.",
+  robots: { index: false },
+  openGraph: {
+    title: "Marketplace — Vaultset",
+    description:
+      "Browse trading cards and sealed products listed for sale and trade by collectors worldwide.",
+    type: "website",
+  },
+};
 
 export default async function MarketplacePage() {
   const supabase = await createClient();

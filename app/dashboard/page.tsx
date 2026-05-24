@@ -1,7 +1,13 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
 import { RefreshMarketButton } from "@/components/RefreshMarketButton";
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+  robots: { index: false },
+};
 
 const stats = [
   {
