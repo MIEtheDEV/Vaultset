@@ -30,7 +30,10 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --ignore-scripts
+
+      - name: Build native dependencies
+        run: pnpm rebuild sharp unrs-resolver
 
       - name: Unit tests
         run: pnpm test
