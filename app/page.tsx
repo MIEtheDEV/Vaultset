@@ -313,6 +313,7 @@ export default async function Home() {
             <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
             <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
             <Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link>
+            <Link href="/support" className="hover:text-foreground transition-colors">Support</Link>
           </div>
         </div>
       </footer>

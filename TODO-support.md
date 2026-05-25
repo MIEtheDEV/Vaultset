@@ -10,15 +10,15 @@
 
 ## Site Integration
 
-- [ ] **`/support` page** — Dedicated page listing all donation options (Ko-fi, PayPal, Venmo, CashApp, Stripe); include the platform bio and a "not tax-deductible" disclaimer
-- [ ] **Additional payment links** — Add PayPal, Venmo, and CashApp links to the `/support` page once accounts are set up
-- [ ] **Stripe Payment Link** — Embed a Stripe donate button on `/support` for users who want to pay by card without leaving the site
-- [ ] **Footer link** — Add "Support" link to the homepage footer nav alongside Privacy / Terms / Contact
-- [ ] **Mobile menu** — Add "Support" link to the mobile nav
+- [x] **`/support` page** — Dedicated page listing all donation options (Ko-fi, PayPal, Venmo, CashApp, Stripe); include the platform bio and a "not tax-deductible" disclaimer
+- [x] **Additional payment links** — Add PayPal, Venmo, and CashApp links to the `/support` page once accounts are set up
+- [x] **Stripe Payment Link** — Embed a Stripe donate button on `/support` for users who want to pay by card without leaving the site
+- [x] **Footer link** — Add "Support" link to the homepage footer nav alongside Privacy / Terms / Contact
+- [x] **Mobile menu** — Add "Support" link to the mobile nav
 
 ## Supporter Recognition
 
-- [ ] **Supporter badge** — Small badge on user profiles for donors (Ko-fi webhook or manual flag in DB)
-- [ ] **`is_supporter` flag** — Add column to `profiles` table; set via webhook or admin toggle
-- [ ] **Ko-fi webhook** — Wire up Ko-fi's webhook to automatically set `is_supporter = true` on donation (requires a `/api/kofi-webhook` route + secret verification)
-- [ ] **Thank-you page** — `/support/thank-you` redirect destination after a successful Ko-fi donation
+- [x] **Supporter badge** — Small badge on user profiles for donors (Ko-fi webhook or manual flag in DB)
+- [x] **`is_supporter` flag** — Add column to `profiles` table; set via webhook or admin toggle
+- [x] **Ko-fi webhook** — Wire up Ko-fi's webhook to automatically set `is_supporter = true` on donation (requires a `/api/kofi-webhook` route + secret verification)
+- [x] **Thank-you page** — `/support/thank-you` redirect destination after a successful Ko-fi donation

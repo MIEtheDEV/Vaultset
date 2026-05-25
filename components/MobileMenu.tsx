@@ -102,6 +102,12 @@ export function MobileMenu() {
             >
               Settings
             </Link>
+            <Link
+              href="/support"
+              className="px-3 py-2 rounded-md text-sm text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"
+            >
+              Support Vaultset
+            </Link>
             <button
               onClick={signOut}
               className="px-3 py-2 rounded-md text-sm text-left text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"

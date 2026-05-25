@@ -3,6 +3,7 @@ import Image from "next/image";
 import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
 import { RefreshMarketButton } from "@/components/RefreshMarketButton";
+import { SupporterBadge } from "@/components/SupporterBadge";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -125,6 +126,7 @@ export default async function DashboardPage() {
     { data: recentItems },
     { data: watchlistData },
     { data: refreshLog },
+    { data: profileData },
   ] = await Promise.all([
     supabase.from("collection_items").select("quantity, list_price, market_price").eq("user_id", user!.id),
     supabase.from("collection_items").select("*", { count: "exact", head: true }).eq("user_id", user!.id).eq("for_sale", true),
@@ -142,7 +144,10 @@ export default async function DashboardPage() {
       )
     `).eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("market_refresh_log").select("refreshed_at").eq("user_id", user!.id).maybeSingle(),
+    supabase.from("profiles").select("is_supporter").eq("id", user!.id).single(),
   ]);
+
+  const isSupporter = profileData?.is_supporter ?? false;
 
   const totalCards       = quantityData?.reduce((sum, r) => sum + (r.quantity ?? 1), 0) ?? 0;
   const collectionValue  = quantityData?.reduce((sum, r) => {
@@ -164,8 +169,9 @@ export default async function DashboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2 flex-wrap">
             {greeting()}, <span className="text-gold">@{username}</span>
+            {isSupporter && <SupporterBadge />}
           </h1>
           <p className="mt-1 text-sm text-foreground-muted">
             Here&apos;s what&apos;s happening with your collection.

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
 import { MarketplaceGrid } from "@/components/MarketplaceGrid";
+import { SupporterBadge } from "@/components/SupporterBadge";
 
 export async function generateMetadata({
   params,
@@ -45,7 +46,7 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
   // Resolve seller profile by username
   const { data: seller } = await supabase
     .from("profiles")
-    .select("id, username, created_at")
+    .select("id, username, created_at, is_supporter")
     .eq("username", username)
     .single();
 
@@ -116,8 +117,9 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
               Marketplace
             </Link>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2 flex-wrap">
             Listings by <span className="text-gold">@{seller.username}</span>
+            {seller.is_supporter && <SupporterBadge />}
           </h1>
           <p className="mt-1 text-sm text-foreground-muted">
             Member since {joinedDate} · {listingsWithSeller.length} active {listingsWithSeller.length === 1 ? "listing" : "listings"}
