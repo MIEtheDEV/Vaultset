@@ -1,11 +1,14 @@
 "use server";
 
-import { createAdminClient } from "@/utils/supabase/admin";
+import { createClient } from "@/utils/supabase/server";
 
 /**
  * Resolves a login identifier (email or username) to the account email.
  * Returns { email } on success or { error } on failure — never throws —
  * so user-facing messages survive Next.js's production error sanitisation.
+ *
+ * Uses the anon-key server client; the DB function is SECURITY DEFINER
+ * so it accesses auth.users internally without needing the service role key.
  *
  * Requires docs/username-login-migration.sql to be run first.
  */
@@ -15,9 +18,9 @@ export async function resolveLoginEmail(
   if (identifier.includes("@")) return { email: identifier };
 
   try {
-    const admin = createAdminClient();
+    const supabase = await createClient();
 
-    const { data: email, error: rpcError } = await admin.rpc("get_email_for_username", {
+    const { data: email, error: rpcError } = await supabase.rpc("get_email_for_username", {
       p_username: identifier.trim(),
     });
 
@@ -26,10 +29,7 @@ export async function resolveLoginEmail(
       return { error: "Login failed. Please try again." };
     }
 
-    if (!email) {
-      console.error("[resolveLoginEmail] no match for username:", identifier.trim());
-      return { error: "No account found with that username." };
-    }
+    if (!email) return { error: "No account found with that username." };
 
     return { email: email as string };
   } catch (err) {

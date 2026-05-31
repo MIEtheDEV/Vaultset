@@ -3,7 +3,7 @@
 
 -- Returns the email address for a given username (case-insensitive).
 -- SECURITY DEFINER allows the function to read auth.users even when
--- called with the anon/service role, without exposing auth.users directly.
+-- called with the anon key, without exposing auth.users directly.
 CREATE OR REPLACE FUNCTION public.get_email_for_username(p_username text)
 RETURNS text
 LANGUAGE sql
@@ -16,3 +16,7 @@ AS $$
   WHERE lower(p.username) = lower(p_username)
   LIMIT 1;
 $$;
+
+-- Allow unauthenticated callers (the login page) to invoke the function.
+-- The SECURITY DEFINER clause handles privileged access to auth.users internally.
+GRANT EXECUTE ON FUNCTION public.get_email_for_username(text) TO anon, authenticated;
