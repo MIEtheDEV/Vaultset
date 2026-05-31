@@ -17,15 +17,23 @@ export async function resolveLoginEmail(
   try {
     const admin = createAdminClient();
 
-    const { data: email, error } = await admin.rpc("get_email_for_username", {
+    const { data: email, error: rpcError } = await admin.rpc("get_email_for_username", {
       p_username: identifier.trim(),
     });
 
-    if (error || !email) return { error: "No account found with that username." };
+    if (rpcError) {
+      console.error("[resolveLoginEmail] rpc error:", rpcError.code, rpcError.message);
+      return { error: "Login failed. Please try again." };
+    }
+
+    if (!email) {
+      console.error("[resolveLoginEmail] no match for username:", identifier.trim());
+      return { error: "No account found with that username." };
+    }
 
     return { email: email as string };
   } catch (err) {
-    console.error("[resolveLoginEmail]", err);
-    return { error: "No account found with that username." };
+    console.error("[resolveLoginEmail] exception:", err);
+    return { error: "Login failed. Please try again." };
   }
 }
