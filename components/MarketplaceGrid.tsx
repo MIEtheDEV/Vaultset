@@ -23,7 +23,7 @@ const finishLabel: Record<string, string> = {
   textured_holofoil: "Textured Holofoil", gold_etched: "Gold Etched",
 };
 
-type FilterKey = "all" | "for_sale" | "for_trade" | "graded";
+type FilterKey = "all" | "for_sale" | "for_trade" | "graded" | "wanted";
 type SortKey   = "newest" | "price_asc" | "price_desc" | "name_asc";
 
 const FILTERS: { key: FilterKey; label: string }[] = [
@@ -78,6 +78,10 @@ function resolveCard(item: MarketplaceListing) {
   return Array.isArray(item.cards) ? item.cards[0] : item.cards;
 }
 
+function getCardApiId(item: MarketplaceListing): string {
+  return ((resolveCard(item)?.game_data as Record<string, unknown>)?.pokemon_api_id as string) ?? "";
+}
+
 function HeartIcon({ filled }: { filled: boolean }) {
   return filled ? (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -94,15 +98,19 @@ export function MarketplaceGrid({
   listings,
   currentUserId,
   initialWatchedIds = [],
+  wishedApiIds = [],
 }: {
   listings: MarketplaceListing[];
   currentUserId: string;
   initialWatchedIds?: string[];
+  wishedApiIds?: string[];
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [sort, setSort]     = useState<SortKey>("newest");
   const [watchedIds, setWatchedIds] = useState<Set<string>>(() => new Set(initialWatchedIds));
+
+  const wishedApiSet = useMemo(() => new Set(wishedApiIds), [wishedApiIds]);
 
   async function toggleWatch(itemId: string) {
     const isWatched = watchedIds.has(itemId);
@@ -134,13 +142,25 @@ export function MarketplaceGrid({
     if (filter === "for_sale")  result = result.filter((i) => i.for_sale);
     if (filter === "for_trade") result = result.filter((i) => i.for_trade);
     if (filter === "graded")    result = result.filter((i) => !!i.grader);
+    if (filter === "wanted")    result = result.filter((i) => wishedApiSet.has(getCardApiId(i)));
 
     if (sort === "price_asc")  result.sort((a, b) => (a.list_price ?? Infinity) - (b.list_price ?? Infinity));
     if (sort === "price_desc") result.sort((a, b) => (b.list_price ?? -Infinity) - (a.list_price ?? -Infinity));
     if (sort === "name_asc")   result.sort((a, b) => (resolveCard(a)?.name ?? "").localeCompare(resolveCard(b)?.name ?? ""));
 
+    // Float wishlist matches to top when browsing "all" by newest
+    if (filter !== "wanted" && sort === "newest" && wishedApiSet.size > 0) {
+      result.sort((a, b) => {
+        const aWanted = wishedApiSet.has(getCardApiId(a));
+        const bWanted = wishedApiSet.has(getCardApiId(b));
+        if (aWanted && !bWanted) return -1;
+        if (!aWanted && bWanted) return 1;
+        return 0;
+      });
+    }
+
     return result;
-  }, [listings, search, filter, sort]);
+  }, [listings, search, filter, sort, wishedApiSet]);
 
   const myListings = listings.filter((l) => l.user_id === currentUserId);
 
@@ -256,6 +276,19 @@ export function MarketplaceGrid({
                   {label}
                 </button>
               ))}
+              {wishedApiSet.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFilter("wanted")}
+                  className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                    filter === "wanted"
+                      ? "border-gold bg-gold/10 text-gold"
+                      : "border-gold/30 text-gold/70 hover:border-gold/60 hover:text-gold"
+                  }`}
+                >
+                  ★ Wanted ({wishedApiSet.size})
+                </button>
+              )}
             </div>
             <select
               value={sort}
@@ -339,6 +372,13 @@ export function MarketplaceGrid({
                         <span className="rounded-full bg-blue-400/90 px-2 py-0.5 text-xs font-semibold text-background">Trade</span>
                       )}
                     </div>
+
+                    {/* Wanted badge */}
+                    {!isOwn && wishedApiSet.has(getCardApiId(item)) && (
+                      <span className="absolute bottom-2 left-2 rounded-full bg-gold px-2 py-0.5 text-xs font-semibold text-background shadow-sm">
+                        ★ Wanted
+                      </span>
+                    )}
                   </div>
 
                   {/* Info */}
@@ -380,7 +420,8 @@ export function MarketplaceGrid({
                         {isOwn ? (
                           <span className="text-gold font-medium">Your listing</span>
                         ) : (
-                          <>by <span className="text-foreground">@{item.seller_username}</span></>
+                          <>by <Link href={`/profile/${item.seller_username}`} className="text-foreground hover:text-gold transition-colors">@{item.seller_username}</Link></>
+
                         )}
                       </span>
                       {item.for_sale && item.list_price != null ? (

@@ -9,6 +9,7 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -135,6 +136,26 @@ export default function RegisterPage() {
             />
           </div>
 
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              required
+              checked={ageConfirmed}
+              onChange={(e) => setAgeConfirmed(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-gold cursor-pointer"
+            />
+            <span className="text-xs text-foreground-muted leading-relaxed">
+              I am 13 years of age or older and I agree to the{" "}
+              <Link href="/terms" target="_blank" className="text-gold hover:text-gold-light transition-colors">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" target="_blank" className="text-gold hover:text-gold-light transition-colors">
+                Privacy Policy
+              </Link>.
+            </span>
+          </label>
+
           {error && (
             <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-400">
               {error}
@@ -143,7 +164,7 @@ export default function RegisterPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !ageConfirmed}
             className="w-full rounded-xl bg-gold py-3 text-sm font-semibold text-background hover:bg-gold-light disabled:opacity-60 transition-colors"
           >
             {loading ? "Creating account…" : "Create Account"}

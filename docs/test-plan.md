@@ -2,7 +2,10 @@
 
 ## 1. Purpose
 
-This document defines the test plan for Iteration 1 of the Vaultset Trading Card Platform. It covers unit testing of the game abstraction layer and end-to-end testing of the authentication and collection management flows. Tests are mapped to the acceptance criteria defined in the product backlog.
+This document defines the test plan for Vaultset. It covers unit testing of the game abstraction layer and end-to-end testing of core user flows. Tests are mapped to acceptance criteria defined in the product backlog.
+
+**Iteration 1** (complete): Auth, collection CRUD, game abstraction layer.  
+**Iteration 2** (complete, automated tests pending): Messaging, profiles, city, wishlist, wishlist matching, marketplace enhancements.
 
 ---
 
@@ -12,9 +15,9 @@ This document defines the test plan for Iteration 1 of the Vaultset Trading Card
 |---|---|---|
 | Unit | Jest + TypeScript | `lib/rarity/`, `lib/search/` |
 | End-to-End | Playwright (Chromium) | Auth flows, collection CRUD |
-| Manual QA | Browser | Sprint acceptance criteria walkthrough |
+| Manual QA | Browser | All features, each iteration |
 
-Out of scope for this iteration: marketplace transactions, real-time pricing, community features.
+Features built in Iteration 2 (messaging, wishlist, profiles) have been manually verified but do not yet have automated E2E test coverage. Automated tests for these features are planned for Iteration 3.
 
 ---
 
@@ -149,10 +152,49 @@ The following screenshots should be captured and attached to the test results do
 
 ---
 
-## 7. Pass/Fail Criteria
+## 7. Planned Test Suites — Iteration 2 (not yet automated)
+
+These suites cover features built in Iteration 2 and are targeted for Playwright automation in Iteration 3.
+
+### Suite 7 — Messaging (`e2e/messaging.spec.ts`)
+
+| ID | Test Case | Steps | Expected Outcome |
+|---|---|---|---|
+| E-23 | Inbox loads | Navigate to `/messages` | Conversation list visible |
+| E-24 | Start conversation from listing | Click Contact Seller on a listing | Thread opens with listing context card |
+| E-25 | Start conversation from profile | Click Message on a profile | Thread opens |
+| E-26 | Send a message | Type and submit in thread | Message appears in thread |
+| E-27 | Unread badge | Receive a message | Gold badge appears on nav Messages link |
+| E-28 | Mark read on open | Open thread with unread messages | Badge clears |
+
+### Suite 8 — Wishlist (`e2e/wishlist.spec.ts`)
+
+| ID | Test Case | Steps | Expected Outcome |
+|---|---|---|---|
+| E-29 | Add card to wishlist | `/wishlist/add`, search, select, save | Card appears in wishlist grid |
+| E-30 | Duplicate rejected | Add same card twice | Friendly "already on your wishlist" error |
+| E-31 | Remove from wishlist | Click Remove button | Card removed from grid |
+| E-32 | Wishlist visible on profile | Visit own profile | Wishlist tab present with correct count |
+| E-33 | Available Now on dashboard | Wishlist card is listed by another user | Available Now widget shows on dashboard |
+| E-34 | Wanted badge in marketplace | Wishlist card appears in marketplace | ★ Wanted badge visible on card |
+| E-35 | Wanted filter | Click ★ Wanted filter pill | Only wishlist-matching listings shown |
+
+### Suite 9 — Profiles & Account (`e2e/profiles.spec.ts`)
+
+| ID | Test Case | Steps | Expected Outcome |
+|---|---|---|---|
+| E-36 | Profile loads | Navigate to `/profile/[username]` | Avatar, username, bio visible |
+| E-37 | City shown on profile | Set city in Account, view profile | City and pin icon visible |
+| E-38 | City shown in community | Set city, view Community page | City visible under username |
+| E-39 | Profile tabs | Click Listings / Collection / Wishlist tabs | Correct content loads per tab |
+| E-40 | Avatar color update | Change avatar color in Account | New color shown on profile and nav |
+
+---
+
+## 8. Pass/Fail Criteria
 
 A sprint is considered closed when:
 - All unit tests pass (`pnpm test` exits 0)
-- All E2E tests pass (`pnpm exec playwright test` exits 0)
+- All automated E2E tests pass (`pnpm exec playwright test` exits 0)
 - Each user story has been manually stepped through in the browser and marked pass
 - Any failing story is returned to the backlog before the sprint closes

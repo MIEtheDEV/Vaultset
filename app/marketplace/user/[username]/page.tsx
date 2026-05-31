@@ -4,6 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
 import { MarketplaceGrid } from "@/components/MarketplaceGrid";
 import { SupporterBadge } from "@/components/SupporterBadge";
+import { timeAgo } from "@/lib/timeAgo";
 
 export async function generateMetadata({
   params,
@@ -80,6 +81,7 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
     `)
     .eq("user_id", seller.id)
     .or("for_sale.eq.true,for_trade.eq.true")
+    .eq("on_hold", false)
     .order("created_at", { ascending: false });
 
   const listingsWithSeller = (listings ?? []).map((l) => ({
@@ -95,10 +97,7 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
 
   const watchedItemIds = watchlistData?.map((w) => w.item_id) ?? [];
 
-  const joinedDate = new Date(seller.created_at).toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
+  const joinedDate = timeAgo(seller.created_at);
 
   return (
     <div className="space-y-8">

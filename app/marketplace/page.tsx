@@ -46,6 +46,7 @@ export default async function MarketplacePage() {
       )
     `)
     .or("for_sale.eq.true,for_trade.eq.true")
+    .eq("on_hold", false)
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -80,13 +81,19 @@ export default async function MarketplacePage() {
     seller_username: sealedProfileMap.get(l.user_id) ?? "Unknown",
   }));
 
-  // Current user's watched item IDs
-  const { data: watchlistData } = await supabase
-    .from("watchlist")
-    .select("item_id")
-    .eq("user_id", user?.id ?? "");
+  // Current user's watched item IDs and wishlist
+  const [
+    { data: watchlistData },
+    { data: wishlistItems },
+  ] = await Promise.all([
+    supabase.from("watchlist").select("item_id").eq("user_id", user?.id ?? ""),
+    user
+      ? supabase.from("wishlist_items").select("pokemon_api_id").eq("user_id", user.id)
+      : Promise.resolve({ data: [] }),
+  ]);
 
   const watchedItemIds = watchlistData?.map((w) => w.item_id) ?? [];
+  const wishedApiIds = (wishlistItems ?? []).map((w) => w.pokemon_api_id).filter(Boolean) as string[];
 
   return (
     <div className="space-y-8">
@@ -101,6 +108,7 @@ export default async function MarketplacePage() {
         listings={listingsWithSellers}
         currentUserId={user?.id ?? ""}
         initialWatchedIds={watchedItemIds}
+        wishedApiIds={wishedApiIds}
       />
 
       {sealedWithSellers.length > 0 && (

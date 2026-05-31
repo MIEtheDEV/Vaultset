@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
+import { timeAgo } from "@/lib/timeAgo";
 
 export const metadata: Metadata = {
   title: "Community",
@@ -13,7 +14,7 @@ export default async function CommunityPage() {
   // All collectors
   const { data: allProfiles } = await supabase
     .from("profiles")
-    .select("id, username, created_at")
+    .select("id, username, created_at, city")
     .order("username");
 
   // Public listing counts per user
@@ -72,20 +73,28 @@ export default async function CommunityPage() {
           <div className="rounded-2xl border border-border bg-surface divide-y divide-border overflow-hidden">
             {allProfiles.map((profile) => {
               const listingCount = listingCountMap.get(profile.id) ?? 0;
-              const joined = new Date(profile.created_at).toLocaleDateString("en-US", {
-                month: "short",
-                year:  "numeric",
-              });
+              const joined = timeAgo(profile.created_at);
 
               return (
                 <Link
                   key={profile.id}
-                  href={`/marketplace/user/${profile.username}`}
+                  href={`/profile/${profile.username}`}
                   className="flex items-center justify-between px-5 py-3 hover:bg-surface-raised transition-colors"
                 >
                   <div>
                     <p className="text-sm font-medium text-foreground">@{profile.username}</p>
-                    <p className="text-xs text-foreground-muted">Joined {joined}</p>
+                    <p className="text-xs text-foreground-muted flex items-center gap-2 flex-wrap">
+                      <span>Joined {joined}</span>
+                      {(profile as any).city && (
+                        <span className="flex items-center gap-1">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                            <circle cx="12" cy="10" r="3" />
+                          </svg>
+                          {(profile as any).city}
+                        </span>
+                      )}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     {listingCount > 0 ? (

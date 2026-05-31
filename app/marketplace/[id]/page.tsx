@@ -55,12 +55,12 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Fetch the listing — must be a public listing
+  // Fetch the listing — allow on-hold listings so buyer/seller can still view the status
   const { data: listing } = await supabase
     .from("collection_items")
     .select(`
       id, user_id, condition, finish, for_sale, for_trade,
-      list_price, quantity, grader, grade, cert_number, notes, created_at,
+      list_price, quantity, grader, grade, cert_number, notes, created_at, on_hold,
       cards (
         id, game, name, set_name, set_code, card_number, year, image_url, game_data
       )
@@ -81,7 +81,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     .eq("id", listing.user_id)
     .single();
 
-  // Seller's other public listings
+  // Seller's other active (non-held) public listings
   const { data: otherListings } = await supabase
     .from("collection_items")
     .select(`
@@ -90,6 +90,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     `)
     .eq("user_id", listing.user_id)
     .or("for_sale.eq.true,for_trade.eq.true")
+    .eq("on_hold", false)
     .neq("id", id)
     .order("created_at", { ascending: false })
     .limit(6);
@@ -118,6 +119,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
         cert_number: (listing as any).cert_number,
         notes:       listing.notes,
         created_at:  listing.created_at,
+        on_hold:     (listing as any).on_hold ?? false,
       }}
       card={{
         id:          card.id,

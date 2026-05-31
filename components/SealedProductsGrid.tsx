@@ -122,7 +122,7 @@ export function SealedProductsGrid({
                       <span className="text-xs text-foreground-muted">
                         {isOwn
                           ? <span className="text-gold font-medium">Your listing</span>
-                          : <>by <span className="text-foreground">@{item.seller_username}</span></>
+                          : <>by <Link href={`/profile/${item.seller_username}`} className="text-foreground hover:text-gold transition-colors">@{item.seller_username}</Link></>
                         }
                       </span>
                       {item.for_sale && item.list_price != null ? (

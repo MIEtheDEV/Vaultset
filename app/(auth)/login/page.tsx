@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { PasswordInput } from "@/components/PasswordInput";
+import { resolveLoginEmail } from "./actions";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -17,6 +18,15 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
+
+    let email: string;
+    try {
+      email = await resolveLoginEmail(identifier.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Account not found.");
+      setLoading(false);
+      return;
+    }
 
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -42,15 +52,15 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground-muted">
-              Email
+              Email or Username
             </label>
             <input
-              type="email"
+              type="text"
               required
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              placeholder="you@example.com or collector99"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               className="w-full rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm text-foreground placeholder:text-foreground-muted focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors"
             />
           </div>

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { UserNav } from "@/components/UserNav";
 import { MobileMenu } from "@/components/MobileMenu";
 import { KofiButton } from "@/components/KofiButton";
+import { NavMessagesBadge } from "@/components/NavMessagesBadge";
+import { NavOffersBadge } from "@/components/NavOffersBadge";
 
 const navLinks = [
   { label: "Dashboard", href: "/dashboard" },
@@ -31,12 +33,24 @@ export function AppNav({ username }: { username: string }) {
               {label}
             </Link>
           ))}
+          <div className="relative">
+            <Link href="/messages" className="hover:text-foreground transition-colors">
+              Messages
+            </Link>
+            <NavMessagesBadge />
+          </div>
+          <div className="relative">
+            <Link href="/offers" className="hover:text-foreground transition-colors">
+              Offers
+            </Link>
+            <NavOffersBadge />
+          </div>
         </div>
 
         <div className="flex items-center gap-1">
           <KofiButton variant="icon" />
           <UserNav username={username} />
-          <MobileMenu />
+          <MobileMenu username={username} />
         </div>
       </div>
     </nav>

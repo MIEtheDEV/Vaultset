@@ -68,6 +68,8 @@ export interface InventoryItem {
   grader: string | null;
   grade: number | null;
   acquired_at: string | null;
+  on_hold?: boolean | null;
+  hold_offer_id?: string | null;
   cards: {
     id: string;
     game: string;
@@ -93,10 +95,11 @@ function resolveCard(item: InventoryItem) {
   return Array.isArray(item.cards) ? item.cards[0] : item.cards;
 }
 
-export function InventoryGrid({ items }: { items: InventoryItem[] }) {
+export function InventoryGrid({ items, proposedItemIds = [] }: { items: InventoryItem[]; proposedItemIds?: string[] }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [sort, setSort]     = useState<SortKey>("newest");
+  const proposedSet = useMemo(() => new Set(proposedItemIds), [proposedItemIds]);
 
   const visible = useMemo(() => {
     let result = [...items];
@@ -274,11 +277,20 @@ export function InventoryGrid({ items }: { items: InventoryItem[] }) {
                     {card.game}
                   </span>
                   <div className="absolute top-2 right-2 flex flex-row gap-1">
-                    {item.for_sale && (
-                      <span className="rounded-full bg-gold/90 px-2 py-0.5 text-xs font-semibold text-background">Sale</span>
-                    )}
-                    {item.for_trade && (
-                      <span className="rounded-full bg-blue-400/90 px-2 py-0.5 text-xs font-semibold text-background">Trade</span>
+                    {item.on_hold ? (
+                      <span className="rounded-full bg-amber-500/90 px-2 py-0.5 text-xs font-semibold text-background">On Hold</span>
+                    ) : (
+                      <>
+                        {item.for_sale && (
+                          <span className="rounded-full bg-gold/90 px-2 py-0.5 text-xs font-semibold text-background">Sale</span>
+                        )}
+                        {item.for_trade && (
+                          <span className="rounded-full bg-blue-400/90 px-2 py-0.5 text-xs font-semibold text-background">Trade</span>
+                        )}
+                        {proposedSet.has(item.id) && (
+                          <span className="rounded-full bg-amber-500/90 px-2 py-0.5 text-xs font-semibold text-background">In Offer</span>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -343,15 +355,24 @@ export function InventoryGrid({ items }: { items: InventoryItem[] }) {
                     />
                   )}
 
-                  <div className="flex items-center gap-2">
+                  {item.on_hold && item.hold_offer_id ? (
                     <Link
-                      href={`/inventory/${item.id}/edit`}
-                      className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+                      href={`/offers/${item.hold_offer_id}`}
+                      className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
                     >
-                      Edit
+                      View offer →
                     </Link>
-                    <RemoveCardButton itemId={item.id} />
-                  </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/inventory/${item.id}/edit`}
+                        className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+                      >
+                        Edit
+                      </Link>
+                      <RemoveCardButton itemId={item.id} />
+                    </div>
+                  )}
                 </div>
               </div>
             );

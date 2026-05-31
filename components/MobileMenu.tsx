@@ -10,9 +10,11 @@ const navLinks = [
   { label: "Inventory", href: "/inventory" },
   { label: "Marketplace", href: "/marketplace" },
   { label: "Community", href: "/community" },
+  { label: "Messages", href: "/messages" },
+  { label: "Offers",   href: "/offers" },
 ];
 
-export function MobileMenu() {
+export function MobileMenu({ username }: { username: string }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
@@ -96,6 +98,18 @@ export function MobileMenu() {
             })}
           </nav>
           <div className="border-t border-border p-2 flex flex-col">
+            <Link
+              href={`/profile/${username}`}
+              className="px-3 py-2 rounded-md text-sm text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"
+            >
+              My Profile
+            </Link>
+            <Link
+              href="/wishlist"
+              className="px-3 py-2 rounded-md text-sm text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"
+            >
+              My Wishlist
+            </Link>
             <Link
               href="/account"
               className="px-3 py-2 rounded-md text-sm text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"

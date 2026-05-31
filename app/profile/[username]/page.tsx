@@ -1,0 +1,515 @@
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import Image from "next/image";
+import { createClient } from "@/utils/supabase/server";
+import { MarketplaceGrid } from "@/components/MarketplaceGrid";
+import { SealedProductsGrid } from "@/components/SealedProductsGrid";
+import { SupporterBadge } from "@/components/SupporterBadge";
+import { ShareProfileButton } from "@/components/ShareProfileButton";
+import { ProfileTabs } from "@/components/ProfileTabs";
+import { ReportButton } from "@/components/ReportButton";
+
+import { AVATAR_COLORS, resolveAvatarColor, isHexColor } from "@/lib/avatarColors";
+import { MessageButton } from "@/components/MessageButton";
+import { timeAgo } from "@/lib/timeAgo";
+
+// ── Metadata ───────────────────────────────────────────────────────────────────
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}): Promise<Metadata> {
+  const { username } = await params;
+  return {
+    title: `@${username}'s Profile`,
+    robots: { index: false },
+  };
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────────
+
+export default async function ProfilePage({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}) {
+  const { username } = await params;
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, username, created_at, is_supporter, bio, specialty, city, featured_item_id, avatar_url, avatar_color")
+    .eq("username", username)
+    .single();
+
+  if (!profile) redirect("/community");
+
+  const isOwnProfile   = user.id === profile.id;
+  const bio            = (profile as any).bio              as string | null;
+  const specialty      = (profile as any).specialty        as string | null;
+  const city           = (profile as any).city             as string | null;
+  const featuredItemId = (profile as any).featured_item_id as string | null;
+  const avatarUrl      = (profile as any).avatar_url        as string | null;
+  const storedColor    = (profile as any).avatar_color      as string | null;
+
+  const [
+    { data: allItems },
+    { data: cardListings },
+    { data: sealedListings },
+    { data: watchlistData },
+    { data: spotlightItems },
+    featuredResult,
+    { data: wishlistItems },
+  ] = await Promise.all([
+    // All collection items for stats (total cards, graded count, unique sets)
+    supabase
+      .from("collection_items")
+      .select("quantity, grader, cards(set_name)")
+      .eq("user_id", profile.id),
+
+    // Card listings (for_sale or for_trade)
+    supabase
+      .from("collection_items")
+      .select(`
+        id, user_id, condition, finish, for_sale, for_trade,
+        list_price, grader, grade, quantity, created_at,
+        cards ( id, game, name, set_name, card_number, year, image_url, game_data )
+      `)
+      .eq("user_id", profile.id)
+      .or("for_sale.eq.true,for_trade.eq.true")
+      .order("created_at", { ascending: false }),
+
+    // Sealed product listings
+    supabase
+      .from("product_purchases")
+      .select("id, user_id, name, product_type, cost, for_sale, for_trade, list_price, purchased_at, notes")
+      .eq("user_id", profile.id)
+      .or("for_sale.eq.true,for_trade.eq.true")
+      .order("purchased_at", { ascending: false }),
+
+    // Current user's watchlist (for heart states)
+    supabase.from("watchlist").select("item_id").eq("user_id", user.id),
+
+    // Graded items for Collection spotlight (up to 6, best grades first)
+    supabase
+      .from("collection_items")
+      .select("id, grader, grade, condition, cards(name, set_name, card_number, image_url)")
+      .eq("user_id", profile.id)
+      .not("grader", "is", null)
+      .order("grade", { ascending: false })
+      .limit(6),
+
+    // Featured card (conditional — resolves to null if none set)
+    featuredItemId
+      ? supabase
+          .from("collection_items")
+          .select("id, condition, grader, grade, cards(name, set_name, card_number, image_url, game_data)")
+          .eq("id", featuredItemId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+
+    // Wishlist
+    supabase
+      .from("wishlist_items")
+      .select("id, card_name, set_name, card_number, image_url, notes")
+      .eq("user_id", profile.id)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  // ── Compute stats ──────────────────────────────────────────────────────────
+
+  const totalCards  = allItems?.reduce((s, r) => s + (r.quantity ?? 1), 0) ?? 0;
+  const gradedCount = allItems?.filter((r) => !!(r as any).grader).length ?? 0;
+
+  const setNames = new Set<string>();
+  allItems?.forEach((r) => {
+    const raw   = (r as any).cards;
+    const cards = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    cards.forEach((c: any) => { if (c?.set_name) setNames.add(c.set_name); });
+  });
+  const uniqueSets = setNames.size;
+
+  const activeCardListings   = cardListings?.length   ?? 0;
+  const activeSealedListings = sealedListings?.length ?? 0;
+  const activeListings       = activeCardListings + activeSealedListings;
+  const forTradeCount        =
+    (cardListings?.filter((l) => l.for_trade).length   ?? 0) +
+    (sealedListings?.filter((l) => l.for_trade).length ?? 0);
+
+  const cardListingsWithSeller   = (cardListings   ?? []).map((l) => ({ ...l, seller_username: profile.username }));
+  const sealedListingsWithSeller = (sealedListings ?? []).map((l) => ({ ...l, seller_username: profile.username }));
+  const watchedItemIds           = watchlistData?.map((w) => w.item_id) ?? [];
+
+  // ── Featured card data ─────────────────────────────────────────────────────
+
+  const featuredRaw  = (featuredResult as any)?.data ?? null;
+  const featuredCard = featuredRaw
+    ? (() => {
+        const raw = (featuredRaw as any).cards;
+        return Array.isArray(raw) ? raw[0] ?? null : raw ?? null;
+      })()
+    : null;
+
+  // ── Spotlight items (graded, for Collection tab) ───────────────────────────
+
+  const spotlight = (spotlightItems ?? []).map((item) => {
+    const raw  = (item as any).cards;
+    const card = Array.isArray(raw) ? raw[0] ?? null : raw ?? null;
+    return { ...item, card };
+  });
+
+  // ── Avatar ─────────────────────────────────────────────────────────────────
+
+  const customHex  = storedColor && isHexColor(storedColor) ? storedColor : null;
+  const avatar     = customHex ? null : AVATAR_COLORS[resolveAvatarColor(storedColor, profile.username)];
+  const initial    = profile.username.charAt(0).toUpperCase();
+
+  // ── Listings tab content ───────────────────────────────────────────────────
+
+  const listingsContent = (
+    <div className="space-y-8">
+      {/* Card Listings */}
+      <div className="space-y-4">
+        <h3 className="font-semibold text-foreground">
+          Card Listings
+          <span className="ml-2 text-sm font-normal text-foreground-muted">({activeCardListings})</span>
+        </h3>
+        {cardListingsWithSeller.length > 0 ? (
+          <MarketplaceGrid
+            listings={cardListingsWithSeller}
+            currentUserId={user.id}
+            initialWatchedIds={watchedItemIds}
+          />
+        ) : (
+          <div className="rounded-2xl border border-border bg-surface py-10 text-center">
+            <p className="text-sm text-foreground-muted">
+              {isOwnProfile
+                ? "Mark cards as For Sale or For Trade in your inventory to list them here."
+                : "No cards listed."}
+            </p>
+            {isOwnProfile && (
+              <Link
+                href="/inventory"
+                className="mt-3 inline-block rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+              >
+                Go to Inventory
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Sealed Products — hide if empty and not own profile */}
+      {(activeSealedListings > 0 || isOwnProfile) && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-foreground">
+            Sealed Products
+            <span className="ml-2 text-sm font-normal text-foreground-muted">({activeSealedListings})</span>
+          </h3>
+          {sealedListingsWithSeller.length > 0 ? (
+            <SealedProductsGrid listings={sealedListingsWithSeller} currentUserId={user.id} />
+          ) : (
+            <div className="rounded-2xl border border-border bg-surface py-10 text-center">
+              <p className="text-sm text-foreground-muted">
+                Mark sealed products as For Sale or For Trade in your inventory to list them here.
+              </p>
+              <Link
+                href="/inventory/products"
+                className="mt-3 inline-block rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+              >
+                Go to Products
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Collection tab content ─────────────────────────────────────────────────
+
+  const collectionContent = (
+    <div className="space-y-4">
+      <h3 className="font-semibold text-foreground">
+        Graded Cards
+        <span className="ml-2 text-sm font-normal text-foreground-muted">({spotlight.length})</span>
+      </h3>
+      {spotlight.length > 0 ? (
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+          {spotlight.map((item) => (
+            <div
+              key={item.id}
+              className="rounded-xl border border-border bg-surface p-2 flex flex-col gap-2 hover:border-gold/30 transition-colors"
+            >
+              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-surface-raised">
+                {item.card?.image_url ? (
+                  <Image
+                    src={item.card.image_url}
+                    alt={item.card.name ?? "Card"}
+                    fill
+                    sizes="(max-width: 640px) 33vw, (max-width: 1024px) 25vw, 16vw"
+                    className="object-contain"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-foreground-muted text-xs">
+                    {item.card?.name?.[0] ?? "?"}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-xs font-medium text-foreground truncate leading-tight">
+                  {item.card?.name ?? "—"}
+                </p>
+                <p className="text-xs text-foreground-muted truncate">{item.card?.set_name ?? ""}</p>
+                {(item as any).grader && (
+                  <span className="inline-block rounded-full border border-gold/30 bg-gold/10 px-1.5 py-0.5 text-xs font-semibold text-gold">
+                    {(item as any).grader} {(item as any).grade}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-border bg-surface py-12 text-center">
+          <p className="text-sm text-foreground-muted">
+            {isOwnProfile
+              ? "Add graded cards to your inventory to showcase them here."
+              : "This collector has no graded cards to display."}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="space-y-8">
+
+      {/* Back */}
+      <Link
+        href="/community"
+        className="text-sm text-foreground-muted hover:text-foreground transition-colors flex items-center gap-1.5 w-fit"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+        </svg>
+        Community
+      </Link>
+
+      {/* Profile header */}
+      <div className="rounded-2xl border border-border bg-surface p-6 flex flex-col sm:flex-row items-start sm:items-center gap-5">
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={profile.username}
+            className="h-16 w-16 shrink-0 rounded-full object-cover border border-border"
+          />
+        ) : customHex ? (
+          <div
+            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border text-2xl font-bold select-none"
+            style={{ background: customHex + "22", borderColor: customHex + "66", color: customHex }}
+          >
+            {initial}
+          </div>
+        ) : (
+          <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full border text-2xl font-bold select-none ${avatar!.bg} ${avatar!.border} ${avatar!.text}`}>
+            {initial}
+          </div>
+        )}
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl font-bold text-foreground">@{profile.username}</h1>
+            {profile.is_supporter && <SupporterBadge />}
+            {specialty && (
+              <span className="inline-flex items-center rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400">
+                {specialty}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-sm text-foreground-muted flex items-center gap-3 flex-wrap">
+            <span>Joined {timeAgo(profile.created_at)}</span>
+            {city && (
+              <span className="flex items-center gap-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                {city}
+              </span>
+            )}
+          </p>
+          {bio && (
+            <p className="mt-2 text-sm text-foreground-muted leading-relaxed max-w-prose">{bio}</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+          <ShareProfileButton username={profile.username} />
+          {!isOwnProfile && <MessageButton recipientId={profile.id} label="Message" />}
+          {!isOwnProfile && <ReportButton reportedUserId={profile.id} />}
+          {isOwnProfile && (
+            <Link
+              href="/account"
+              className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+            >
+              Edit profile
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {/* Featured card */}
+      {featuredCard && (
+        <div className="rounded-2xl border border-border bg-surface p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-gold" aria-hidden="true">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+            </svg>
+            <span className="text-xs font-medium text-foreground-muted uppercase tracking-wide">Featured Card</span>
+          </div>
+          <div className="flex items-center gap-4">
+            {featuredCard.image_url ? (
+              <div className="relative h-28 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-surface-raised">
+                <Image
+                  src={featuredCard.image_url}
+                  alt={featuredCard.name ?? "Featured card"}
+                  fill
+                  sizes="80px"
+                  className="object-contain"
+                />
+              </div>
+            ) : null}
+            <div className="min-w-0">
+              <p className="font-semibold text-foreground">{featuredCard.name}</p>
+              <p className="text-sm text-foreground-muted">
+                {featuredCard.set_name}
+                {featuredCard.card_number ? ` · ${featuredCard.card_number}` : ""}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {featuredRaw?.grader ? (
+                  <span className="rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-xs font-semibold text-gold">
+                    {featuredRaw.grader} {featuredRaw.grade}
+                  </span>
+                ) : featuredRaw?.condition ? (
+                  <span className="rounded-full border border-border px-2 py-0.5 text-xs text-foreground-muted capitalize">
+                    {featuredRaw.condition.replace(/_/g, " ")}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        {[
+          { label: "Total Cards",     value: totalCards     },
+          { label: "Unique Sets",     value: uniqueSets     },
+          { label: "Graded",          value: gradedCount    },
+          { label: "Active Listings", value: activeListings },
+          { label: "For Trade",       value: forTradeCount  },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-2xl border border-border bg-surface p-5 text-center">
+            <p className="text-3xl font-bold text-gold">{value}</p>
+            <p className="mt-1 text-xs text-foreground-muted">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabbed content */}
+      <ProfileTabs
+        listingCount={activeListings}
+        collectionCount={spotlight.length}
+        wishlistCount={wishlistItems?.length ?? 0}
+        listingsContent={listingsContent}
+        collectionContent={collectionContent}
+        wishlistContent={
+          <div className="space-y-4">
+            {!wishlistItems || wishlistItems.length === 0 ? (
+              <div className="rounded-2xl border border-border bg-surface py-12 text-center">
+                <p className="text-sm text-foreground-muted">
+                  {isOwnProfile
+                    ? "Add cards you're hunting for so sellers can find you."
+                    : "This collector hasn't added any cards to their wishlist yet."}
+                </p>
+                {isOwnProfile && (
+                  <Link
+                    href="/wishlist/add"
+                    className="mt-3 inline-block rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+                  >
+                    Add cards
+                  </Link>
+                )}
+              </div>
+            ) : (
+              <>
+                {!isOwnProfile && (
+                  <p className="text-sm text-foreground-muted">
+                    This collector is looking for these cards — if you have one,{" "}
+                    <Link href={`/messages`} className="text-gold hover:text-gold-light transition-colors">
+                      send them a message
+                    </Link>
+                    .
+                  </p>
+                )}
+                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {wishlistItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-xl border border-border bg-surface p-2 flex flex-col gap-2 hover:border-gold/30 transition-colors"
+                    >
+                      <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-surface-raised">
+                        {item.image_url ? (
+                          <Image
+                            src={item.image_url}
+                            alt={item.card_name}
+                            fill
+                            sizes="(max-width: 640px) 33vw, (max-width: 1024px) 25vw, 16vw"
+                            className="object-contain"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center text-foreground-muted text-xs">
+                            {item.card_name[0]}
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-medium text-foreground truncate leading-tight">
+                          {item.card_name}
+                        </p>
+                        <p className="text-xs text-foreground-muted truncate">{item.set_name}</p>
+                        {item.notes && (
+                          <p className="text-xs text-foreground-muted italic truncate">{item.notes}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {isOwnProfile && (
+                  <div className="flex justify-end">
+                    <Link
+                      href="/wishlist"
+                      className="text-xs text-foreground-muted hover:text-gold transition-colors"
+                    >
+                      Manage wishlist →
+                    </Link>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        }
+      />
+
+    </div>
+  );
+}

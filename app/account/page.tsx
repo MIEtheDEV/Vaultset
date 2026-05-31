@@ -13,8 +13,33 @@ export default async function AccountPage() {
   const username = (user.user_metadata?.username as string) ?? "";
   const email    = user.email ?? "";
 
-  const { data: profile } = await supabase.from("profiles").select("is_supporter").eq("id", user.id).single();
-  const isSupporter = profile?.is_supporter ?? false;
+  const [{ data: profile }, { data: rawItems }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("is_supporter, bio, specialty, city, featured_item_id, avatar_url, avatar_color")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("collection_items")
+      .select("id, cards(name, set_name, card_number, image_url)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const isSupporter     = profile?.is_supporter              ?? false;
+  const bio             = (profile as any)?.bio              as string ?? "";
+  const specialty       = (profile as any)?.specialty        as string ?? "";
+  const city            = (profile as any)?.city             as string ?? "";
+  const featuredItemId  = (profile as any)?.featured_item_id as string | null ?? null;
+  const avatarUrl       = (profile as any)?.avatar_url        as string | null ?? null;
+  const avatarColor     = (profile as any)?.avatar_color      as string | null ?? null;
+
+  // Normalise the cards join — Supabase may return object or single-element array
+  const collectionItems = (rawItems ?? []).map((item) => {
+    const raw   = (item as any).cards;
+    const cards = Array.isArray(raw) ? raw[0] ?? null : raw ?? null;
+    return { id: item.id, cards };
+  });
 
   return (
     <div className="space-y-8">
@@ -30,7 +55,19 @@ export default async function AccountPage() {
           </Link>
         )}
       </div>
-      <AccountSettingsForm initialUsername={username} initialEmail={email} />
+
+      <AccountSettingsForm
+        initialUsername={username}
+        initialEmail={email}
+        initialBio={bio}
+        initialSpecialty={specialty}
+        initialCity={city}
+        initialFeaturedItemId={featuredItemId}
+        initialAvatarUrl={avatarUrl}
+        initialAvatarColor={avatarColor}
+        userId={user.id}
+        collectionItems={collectionItems}
+      />
     </div>
   );
 }
