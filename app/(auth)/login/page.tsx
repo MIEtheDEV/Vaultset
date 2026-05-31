@@ -19,14 +19,13 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    let email: string;
-    try {
-      email = await resolveLoginEmail(identifier.trim());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Account not found.");
+    const result = await resolveLoginEmail(identifier.trim());
+    if ("error" in result) {
+      setError(result.error);
       setLoading(false);
       return;
     }
+    const email = result.email;
 
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
