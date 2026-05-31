@@ -1,6 +1,9 @@
 import Link from "next/link";
 
-export const metadata = { title: "Privacy Policy — Vaultset" };
+export const metadata = {
+  title: "Privacy Policy — Vaultset",
+  description: "Read the Vaultset Privacy Policy to understand how we collect, use, and protect your data.",
+};
 
 export default function PrivacyPage() {
   return (

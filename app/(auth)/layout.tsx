@@ -6,6 +6,7 @@ export const metadata: Metadata = {
     template: "%s — Vaultset",
     default: "Vaultset",
   },
+  robots: { index: false },
 };
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {

@@ -5,6 +5,7 @@ import { timeAgo } from "@/lib/timeAgo";
 
 export const metadata: Metadata = {
   title: "Community",
+  description: "Discover trading card collectors on Vaultset. Browse active listings, graded cards, and connect with the community.",
   robots: { index: false },
 };
 

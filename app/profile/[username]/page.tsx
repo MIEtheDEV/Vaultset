@@ -22,9 +22,21 @@ export async function generateMetadata({
   params: Promise<{ username: string }>;
 }): Promise<Metadata> {
   const { username } = await params;
+  const description = `Browse @${username}'s trading card collection, active listings, and wishlist on Vaultset.`;
   return {
     title: `@${username}'s Profile`,
-    robots: { index: false },
+    description,
+    openGraph: {
+      title: `@${username} — Vaultset`,
+      description,
+      images: [{ url: `/profile/${username}/card/opengraph-image`, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `@${username} — Vaultset`,
+      description,
+      images: [`/profile/${username}/card/opengraph-image`],
+    },
   };
 }
 
@@ -39,7 +51,7 @@ export default async function ProfilePage({
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // Profiles are public — unauthenticated visitors see the full page with reduced interactivity
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -49,7 +61,7 @@ export default async function ProfilePage({
 
   if (!profile) redirect("/community");
 
-  const isOwnProfile   = user.id === profile.id;
+  const isOwnProfile   = user?.id === profile.id;
   const bio            = (profile as any).bio              as string | null;
   const specialty      = (profile as any).specialty        as string | null;
   const city           = (profile as any).city             as string | null;
@@ -92,8 +104,10 @@ export default async function ProfilePage({
       .or("for_sale.eq.true,for_trade.eq.true")
       .order("purchased_at", { ascending: false }),
 
-    // Current user's watchlist (for heart states)
-    supabase.from("watchlist").select("item_id").eq("user_id", user.id),
+    // Current user's watchlist (for heart states) — skipped for unauthenticated visitors
+    user
+      ? supabase.from("watchlist").select("item_id").eq("user_id", user.id)
+      : Promise.resolve({ data: null, error: null }),
 
     // Graded items for Collection spotlight (up to 6, best grades first)
     supabase
@@ -182,7 +196,7 @@ export default async function ProfilePage({
         {cardListingsWithSeller.length > 0 ? (
           <MarketplaceGrid
             listings={cardListingsWithSeller}
-            currentUserId={user.id}
+            currentUserId={user?.id ?? ""}
             initialWatchedIds={watchedItemIds}
           />
         ) : (
@@ -212,7 +226,7 @@ export default async function ProfilePage({
             <span className="ml-2 text-sm font-normal text-foreground-muted">({activeSealedListings})</span>
           </h3>
           {sealedListingsWithSeller.length > 0 ? (
-            <SealedProductsGrid listings={sealedListingsWithSeller} currentUserId={user.id} />
+            <SealedProductsGrid listings={sealedListingsWithSeller} currentUserId={user?.id ?? ""} />
           ) : (
             <div className="rounded-2xl border border-border bg-surface py-10 text-center">
               <p className="text-sm text-foreground-muted">
@@ -291,6 +305,22 @@ export default async function ProfilePage({
 
   return (
     <div className="space-y-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "ProfilePage",
+            "mainEntity": {
+              "@type": "Person",
+              "name": `@${profile.username}`,
+              "url": `https://vaultset.app/profile/${profile.username}`,
+              ...(bio ? { "description": bio } : {}),
+              ...(specialty ? { "knowsAbout": specialty } : {}),
+            },
+          }),
+        }}
+      />
 
       {/* Back */}
       <Link
@@ -353,8 +383,8 @@ export default async function ProfilePage({
 
         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
           <ShareProfileButton username={profile.username} />
-          {!isOwnProfile && <MessageButton recipientId={profile.id} label="Message" />}
-          {!isOwnProfile && <ReportButton reportedUserId={profile.id} />}
+          {user && !isOwnProfile && <MessageButton recipientId={profile.id} label="Message" />}
+          {user && !isOwnProfile && <ReportButton reportedUserId={profile.id} />}
           {isOwnProfile && (
             <Link
               href="/account"
@@ -452,7 +482,7 @@ export default async function ProfilePage({
               </div>
             ) : (
               <>
-                {!isOwnProfile && (
+                {user && !isOwnProfile && (
                   <p className="text-sm text-foreground-muted">
                     This collector is looking for these cards — if you have one,{" "}
                     <Link href={`/messages`} className="text-gold hover:text-gold-light transition-colors">

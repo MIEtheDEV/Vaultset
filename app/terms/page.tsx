@@ -1,6 +1,9 @@
 import Link from "next/link";
 
-export const metadata = { title: "Terms of Service — Vaultset" };
+export const metadata = {
+  title: "Terms of Service — Vaultset",
+  description: "Read the Vaultset Terms of Service governing your use of the platform.",
+};
 
 export default function TermsPage() {
   return (
