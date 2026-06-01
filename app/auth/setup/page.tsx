@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 
-export default function AuthSetupPage() {
+function AuthSetupForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const next         = searchParams.get("next") ?? "/dashboard";
@@ -109,5 +109,13 @@ export default function AuthSetupPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function AuthSetupPage() {
+  return (
+    <Suspense>
+      <AuthSetupForm />
+    </Suspense>
   );
 }

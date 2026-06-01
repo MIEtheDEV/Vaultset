@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -8,7 +8,7 @@ import { createClient } from "@/utils/supabase/client";
 import { PokemonCardSearch } from "@/components/PokemonCardSearch";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
 
-export default function LogRevealPage() {
+function LogRevealForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const productId    = searchParams.get("product") ?? null;
@@ -95,13 +95,11 @@ export default function LogRevealPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
 
-        {/* Card search */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground-muted">Card pulled</label>
           <PokemonCardSearch onSelect={handleCardSelect} />
         </div>
 
-        {/* Card preview */}
         {cardName && (
           <div className="flex items-center gap-4 rounded-2xl border border-border bg-surface p-4">
             {imageUrl ? (
@@ -126,7 +124,6 @@ export default function LogRevealPage() {
           </div>
         )}
 
-        {/* Notes */}
         <div>
           <label className="block text-sm font-medium text-foreground-muted mb-1.5">
             Caption <span className="font-normal">(optional)</span>
@@ -140,7 +137,6 @@ export default function LogRevealPage() {
           />
         </div>
 
-        {/* Visibility */}
         <div className="flex items-center justify-between rounded-xl border border-border bg-surface-raised px-4 py-3">
           <div>
             <p className="text-sm font-medium text-foreground">Visibility</p>
@@ -180,5 +176,13 @@ export default function LogRevealPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function LogRevealPage() {
+  return (
+    <Suspense>
+      <LogRevealForm />
+    </Suspense>
   );
 }
