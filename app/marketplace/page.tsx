@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Marketplace",
   description:
     "Browse trading cards and sealed products listed for sale and trade. Find Pokémon TCG, MTG, and more from collectors on Vaultset.",
-  robots: { index: false },
+  alternates: { canonical: "/marketplace" },
   openGraph: {
     title: "Marketplace — Vaultset",
     description:

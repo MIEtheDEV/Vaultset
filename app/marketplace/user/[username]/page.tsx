@@ -22,18 +22,14 @@ export async function generateMetadata({
 
   if (!seller) return { title: "Seller Not Found", robots: { index: false } };
 
-  const title = `@${seller.username}'s Listings`;
+  const title       = `@${seller.username}'s Listings`;
   const description = `Browse trading cards and sealed products listed by @${seller.username} on Vaultset Marketplace.`;
 
   return {
     title,
     description,
-    robots: { index: false },
-    openGraph: {
-      title,
-      description,
-      type: "profile",
-    },
+    alternates: { canonical: `/marketplace/user/${seller.username}` },
+    openGraph: { title, description, type: "profile" },
   };
 }
 
@@ -42,9 +38,8 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // No auth redirect — seller storefronts are publicly crawlable
 
-  // Resolve seller profile by username
   const { data: seller } = await supabase
     .from("profiles")
     .select("id, username, created_at, is_supporter")
@@ -53,31 +48,12 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
 
   if (!seller) redirect("/marketplace");
 
-  // Fetch seller's public listings
   const { data: listings } = await supabase
     .from("collection_items")
     .select(`
-      id,
-      user_id,
-      condition,
-      finish,
-      for_sale,
-      for_trade,
-      list_price,
-      grader,
-      grade,
-      quantity,
-      created_at,
-      cards (
-        id,
-        game,
-        name,
-        set_name,
-        card_number,
-        year,
-        image_url,
-        game_data
-      )
+      id, user_id, condition, finish, for_sale, for_trade,
+      list_price, grader, grade, quantity, created_at,
+      cards ( id, game, name, set_name, card_number, year, image_url, game_data )
     `)
     .eq("user_id", seller.id)
     .or("for_sale.eq.true,for_trade.eq.true")
@@ -89,20 +65,15 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
     seller_username: seller.username,
   }));
 
-  // Current user's watchlist
-  const { data: watchlistData } = await supabase
-    .from("watchlist")
-    .select("item_id")
-    .eq("user_id", user.id);
+  const { data: watchlistData } = user
+    ? await supabase.from("watchlist").select("item_id").eq("user_id", user.id)
+    : { data: [] };
 
   const watchedItemIds = watchlistData?.map((w) => w.item_id) ?? [];
-
-  const joinedDate = timeAgo(seller.created_at);
+  const joinedDate     = timeAgo(seller.created_at);
 
   return (
     <div className="space-y-8">
-
-      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-1">
@@ -128,7 +99,7 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
 
       <MarketplaceGrid
         listings={listingsWithSeller}
-        currentUserId={user.id}
+        currentUserId={user?.id ?? ""}
         initialWatchedIds={watchedItemIds}
       />
     </div>

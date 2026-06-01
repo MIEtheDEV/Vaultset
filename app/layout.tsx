@@ -30,15 +30,11 @@ export const metadata: Metadata = {
   description:
     "Manage your collection, track live market values, buy and sell cards, and connect with a passionate community. Vaultset is the all-in-one platform for trading card collectors.",
   keywords: [
-    "trading cards",
-    "TCG",
-    "card collection",
-    "Pokemon cards",
-    "MTG",
-    "buy sell trade cards",
-    "card market",
-    "card inventory",
+    "trading cards", "TCG", "card collection", "Pokemon cards", "MTG",
+    "buy sell trade cards", "card market", "card inventory", "Pokemon TCG marketplace",
+    "trading card collector platform",
   ],
+  alternates: { canonical: "https://vaultset.app" },
   robots: {
     index: true,
     follow: true,
@@ -51,12 +47,15 @@ export const metadata: Metadata = {
     url: "https://vaultset.app",
     type: "website",
     siteName: "Vaultset",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Vaultset — The Ultimate Trading Card Platform" }],
   },
   twitter: {
     card: "summary_large_image",
+    site: "@vaultsetapp",
     title: "Vaultset — The Ultimate Trading Card Platform",
     description:
       "Manage your collection, track live market values, buy and sell cards, and connect with a passionate community.",
+    images: ["/opengraph-image"],
   },
 };
 

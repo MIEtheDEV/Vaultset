@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
-import { createAdminClient } from "@/utils/supabase/admin";
 import { UserNav } from "@/components/UserNav";
 import { HeroCardStack } from "@/components/HeroCardStack";
 
@@ -90,18 +89,16 @@ export default async function Home() {
   const { data: { user } } = await supabase.auth.getUser();
   const username = user?.user_metadata?.username as string | undefined;
 
-  const admin = createAdminClient();
-
-  const [{ data: totalCardsData }, { data: gamesData }, { count: collectors }, { data: listingData }] = await Promise.all([
+  const [{ data: totalCardsData }, { data: gamesData }, { count: collectors }, { data: listedValueData }] = await Promise.all([
     supabase.rpc("get_platform_card_count"),
     supabase.from("cards").select("game").not("game", "is", null),
     supabase.from("profiles").select("*", { count: "exact", head: true }),
-    admin.from("collection_items").select("list_price").eq("for_sale", true).eq("on_hold", false).not("list_price", "is", null),
+    supabase.rpc("get_platform_listed_value"),
   ]);
 
-  const totalCards    = (totalCardsData as number) ?? 0;
+  const totalCards     = (totalCardsData as number) ?? 0;
   const supportedGames = new Set(gamesData?.map((r) => r.game)).size;
-  const marketVolume  = (listingData ?? []).reduce((sum, r) => sum + Number(r.list_price ?? 0), 0);
+  const marketVolume   = (listedValueData as number) ?? 0;
 
   function formatCurrency(n: number): string {
     if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;

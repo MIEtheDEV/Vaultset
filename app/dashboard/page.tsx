@@ -714,7 +714,7 @@ export default async function DashboardPage() {
                     </div>
                     {event.image_url && (
                       <div className="relative h-10 w-7 rounded overflow-hidden flex-shrink-0 bg-surface-raised">
-                        <Image src={event.image_url} alt="" fill sizes="28px" className="object-contain" />
+                        <Image src={event.image_url} alt={event.label} fill sizes="28px" className="object-contain" />
                       </div>
                     )}
                     <span className="text-xs text-foreground-muted flex-shrink-0 pl-2">{timeAgo(event.created_at)}</span>

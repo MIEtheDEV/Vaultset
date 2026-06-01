@@ -74,6 +74,8 @@ export function HeroCardStack() {
               src={card.src}
               alt={card.alt}
               className="w-full h-auto block rounded-xl mb-2"
+              fetchPriority="high"
+              loading="eager"
             />
             <div
               className="hidden lg:block"

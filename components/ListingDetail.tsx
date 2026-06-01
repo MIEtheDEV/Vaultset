@@ -82,6 +82,7 @@ export function ListingDetail({
   otherListings: OtherListing[]; currentUserId: string; initialWatched: boolean;
   sellerFollowersOnly?: boolean; currentUserFollowsSeller?: boolean;
 }) {
+  const isAuthenticated = currentUserId !== "";
   const [watched, setWatched] = useState(initialWatched);
   const isOwn    = listing.user_id === currentUserId;
   const onHold   = listing.on_hold;
@@ -247,6 +248,13 @@ export function ListingDetail({
                 className="flex items-center justify-center w-full rounded-full border border-border px-6 py-3 text-sm font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
               >
                 Edit Your Listing
+              </Link>
+            ) : !isAuthenticated ? (
+              <Link
+                href="/login"
+                className="flex items-center justify-center w-full rounded-full border border-border px-6 py-3 text-sm font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+              >
+                Sign in to watch or make an offer
               </Link>
             ) : (
               <>

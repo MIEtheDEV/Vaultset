@@ -12,7 +12,11 @@ export async function generateMetadata({
   params: Promise<{ username: string }>;
 }): Promise<Metadata> {
   const { username } = await params;
-  return { title: `@${username} is Following`, robots: { index: false } };
+  return {
+    title: `@${username} is Following`,
+    robots: { index: false },
+    alternates: { canonical: `/profile/${username}/following` },
+  };
 }
 
 export default async function FollowingPage({
@@ -59,8 +63,19 @@ export default async function FollowingPage({
   const orderedProfiles = followingIds.map((id) => profileMap.get(id)).filter(Boolean);
   const myFollowingSet = new Set((myFollows ?? []).map((f: any) => f.following_id));
 
+  const breadcrumbLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Community", item: "https://vaultset.app/community" },
+      { "@type": "ListItem", position: 2, name: `@${username}`, item: `https://vaultset.app/profile/${username}` },
+      { "@type": "ListItem", position: 3, name: "Following", item: `https://vaultset.app/profile/${username}/following` },
+    ],
+  };
+
   return (
     <div className="space-y-6 max-w-2xl">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
 
       <Link
         href={`/profile/${username}`}

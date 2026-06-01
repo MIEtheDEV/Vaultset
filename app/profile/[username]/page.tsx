@@ -24,10 +24,40 @@ export async function generateMetadata({
   params: Promise<{ username: string }>;
 }): Promise<Metadata> {
   const { username } = await params;
-  const description = `Browse @${username}'s trading card collection, active listings, and wishlist on Vaultset.`;
+  const supabase = await createClient();
+
+  const [{ data: profile }, { count: cardCount }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("username, bio, specialty, city")
+      .eq("username", username)
+      .single(),
+    supabase
+      .from("collection_items")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id",
+        (await supabase.from("profiles").select("id").eq("username", username).single()).data?.id ?? ""
+      ),
+  ]);
+
+  const parts: string[] = [];
+  if (cardCount && cardCount > 0) parts.push(`${cardCount}-card collection`);
+  if ((profile as any)?.specialty) parts.push((profile as any).specialty);
+  if ((profile as any)?.city) parts.push((profile as any).city);
+
+  const description = parts.length > 0
+    ? `Browse @${username}'s ${parts.join(" · ")} on Vaultset. Active listings, wishlist, and collector profile.`
+    : `Browse @${username}'s trading card collection, active listings, and wishlist on Vaultset.`;
+
+  const keywords = [username, "trading card collector", "Pokemon cards"];
+  if ((profile as any)?.specialty) keywords.push((profile as any).specialty);
+  if ((profile as any)?.city) keywords.push((profile as any).city);
+
   return {
     title: `@${username}'s Profile`,
     description,
+    keywords,
+    alternates: { canonical: `/profile/${username}` },
     openGraph: {
       title: `@${username} — Vaultset`,
       description,
