@@ -17,14 +17,23 @@ create unique index if not exists reviews_user_id_unique on reviews(user_id);
 
 alter table reviews enable row level security;
 
-create policy "Users can insert their own review"
-  on reviews for insert
-  with check (auth.uid() = user_id);
+do $$ begin
+  create policy "Users can insert their own review"
+    on reviews for insert
+    with check (auth.uid() = user_id);
+exception when duplicate_object then null;
+end $$;
 
-create policy "Users can update their own review"
-  on reviews for update
-  using (auth.uid() = user_id);
+do $$ begin
+  create policy "Users can update their own review"
+    on reviews for update
+    using (auth.uid() = user_id);
+exception when duplicate_object then null;
+end $$;
 
-create policy "Approved reviews are publicly readable"
-  on reviews for select
-  using (approved = true or auth.uid() = user_id);
+do $$ begin
+  create policy "Approved reviews are publicly readable"
+    on reviews for select
+    using (approved = true or auth.uid() = user_id);
+exception when duplicate_object then null;
+end $$;

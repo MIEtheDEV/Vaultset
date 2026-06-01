@@ -59,6 +59,7 @@
 
 ## Completed
 
+- [x] **Homepage overhaul** — Rotating headline, How It Works section, comparison table, FAQ with `FAQPage` JSON-LD schema, collector reviews system (submission, admin approval queue, star bar, `/reviews` landing page), review prompt on dashboard at 10+ cards, admin notifications on review submit/edit.
 - [x] **Donation button** — Ko-fi + PayPal + Stripe payment links on `/support`; Supporter badge displayed on profiles for Ko-fi donors
 - [x] **Offer system** — Buyers send cash/trade/bundle offers; sellers accept/reject/counter; full lifecycle (pending → accepted → completed) with 7-day auto-expiry, inventory holds, both-party receipt confirmation, and offer history
 - [x] **Public user profiles** — Public profile at `/profile/[username]` with avatar, bio, specialty, city, followers, featured card, and tabbed listings/collection/wishlist views

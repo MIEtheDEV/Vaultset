@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
-import { createAdminClient } from "@/utils/supabase/admin";
 import { UserNav } from "@/components/UserNav";
 import { HeroCardStack } from "@/components/HeroCardStack";
 import { RotatingHeadline } from "@/components/RotatingHeadline";
@@ -125,7 +124,6 @@ function formatCount(n: number): string {
 
 export default async function Home() {
   const supabase = await createClient();
-  const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
   const username = user?.user_metadata?.username as string | undefined;
 
@@ -140,7 +138,7 @@ export default async function Home() {
     supabase.from("cards").select("game").not("game", "is", null),
     supabase.from("profiles").select("*", { count: "exact", head: true }),
     supabase.rpc("get_platform_listed_value"),
-    admin.from("reviews").select("id, rating, body, display_name, pinned").eq("approved", true).order("pinned", { ascending: false }).order("created_at", { ascending: false }),
+    supabase.from("reviews").select("id, rating, body, display_name, pinned").eq("approved", true).order("pinned", { ascending: false }).order("created_at", { ascending: false }),
   ]);
 
   const totalCards     = (totalCardsData as number) ?? 0;
@@ -220,7 +218,7 @@ export default async function Home() {
               <UserNav username={username} showSettings={false} />
             ) : (
               <>
-                <Link href="/login" className="hidden sm:block text-sm text-foreground-muted hover:text-foreground transition-colors">
+                <Link href="/login" className="text-sm text-foreground-muted hover:text-foreground transition-colors">
                   Sign in
                 </Link>
                 <Link href="/register" className="rounded-full bg-gold px-4 py-2 text-sm font-semibold text-background hover:bg-gold-light transition-colors">
@@ -240,14 +238,14 @@ export default async function Home() {
           style={{ background: "radial-gradient(ellipse, rgba(232,184,75,0.06) 0%, transparent 70%)" }}
         />
 
-        <div className="relative mx-auto max-w-7xl px-6 py-24 grid lg:grid-cols-2 gap-16 items-center w-full">
-          <div className="flex flex-col gap-8">
+        <div className="relative mx-auto max-w-7xl px-6 py-16 sm:py-24 grid lg:grid-cols-2 gap-16 items-center w-full">
+          <div className="flex flex-col gap-5 sm:gap-8">
             <div className="spin-border inline-flex w-fit items-center gap-2 rounded-full border border-gold/20 bg-gold/5 px-4 py-1.5 text-sm text-gold">
               <span className="h-1.5 w-1.5 rounded-full bg-gold animate-pulse" />
               Now in Early Access — Free to Join
             </div>
 
-            <h1 className="text-4xl lg:text-5xl font-bold tracking-tight leading-[1.15]">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.15]">
               <RotatingHeadline />
             </h1>
 
@@ -349,33 +347,39 @@ export default async function Home() {
             </p>
           </div>
           <div className="rounded-2xl border border-border overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs sm:text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-raised">
-                  <th className="text-left px-6 py-4 text-foreground font-semibold">Feature</th>
-                  <th className="px-6 py-4 text-center text-gold font-semibold">Vaultset</th>
-                  <th className="px-6 py-4 text-center text-foreground-muted font-medium">Spreadsheet</th>
-                  <th className="px-6 py-4 text-center text-foreground-muted font-medium">Other apps</th>
+                  <th className="text-left px-3 sm:px-6 py-3 sm:py-4 text-foreground font-semibold">Feature</th>
+                  <th className="px-2 sm:px-6 py-3 sm:py-4 text-center text-gold font-semibold">Vaultset</th>
+                  <th className="px-2 sm:px-6 py-3 sm:py-4 text-center text-foreground-muted font-medium">
+                    <span className="sm:hidden">Sheet</span>
+                    <span className="hidden sm:inline">Spreadsheet</span>
+                  </th>
+                  <th className="px-2 sm:px-6 py-3 sm:py-4 text-center text-foreground-muted font-medium">
+                    <span className="sm:hidden">Others</span>
+                    <span className="hidden sm:inline">Other apps</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {[
-                  ["Live market prices",          true,  false, "Partial"],
-                  ["Built-in marketplace",         true,  false, false],
-                  ["Trade matching",               true,  false, false],
-                  ["Pack reveal sharing",          true,  false, false],
-                  ["Price alerts",                 true,  false, "Paid only"],
-                  ["Free to use",                  true,  true,  false],
+                  ["Live market prices",    true,  false, "Partial"],
+                  ["Built-in marketplace",  true,  false, false],
+                  ["Trade matching",        true,  false, false],
+                  ["Pack reveal sharing",   true,  false, false],
+                  ["Price alerts",          true,  false, "Paid only"],
+                  ["Free to use",           true,  true,  false],
                 ].map(([label, vaultset, sheet, other]) => (
                   <tr key={label as string} className="hover:bg-surface-raised transition-colors">
-                    <td className="px-6 py-3.5 text-foreground">{label as string}</td>
-                    <td className="px-6 py-3.5 text-center">
+                    <td className="px-3 sm:px-6 py-3 sm:py-3.5 text-foreground">{label as string}</td>
+                    <td className="px-2 sm:px-6 py-3 sm:py-3.5 text-center">
                       {vaultset === true ? <span className="text-emerald-400 font-bold">✓</span> : <span className="text-foreground-muted">—</span>}
                     </td>
-                    <td className="px-6 py-3.5 text-center">
+                    <td className="px-2 sm:px-6 py-3 sm:py-3.5 text-center">
                       {sheet === true ? <span className="text-emerald-400 font-bold">✓</span> : sheet === false ? <span className="text-red-400">✗</span> : <span className="text-foreground-muted text-xs">{sheet}</span>}
                     </td>
-                    <td className="px-6 py-3.5 text-center">
+                    <td className="px-2 sm:px-6 py-3 sm:py-3.5 text-center">
                       {other === true ? <span className="text-emerald-400 font-bold">✓</span> : other === false ? <span className="text-red-400">✗</span> : <span className="text-foreground-muted text-xs">{other}</span>}
                     </td>
                   </tr>
@@ -387,43 +391,57 @@ export default async function Home() {
       </section>
 
       {/* Reviews */}
-      {reviews.length > 0 && (
-        <section className="py-28 border-t border-border bg-surface">
-          <div className="mx-auto max-w-7xl px-6">
-            <div className="text-center mb-12 space-y-4">
-              <h2 className="text-4xl font-bold tracking-tight">What collectors are saying</h2>
+      <section className="py-28 border-t border-border bg-surface">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="text-center mb-12 space-y-4">
+            <h2 className="text-4xl font-bold tracking-tight">What collectors are saying</h2>
+            {reviewCount > 0 && (
               <div className="flex justify-center">
                 <StarBar average={reviewAverage} count={reviewCount} />
               </div>
-            </div>
-
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {reviews.map((review) => (
-                <div key={review.id} className="rounded-2xl border border-border bg-surface p-6 space-y-3">
-                  <div className="text-gold text-lg">
-                    {"★".repeat(review.rating as number)}{"☆".repeat(5 - (review.rating as number))}
-                  </div>
-                  <p className="text-sm text-foreground leading-relaxed">&ldquo;{review.body as string}&rdquo;</p>
-                  <p className="text-xs text-foreground-muted font-medium">
-                    — {(review.display_name as string) ?? "Vaultset collector"}
-                    <span className="ml-1.5 text-gold text-xs">Verified collector</span>
-                  </p>
-                </div>
-              ))}
-            </div>
-            {reviewCount > 3 && (
-              <div className="text-center mt-8">
-                <Link
-                  href="/reviews"
-                  className="text-sm text-gold hover:underline transition-colors"
-                >
-                  Read all {reviewCount} reviews →
-                </Link>
-              </div>
             )}
           </div>
-        </section>
-      )}
+
+          {reviews.length > 0 ? (
+            <>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {reviews.map((review) => (
+                  <div key={review.id} className="rounded-2xl border border-border bg-surface p-6 space-y-3">
+                    <div className="text-gold text-lg">
+                      {"★".repeat(review.rating as number)}{"☆".repeat(5 - (review.rating as number))}
+                    </div>
+                    <p className="text-sm text-foreground leading-relaxed">&ldquo;{review.body as string}&rdquo;</p>
+                    <p className="text-xs text-foreground-muted font-medium">
+                      — {(review.display_name as string) ?? "Vaultset collector"}
+                      <span className="ml-1.5 text-gold text-xs">Verified collector</span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {reviewCount > 3 && (
+                <div className="text-center mt-8">
+                  <Link href="/reviews" className="text-sm text-gold hover:underline transition-colors">
+                    Read all {reviewCount} reviews →
+                  </Link>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-12 space-y-4">
+              <p className="text-foreground-muted text-lg">No reviews yet — be the first.</p>
+              {user ? (
+                <Link href="/account" className="inline-block rounded-full border border-gold/40 px-6 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10 transition-colors">
+                  Leave a Review
+                </Link>
+              ) : (
+                <Link href="/register" className="inline-block rounded-full border border-gold/40 px-6 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10 transition-colors">
+                  Join &amp; Leave a Review
+                </Link>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* FAQ */}
       <section className="py-28 border-t border-border">
