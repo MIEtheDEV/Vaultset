@@ -32,6 +32,7 @@ const STATUS_CLASSES: Record<string, string> = {
   cancelled: "text-foreground-muted bg-surface border-border",
   countered: "text-blue-400 bg-blue-400/10 border-blue-400/30",
   completed: "text-teal-400 bg-teal-400/10 border-teal-400/30",
+  expired:   "text-foreground-muted bg-surface border-border",
 };
 
 const OFFER_SELECT = `

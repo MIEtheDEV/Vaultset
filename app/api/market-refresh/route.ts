@@ -104,5 +104,42 @@ export async function POST() {
     .from("market_refresh_log")
     .upsert({ user_id: user.id, refreshed_at: new Date().toISOString() });
 
+  // ── Price alert check ──────────────────────────────────────────────────────
+  const { data: alertMatches } = await admin
+    .rpc("check_wishlist_price_alerts", { p_user_id: user.id });
+
+  if (alertMatches && alertMatches.length > 0) {
+    // Find listings already notified to avoid duplicates
+    const listingIds = alertMatches.map((m: any) => m.listing_id as string);
+    const { data: existingNotifs } = await admin
+      .from("notifications")
+      .select("data")
+      .eq("user_id", user.id)
+      .eq("type", "price_alert")
+      .in("data->>'listing_id'", listingIds);
+
+    const alreadyNotified = new Set(
+      (existingNotifs ?? []).map((n) => (n.data as any)?.listing_id as string)
+    );
+
+    const newAlerts = alertMatches.filter((m: any) => !alreadyNotified.has(m.listing_id as string));
+
+    if (newAlerts.length > 0) {
+      await admin.from("notifications").insert(
+        newAlerts.map((m: any) => ({
+          user_id:  user.id,
+          type:     "price_alert",
+          actor_id: null,
+          data: {
+            listing_id:  m.listing_id,
+            card_name:   m.card_name,
+            list_price:  m.list_price,
+            seller_username: m.seller_username,
+          },
+        }))
+      );
+    }
+  }
+
   return NextResponse.json({ updated });
 }

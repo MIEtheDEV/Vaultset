@@ -18,16 +18,18 @@ function labelClass() {
 }
 
 interface Props {
-  initialUsername:      string;
-  initialEmail:         string;
-  initialBio:           string;
-  initialSpecialty:     string;
-  initialCity:          string;
-  initialFeaturedItemId: string | null;
-  initialAvatarUrl:     string | null;
-  initialAvatarColor:   string | null;
-  userId:               string;
-  collectionItems:      PickerItem[];
+  initialUsername:           string;
+  initialEmail:              string;
+  initialBio:                string;
+  initialSpecialty:          string;
+  initialCity:               string;
+  initialFeaturedItemId:     string | null;
+  initialAvatarUrl:          string | null;
+  initialAvatarColor:        string | null;
+  initialFollowersOnlyOffers: boolean;
+  userId:                    string;
+  collectionItems:           PickerItem[];
+  isAdmin?:                  boolean;
 }
 
 export function AccountSettingsForm({
@@ -39,8 +41,10 @@ export function AccountSettingsForm({
   initialFeaturedItemId,
   initialAvatarUrl,
   initialAvatarColor,
+  initialFollowersOnlyOffers,
   userId,
   collectionItems,
+  isAdmin = false,
 }: Props) {
   const router = useRouter();
 
@@ -50,7 +54,8 @@ export function AccountSettingsForm({
   const [bio,            setBio]            = useState(initialBio);
   const [specialty,      setSpecialty]      = useState(initialSpecialty);
   const [city,           setCity]           = useState(initialCity);
-  const [featuredItemId, setFeaturedItemId] = useState<string | null>(initialFeaturedItemId);
+  const [featuredItemId,       setFeaturedItemId]       = useState<string | null>(initialFeaturedItemId);
+  const [followersOnlyOffers, setFollowersOnlyOffers] = useState(initialFollowersOnlyOffers);
   const [avatarColor,    setAvatarColor]    = useState<string>(
     initialAvatarColor ?? resolveAvatarColor(null, username)
   );
@@ -79,10 +84,11 @@ export function AccountSettingsForm({
     const bioChanged           = bio.trim() !== initialBio.trim();
     const specialtyChanged     = specialty.trim() !== initialSpecialty.trim();
     const cityChanged          = city.trim() !== initialCity.trim();
-    const featuredChanged      = featuredItemId !== initialFeaturedItemId;
-    const initialColor         = initialAvatarColor ?? resolveAvatarColor(null, username);
-    const colorChanged         = avatarColor !== initialColor;
-    const profilesChanged      = bioChanged || specialtyChanged || cityChanged || featuredChanged || colorChanged;
+    const featuredChanged          = featuredItemId !== initialFeaturedItemId;
+    const initialColor             = initialAvatarColor ?? resolveAvatarColor(null, username);
+    const colorChanged             = avatarColor !== initialColor;
+    const followersOnlyChanged     = followersOnlyOffers !== initialFollowersOnlyOffers;
+    const profilesChanged          = bioChanged || specialtyChanged || cityChanged || featuredChanged || colorChanged || followersOnlyChanged;
     const profileChanged       = authChanged || profilesChanged;
     const passwordAttempted    = !!(currentPassword || newPassword || confirmPassword);
 
@@ -160,11 +166,12 @@ export function AccountSettingsForm({
     // Update profiles table (bio, specialty, featured card — one call)
     if (profilesChanged) {
       const patch: Record<string, unknown> = {};
-      if (bioChanged)       patch.bio              = bio.trim()       || null;
-      if (specialtyChanged) patch.specialty        = specialty.trim() || null;
-      if (cityChanged)      patch.city             = city.trim()      || null;
-      if (featuredChanged)  patch.featured_item_id = featuredItemId   ?? null;
-      if (colorChanged)     patch.avatar_color     = avatarColor;
+      if (bioChanged)           patch.bio                   = bio.trim()             || null;
+      if (specialtyChanged)     patch.specialty              = specialty.trim()        || null;
+      if (cityChanged)          patch.city                   = city.trim()             || null;
+      if (featuredChanged)      patch.featured_item_id       = featuredItemId          ?? null;
+      if (colorChanged)         patch.avatar_color           = avatarColor;
+      if (followersOnlyChanged) patch.followers_only_offers  = followersOnlyOffers;
 
       const { error } = await supabase.from("profiles").update(patch).eq("id", userId);
       if (error) {
@@ -300,16 +307,21 @@ export function AccountSettingsForm({
           <div>
             <label className={labelClass()}>Bio</label>
             <textarea
-              maxLength={160}
-              rows={3}
+              maxLength={isAdmin ? 500 : 160}
+              rows={isAdmin ? 6 : 3}
               placeholder="Tell other collectors about yourself…"
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               className={`${inputClass()} resize-none`}
             />
             <p className="mt-1.5 text-xs text-foreground-muted">
-              {bio.length}/160 — shown on your public profile.
+              {bio.length}/{isAdmin ? 500 : 160} — shown on your public profile.
             </p>
+            {isAdmin && (
+              <p className="mt-1 text-xs text-foreground-muted">
+                Link syntax: <code className="font-mono bg-surface-raised px-1 rounded">[label](/path)</code> — e.g. <code className="font-mono bg-surface-raised px-1 rounded">[Contact](/contact)</code>
+              </p>
+            )}
           </div>
 
           <div>
@@ -322,6 +334,32 @@ export function AccountSettingsForm({
               onChange={setFeaturedItemId}
               items={collectionItems}
             />
+          </div>
+
+          <div className="flex items-start justify-between gap-4 pt-1">
+            <div>
+              <p className="text-sm font-medium text-foreground">Followers-only offers</p>
+              <p className="mt-0.5 text-xs text-foreground-muted">
+                When enabled, only users who follow you can make offers on your listings.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={followersOnlyOffers}
+              onClick={() => setFollowersOnlyOffers((v) => !v)}
+              className={`relative mt-0.5 flex h-6 w-11 shrink-0 items-center rounded-full border-2 transition-colors ${
+                followersOnlyOffers
+                  ? "border-gold bg-gold"
+                  : "border-border bg-surface-raised"
+              }`}
+            >
+              <span
+                className={`h-4 w-4 rounded-full bg-background shadow transition-transform ${
+                  followersOnlyOffers ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
           </div>
         </div>
 

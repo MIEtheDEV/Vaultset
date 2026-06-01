@@ -74,10 +74,10 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
   const card = Array.isArray(listing.cards) ? listing.cards[0] : listing.cards;
   if (!card) redirect("/marketplace");
 
-  // Seller profile
+  // Seller profile (including follow-gate setting)
   const { data: seller } = await supabase
     .from("profiles")
-    .select("id, username, created_at")
+    .select("id, username, created_at, followers_only_offers")
     .eq("id", listing.user_id)
     .single();
 
@@ -95,13 +95,15 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     .order("created_at", { ascending: false })
     .limit(6);
 
-  // Is the current user watching this listing?
-  const { data: watchEntry } = await supabase
-    .from("watchlist")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("item_id", id)
-    .maybeSingle();
+  const sellerFollowersOnly = !!(seller as any)?.followers_only_offers;
+
+  // Is the current user following the seller? (for follow-gate check)
+  const [{ data: watchEntry }, { data: followEntry }] = await Promise.all([
+    supabase.from("watchlist").select("id").eq("user_id", user.id).eq("item_id", id).maybeSingle(),
+    sellerFollowersOnly && listing.user_id !== user.id
+      ? supabase.from("follows").select("follower_id").eq("follower_id", user.id).eq("following_id", listing.user_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
 
   return (
     <ListingDetail
@@ -144,6 +146,8 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
       }))}
       currentUserId={user.id}
       initialWatched={!!watchEntry}
+      sellerFollowersOnly={sellerFollowersOnly}
+      currentUserFollowsSeller={!!followEntry}
     />
   );
 }

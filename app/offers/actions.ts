@@ -29,13 +29,15 @@ export async function createOffer(params: {
   if (!user) throw new Error("Not authenticated");
   if (user.id === params.recipientId) throw new Error("Cannot offer to yourself");
 
-  // Rate limit: max 3 pending offers per sender/listing pair
+  // Rate limit: max 3 non-expired pending offers per sender/listing pair
+  const expiryThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { count } = await supabase
     .from("offers")
     .select("id", { count: "exact", head: true })
     .eq("sender_id", user.id)
     .eq("listing_id", params.listingId)
-    .eq("status", "pending");
+    .eq("status", "pending")
+    .gt("created_at", expiryThreshold);
 
   if ((count ?? 0) >= MAX_PENDING_PER_LISTING) {
     throw new Error(
@@ -534,6 +536,61 @@ export async function markItemReceived(offerId: string) {
   revalidatePath("/inventory");
   revalidatePath("/offers");
   revalidatePath(`/offers/${offerId}`);
+}
+
+export async function reportDispute(params: {
+  offerId: string;
+  cardName: string;
+  otherUsername: string;
+  description: string;
+}): Promise<string> {
+  const supabase = await createClient();
+  const admin    = createAdminClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const adminUsername = process.env.ADMIN_USERNAME;
+  if (!adminUsername) throw new Error("Support contact is not configured.");
+
+  const { data: adminProfile } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("username", adminUsername)
+    .maybeSingle();
+
+  if (!adminProfile) throw new Error("Support is unavailable right now.");
+
+  const [p1, p2] = [user.id, adminProfile.id as string].sort() as [string, string];
+
+  const { data: existing } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("participant_1", p1)
+    .eq("participant_2", p2)
+    .maybeSingle();
+
+  let convId: string;
+  if (existing) {
+    convId = existing.id;
+  } else {
+    const { data: newConv, error } = await supabase
+      .from("conversations")
+      .insert({ participant_1: p1, participant_2: p2 })
+      .select("id")
+      .single();
+    if (error || !newConv) throw new Error("Failed to open support thread.");
+    convId = newConv.id;
+  }
+
+  await supabase.from("messages").insert({
+    conversation_id: convId,
+    sender_id: user.id,
+    body: `[Dispute — Offer ${params.offerId}]\nCard: ${params.cardName}\nOther party: @${params.otherUsername}\n\n${params.description}`,
+  });
+
+  revalidatePath("/messages");
+  revalidatePath(`/messages/${convId}`);
+  return convId;
 }
 
 export async function counterOffer(params: {

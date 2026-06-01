@@ -116,7 +116,7 @@ export default async function DashboardPage() {
         <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
       </svg>
     )},
-    { label: "Start a Trade", href: null,                   comingSoon: true,  icon: (
+    { label: "Start a Trade", href: "/marketplace?filter=for_trade", comingSoon: false, icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="17 1 21 5 17 9" />
         <path d="M3 11V9a4 4 0 0 1 4-4h14" />
@@ -174,6 +174,34 @@ export default async function DashboardPage() {
   ).slice(0, 10);
 
   const isSupporter = profileData?.is_supporter ?? false;
+
+  // Following feed: get who this user follows, then their recent listings
+  const { data: myFollowsData } = await supabase
+    .from("follows")
+    .select("following_id")
+    .eq("follower_id", user!.id);
+
+  const followingIds = (myFollowsData ?? []).map((f) => f.following_id);
+
+  const feedItems = followingIds.length > 0
+    ? await supabase
+        .from("collection_items")
+        .select(`
+          id, user_id, for_sale, for_trade, list_price, created_at,
+          cards ( name, set_name, image_url )
+        `)
+        .in("user_id", followingIds)
+        .or("for_sale.eq.true,for_trade.eq.true")
+        .eq("on_hold", false)
+        .order("created_at", { ascending: false })
+        .limit(12)
+    : { data: [] };
+
+  const feedUserIds = [...new Set((feedItems.data ?? []).map((i) => i.user_id))];
+  const { data: feedProfiles } = feedUserIds.length
+    ? await supabase.from("profiles").select("id, username").in("id", feedUserIds)
+    : { data: [] as { id: string; username: string }[] };
+  const feedProfileMap = new Map((feedProfiles ?? []).map((p) => [p.id, p.username]));
 
   // Resolve sender usernames for received messages
   const senderIds = [...new Set((recentMessages ?? []).map((m) => m.sender_id))];
@@ -331,47 +359,125 @@ export default async function DashboardPage() {
       </div>
 
       {/* Wishlist matches — Available Now */}
-      {wishlistMatches.length > 0 && (
-        <div className="rounded-2xl border border-gold/20 bg-gold/5">
-          <div className="flex items-center justify-between border-b border-gold/20 px-6 py-4">
-            <div>
-              <h2 className="font-semibold text-foreground">Available Now</h2>
-              <p className="text-xs text-foreground-muted mt-0.5">Cards on your wishlist that are listed for sale or trade</p>
-            </div>
-            <Link href="/wishlist" className="text-xs text-gold hover:text-gold-light transition-colors">
-              View wishlist →
+      {wishlistMatches.length > 0 && (() => {
+        const saleMatches  = wishlistMatches.filter((m) => m.for_sale);
+        const tradeMatches = wishlistMatches.filter((m) => !m.for_sale && m.for_trade);
+
+        function MatchCard({ match }: { match: typeof wishlistMatches[number] }) {
+          return (
+            <Link
+              href={`/marketplace/${match.listing_id}`}
+              className="flex-shrink-0 w-36 rounded-xl border border-gold/20 bg-surface p-3 space-y-2 hover:border-gold/50 hover:bg-surface-raised transition-colors"
+            >
+              <div className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-lg bg-surface-raised">
+                {match.image_url ? (
+                  <Image src={match.image_url} alt={match.card_name} fill sizes="144px" className="object-contain" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-foreground-muted">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs font-medium text-foreground truncate leading-tight">{match.card_name}</p>
+              <div>
+                {match.for_sale && match.list_price != null ? (
+                  <span className="text-xs font-semibold text-gold">${Number(match.list_price).toFixed(2)}</span>
+                ) : (
+                  <span className="text-xs font-medium text-blue-400">Trade</span>
+                )}
+              </div>
+              <p className="text-xs text-foreground-muted truncate">@{match.seller_username}</p>
+            </Link>
+          );
+        }
+
+        return (
+          <div className="space-y-4">
+            {saleMatches.length > 0 && (
+              <div className="rounded-2xl border border-gold/20 bg-gold/5">
+                <div className="flex items-center justify-between border-b border-gold/20 px-6 py-4">
+                  <div>
+                    <h2 className="font-semibold text-foreground">Available Now</h2>
+                    <p className="text-xs text-foreground-muted mt-0.5">Wishlist cards listed for sale</p>
+                  </div>
+                  <Link href="/wishlist" className="text-xs text-gold hover:text-gold-light transition-colors">
+                    View wishlist →
+                  </Link>
+                </div>
+                <div className="p-4 flex gap-3 overflow-x-auto">
+                  {saleMatches.map((m) => <MatchCard key={m.listing_id} match={m} />)}
+                </div>
+              </div>
+            )}
+            {tradeMatches.length > 0 && (
+              <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5">
+                <div className="flex items-center justify-between border-b border-blue-500/20 px-6 py-4">
+                  <div>
+                    <h2 className="font-semibold text-foreground">Trade Matches</h2>
+                    <p className="text-xs text-foreground-muted mt-0.5">Wishlist cards collectors are willing to trade</p>
+                  </div>
+                  <Link href={`/marketplace?filter=wanted`} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                    Browse trades →
+                  </Link>
+                </div>
+                <div className="p-4 flex gap-3 overflow-x-auto">
+                  {tradeMatches.map((m) => <MatchCard key={m.listing_id} match={m} />)}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Following Feed */}
+      {followingIds.length > 0 && (
+        <div className="rounded-2xl border border-border bg-surface">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <h2 className="font-semibold text-foreground">Following</h2>
+            <Link href="/marketplace?filter=following" className="text-xs text-foreground-muted hover:text-gold transition-colors">
+              View in Marketplace
             </Link>
           </div>
-          <div className="p-4 flex gap-3 overflow-x-auto">
-            {wishlistMatches.map((match) => (
-              <Link
-                key={match.listing_id}
-                href={`/marketplace/${match.listing_id}`}
-                className="flex-shrink-0 w-36 rounded-xl border border-gold/20 bg-surface p-3 space-y-2 hover:border-gold/50 hover:bg-surface-raised transition-colors"
-              >
-                <div className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-lg bg-surface-raised">
-                  {match.image_url ? (
-                    <Image src={match.image_url} alt={match.card_name} fill sizes="144px" className="object-contain" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-foreground-muted">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" />
-                      </svg>
+          {!feedItems.data || feedItems.data.length === 0 ? (
+            <div className="px-6 py-10 text-center">
+              <p className="text-sm text-foreground-muted">No recent listings from people you follow.</p>
+            </div>
+          ) : (
+            <div className="p-4 flex gap-3 overflow-x-auto pb-4">
+              {feedItems.data.map((item) => {
+                const card = Array.isArray(item.cards) ? item.cards[0] : item.cards;
+                const sellerUsername = feedProfileMap.get(item.user_id) ?? "unknown";
+                return (
+                  <Link
+                    key={item.id}
+                    href={`/marketplace/${item.id}`}
+                    className="flex-shrink-0 w-36 rounded-xl border border-border bg-surface-raised p-3 space-y-2 hover:border-gold/30 transition-colors"
+                  >
+                    <div className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-lg bg-surface">
+                      {card?.image_url ? (
+                        <Image src={card.image_url} alt={card.name} fill sizes="144px" className="object-contain" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-foreground-muted">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <p className="text-xs font-medium text-foreground truncate leading-tight">{match.card_name}</p>
-                <div className="flex items-center justify-between">
-                  {match.for_sale && match.list_price != null ? (
-                    <span className="text-xs font-semibold text-gold">${Number(match.list_price).toFixed(2)}</span>
-                  ) : (
-                    <span className="text-xs text-blue-400">Trade</span>
-                  )}
-                </div>
-                <p className="text-xs text-foreground-muted truncate">@{match.seller_username}</p>
-              </Link>
-            ))}
-          </div>
+                    <p className="text-xs font-medium text-foreground truncate">{card?.name ?? "—"}</p>
+                    <p className="text-xs text-foreground-muted truncate">@{sellerUsername}</p>
+                    <div>
+                      {item.for_sale && item.list_price != null ? (
+                        <span className="text-xs font-semibold text-gold">${Number(item.list_price).toFixed(2)}</span>
+                      ) : (
+                        <span className="text-xs text-blue-400">Trade</span>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

@@ -76,9 +76,11 @@ interface OtherListing {
 
 export function ListingDetail({
   listing, card, seller, otherListings, currentUserId, initialWatched,
+  sellerFollowersOnly = false, currentUserFollowsSeller = false,
 }: {
   listing: Listing; card: Card; seller: Seller;
   otherListings: OtherListing[]; currentUserId: string; initialWatched: boolean;
+  sellerFollowersOnly?: boolean; currentUserFollowsSeller?: boolean;
 }) {
   const [watched, setWatched] = useState(initialWatched);
   const isOwn    = listing.user_id === currentUserId;
@@ -270,14 +272,27 @@ export function ListingDetail({
                       className="flex items-center justify-center w-full rounded-full border border-border px-6 py-3 text-sm font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors disabled:opacity-50"
                     />
 
-                    <OfferModal
-                      listingId={listing.id}
-                      recipientId={seller.id}
-                      currentUserId={currentUserId}
-                      sellerUsername={seller.username}
-                      cardName={card.name}
-                      listPrice={listing.list_price}
-                    />
+                    {sellerFollowersOnly && !currentUserFollowsSeller ? (
+                      <div className="rounded-xl border border-border bg-surface px-4 py-3 text-center space-y-1">
+                        <p className="text-sm font-medium text-foreground">Offers restricted to followers</p>
+                        <p className="text-xs text-foreground-muted">
+                          Follow{" "}
+                          <Link href={`/profile/${seller.username}`} className="text-gold hover:text-gold-light transition-colors">
+                            @{seller.username}
+                          </Link>
+                          {" "}to make an offer on this listing.
+                        </p>
+                      </div>
+                    ) : (
+                      <OfferModal
+                        listingId={listing.id}
+                        recipientId={seller.id}
+                        currentUserId={currentUserId}
+                        sellerUsername={seller.username}
+                        cardName={card.name}
+                        listPrice={listing.list_price}
+                      />
+                    )}
                   </>
                 )}
               </>

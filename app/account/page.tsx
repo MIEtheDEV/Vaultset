@@ -16,7 +16,7 @@ export default async function AccountPage() {
   const [{ data: profile }, { data: rawItems }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("is_supporter, bio, specialty, city, featured_item_id, avatar_url, avatar_color")
+      .select("is_supporter, bio, specialty, city, featured_item_id, avatar_url, avatar_color, followers_only_offers")
       .eq("id", user.id)
       .single(),
     supabase
@@ -27,12 +27,14 @@ export default async function AccountPage() {
   ]);
 
   const isSupporter     = profile?.is_supporter              ?? false;
+  const isAdmin         = username === process.env.ADMIN_USERNAME;
   const bio             = (profile as any)?.bio              as string ?? "";
   const specialty       = (profile as any)?.specialty        as string ?? "";
   const city            = (profile as any)?.city             as string ?? "";
   const featuredItemId  = (profile as any)?.featured_item_id as string | null ?? null;
   const avatarUrl       = (profile as any)?.avatar_url        as string | null ?? null;
-  const avatarColor     = (profile as any)?.avatar_color      as string | null ?? null;
+  const avatarColor           = (profile as any)?.avatar_color           as string | null ?? null;
+  const followersOnlyOffers   = (profile as any)?.followers_only_offers  as boolean ?? false;
 
   // Normalise the cards join — Supabase may return object or single-element array
   const collectionItems = (rawItems ?? []).map((item) => {
@@ -67,6 +69,8 @@ export default async function AccountPage() {
         initialAvatarColor={avatarColor}
         userId={user.id}
         collectionItems={collectionItems}
+        isAdmin={isAdmin}
+        initialFollowersOnlyOffers={followersOnlyOffers}
       />
     </div>
   );

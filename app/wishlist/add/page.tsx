@@ -20,12 +20,14 @@ export default function WishlistAddPage() {
   const router = useRouter();
   const [selected, setSelected] = useState<SelectedCard | null>(null);
   const [notes, setNotes] = useState("");
+  const [targetPrice, setTargetPrice] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   function handleSelect(card: SelectedCard) {
     setSelected(card);
     setNotes("");
+    setTargetPrice("");
     setError("");
   }
 
@@ -47,14 +49,17 @@ export default function WishlistAddPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setError("Not signed in."); setLoading(false); return; }
 
+    const parsedTarget = targetPrice ? parseFloat(targetPrice) : null;
+
     const { error: dbError } = await supabase.from("wishlist_items").insert({
-      user_id:       user.id,
+      user_id:        user.id,
       pokemon_api_id: selected.id,
-      card_name:     selected.name,
-      set_name:      selected.set.name,
-      card_number:   selected.number || null,
-      image_url:     selected.images.large || null,
-      notes:         notesValue || null,
+      card_name:      selected.name,
+      set_name:       selected.set.name,
+      card_number:    selected.number || null,
+      image_url:      selected.images.large || null,
+      notes:          notesValue || null,
+      target_price:   parsedTarget && parsedTarget > 0 ? parsedTarget : null,
     });
 
     if (dbError) {
@@ -132,6 +137,27 @@ export default function WishlistAddPage() {
                 className="w-full resize-none rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm text-foreground placeholder:text-foreground-muted focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors"
               />
               <p className="mt-1 text-xs text-foreground-muted">{notes.length}/200</p>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground-muted">
+                Price alert <span className="font-normal">(optional)</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground-muted text-sm">$</span>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={targetPrice}
+                  onChange={(e) => setTargetPrice(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-surface-raised pl-8 pr-4 py-3 text-sm text-foreground placeholder:text-foreground-muted focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors"
+                />
+              </div>
+              <p className="mt-1 text-xs text-foreground-muted">
+                Get notified when a listing for this card drops to or below this price.
+              </p>
             </div>
 
             {error && (

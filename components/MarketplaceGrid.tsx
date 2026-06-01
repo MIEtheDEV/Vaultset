@@ -23,7 +23,7 @@ const finishLabel: Record<string, string> = {
   textured_holofoil: "Textured Holofoil", gold_etched: "Gold Etched",
 };
 
-type FilterKey = "all" | "for_sale" | "for_trade" | "graded" | "wanted";
+type FilterKey = "all" | "for_sale" | "for_trade" | "graded" | "wanted" | "following";
 type SortKey   = "newest" | "price_asc" | "price_desc" | "name_asc";
 
 const FILTERS: { key: FilterKey; label: string }[] = [
@@ -94,23 +94,34 @@ function HeartIcon({ filled }: { filled: boolean }) {
   );
 }
 
+const VALID_FILTERS = new Set<FilterKey>(["all", "for_sale", "for_trade", "graded", "wanted", "following"]);
+
 export function MarketplaceGrid({
   listings,
   currentUserId,
   initialWatchedIds = [],
   wishedApiIds = [],
+  followingUserIds = [],
+  sellerFollowerCounts = {},
+  initialFilter,
 }: {
   listings: MarketplaceListing[];
   currentUserId: string;
   initialWatchedIds?: string[];
   wishedApiIds?: string[];
+  followingUserIds?: string[];
+  sellerFollowerCounts?: Record<string, number>;
+  initialFilter?: string;
 }) {
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const [filter, setFilter] = useState<FilterKey>(
+    VALID_FILTERS.has(initialFilter as FilterKey) ? (initialFilter as FilterKey) : "all"
+  );
   const [sort, setSort]     = useState<SortKey>("newest");
   const [watchedIds, setWatchedIds] = useState<Set<string>>(() => new Set(initialWatchedIds));
 
-  const wishedApiSet = useMemo(() => new Set(wishedApiIds), [wishedApiIds]);
+  const wishedApiSet    = useMemo(() => new Set(wishedApiIds),    [wishedApiIds]);
+  const followingUserSet = useMemo(() => new Set(followingUserIds), [followingUserIds]);
 
   async function toggleWatch(itemId: string) {
     const isWatched = watchedIds.has(itemId);
@@ -143,6 +154,7 @@ export function MarketplaceGrid({
     if (filter === "for_trade") result = result.filter((i) => i.for_trade);
     if (filter === "graded")    result = result.filter((i) => !!i.grader);
     if (filter === "wanted")    result = result.filter((i) => wishedApiSet.has(getCardApiId(i)));
+    if (filter === "following") result = result.filter((i) => followingUserSet.has(i.user_id));
 
     if (sort === "price_asc")  result.sort((a, b) => (a.list_price ?? Infinity) - (b.list_price ?? Infinity));
     if (sort === "price_desc") result.sort((a, b) => (b.list_price ?? -Infinity) - (a.list_price ?? -Infinity));
@@ -289,6 +301,19 @@ export function MarketplaceGrid({
                   ★ Wanted ({wishedApiSet.size})
                 </button>
               )}
+              {followingUserSet.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFilter("following")}
+                  className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                    filter === "following"
+                      ? "border-gold bg-gold/10 text-gold"
+                      : "border-border text-foreground-muted hover:border-gold/40 hover:text-foreground"
+                  }`}
+                >
+                  Following
+                </button>
+              )}
             </div>
             <select
               value={sort}
@@ -420,8 +445,14 @@ export function MarketplaceGrid({
                         {isOwn ? (
                           <span className="text-gold font-medium">Your listing</span>
                         ) : (
-                          <>by <Link href={`/profile/${item.seller_username}`} className="text-foreground hover:text-gold transition-colors">@{item.seller_username}</Link></>
-
+                          <span className="flex items-center gap-1.5 flex-wrap">
+                            <span>by <Link href={`/profile/${item.seller_username}`} className="text-foreground hover:text-gold transition-colors">@{item.seller_username}</Link></span>
+                            {(sellerFollowerCounts[item.user_id] ?? 0) > 0 && (
+                              <span className="text-foreground-muted opacity-60">
+                                · {sellerFollowerCounts[item.user_id]} follower{sellerFollowerCounts[item.user_id] !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </span>
                         )}
                       </span>
                       {item.for_sale && item.list_price != null ? (
@@ -475,9 +506,12 @@ export function MarketplaceGrid({
                             <HeartIcon filled={watchedIds.has(item.id)} />
                             {watchedIds.has(item.id) ? "Watching" : "Watch"}
                           </button>
-                          <span className="text-xs text-foreground-muted">
-                            Transactions <span className="font-medium text-gold">Coming Soon</span>
-                          </span>
+                          <Link
+                            href={`/marketplace/${item.id}`}
+                            className="text-xs font-medium text-foreground-muted hover:text-gold transition-colors"
+                          >
+                            Make Offer →
+                          </Link>
                         </div>
                       )}
                     </div>

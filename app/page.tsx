@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { UserNav } from "@/components/UserNav";
 import { HeroCardStack } from "@/components/HeroCardStack";
-import { KofiButton } from "@/components/KofiButton";
 
 const features = [
   {
@@ -54,9 +54,8 @@ const features = [
   },
   {
     title: "Trade Matching",
-    comingSoon: true,
     description:
-      "Build a wishlist of cards you want and flag what you have for trade. Vaultset will surface matching opportunities across the community automatically.",
+      "Build a wishlist of cards you want and flag what you have for trade. Vaultset surfaces matching opportunities across the community automatically.",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="17 1 21 5 17 9" />
@@ -91,19 +90,29 @@ export default async function Home() {
   const { data: { user } } = await supabase.auth.getUser();
   const username = user?.user_metadata?.username as string | undefined;
 
-  const [{ data: totalCardsData }, { data: gamesData }, { count: collectors }] = await Promise.all([
+  const admin = createAdminClient();
+
+  const [{ data: totalCardsData }, { data: gamesData }, { count: collectors }, { data: listingData }] = await Promise.all([
     supabase.rpc("get_platform_card_count"),
     supabase.from("cards").select("game").not("game", "is", null),
     supabase.from("profiles").select("*", { count: "exact", head: true }),
+    admin.from("collection_items").select("list_price").eq("for_sale", true).eq("on_hold", false).not("list_price", "is", null),
   ]);
 
-  const totalCards = (totalCardsData as number) ?? 0;
+  const totalCards    = (totalCardsData as number) ?? 0;
   const supportedGames = new Set(gamesData?.map((r) => r.game)).size;
+  const marketVolume  = (listingData ?? []).reduce((sum, r) => sum + Number(r.list_price ?? 0), 0);
+
+  function formatCurrency(n: number): string {
+    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+    if (n >= 1_000)     return `$${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+    return `$${n.toFixed(0)}`;
+  }
 
   const stats = [
     { value: formatCount(totalCards), label: "Cards Tracked" },
     { value: formatCount(collectors ?? 0), label: "Collectors" },
-    { value: "Coming Soon", label: "Market Volume" },
+    { value: formatCurrency(marketVolume), label: "Listed Value" },
     { value: formatCount(supportedGames), label: "Supported Games" },
   ];
 
@@ -304,19 +313,6 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border bg-background">
-        <div className="mx-auto max-w-7xl px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="text-lg font-bold tracking-widest text-gold">VAULTSET</span>
-          <KofiButton />
-          <div className="flex gap-6 text-sm text-foreground-muted">
-            <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
-            <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
-            <Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link>
-            <Link href="/support" className="hover:text-foreground transition-colors">Support</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

@@ -22,7 +22,7 @@ export default async function WishlistPage() {
   ] = await Promise.all([
     supabase
       .from("wishlist_items")
-      .select("id, pokemon_api_id, card_name, set_name, card_number, image_url, notes")
+      .select("id, pokemon_api_id, card_name, set_name, card_number, image_url, notes, target_price")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false }),
     supabase.rpc("get_wishlist_matches", { p_user_id: user.id }),
@@ -153,6 +153,11 @@ export default async function WishlistPage() {
                   {item.notes && (
                     <p className="text-xs text-foreground-muted italic leading-tight pt-1 border-t border-border mt-1">
                       {item.notes}
+                    </p>
+                  )}
+                  {(item as any).target_price != null && (
+                    <p className="text-xs text-gold font-medium pt-1">
+                      Alert: ≤${Number((item as any).target_price).toFixed(2)}
                     </p>
                   )}
                 </div>

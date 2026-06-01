@@ -12,7 +12,9 @@ import { ReportButton } from "@/components/ReportButton";
 
 import { AVATAR_COLORS, resolveAvatarColor, isHexColor } from "@/lib/avatarColors";
 import { MessageButton } from "@/components/MessageButton";
+import { FollowButton } from "@/components/FollowButton";
 import { timeAgo } from "@/lib/timeAgo";
+import { parseBio } from "@/lib/parseBio";
 
 // ── Metadata ───────────────────────────────────────────────────────────────────
 
@@ -62,6 +64,7 @@ export default async function ProfilePage({
   if (!profile) redirect("/community");
 
   const isOwnProfile   = user?.id === profile.id;
+  const isAdmin        = profile.username === process.env.ADMIN_USERNAME;
   const bio            = (profile as any).bio              as string | null;
   const specialty      = (profile as any).specialty        as string | null;
   const city           = (profile as any).city             as string | null;
@@ -77,6 +80,12 @@ export default async function ProfilePage({
     { data: spotlightItems },
     featuredResult,
     { data: wishlistItems },
+    { count: followerCount },
+    { count: followingCount },
+    { data: followState },
+    { data: followsYouBackState },
+    { data: myFollowingData },
+    { data: myWishlistData },
   ] = await Promise.all([
     // All collection items for stats (total cards, graded count, unique sets)
     supabase
@@ -133,6 +142,48 @@ export default async function ProfilePage({
       .select("id, card_name, set_name, card_number, image_url, notes")
       .eq("user_id", profile.id)
       .order("created_at", { ascending: false }),
+
+    // Follower count
+    supabase
+      .from("follows")
+      .select("*", { count: "exact", head: true })
+      .eq("following_id", profile.id),
+
+    // Following count
+    supabase
+      .from("follows")
+      .select("*", { count: "exact", head: true })
+      .eq("follower_id", profile.id),
+
+    // Current user's follow state
+    user
+      ? supabase
+          .from("follows")
+          .select("follower_id")
+          .eq("follower_id", user.id)
+          .eq("following_id", profile.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+
+    // Does the viewed profile follow the current user back?
+    user
+      ? supabase
+          .from("follows")
+          .select("follower_id")
+          .eq("follower_id", profile.id)
+          .eq("following_id", user.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+
+    // Who the current user follows (for mutual followers)
+    user
+      ? supabase.from("follows").select("following_id").eq("follower_id", user.id)
+      : Promise.resolve({ data: null, error: null }),
+
+    // Current user's wishlist (for cross-referencing against this profile's listings)
+    user && !isOwnProfile
+      ? supabase.from("wishlist_items").select("card_name, set_name, pokemon_api_id").eq("user_id", user.id)
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   // ── Compute stats ──────────────────────────────────────────────────────────
@@ -154,6 +205,36 @@ export default async function ProfilePage({
   const forTradeCount        =
     (cardListings?.filter((l) => l.for_trade).length   ?? 0) +
     (sealedListings?.filter((l) => l.for_trade).length ?? 0);
+
+  const isFollowing    = !!followState;
+  const followsYouBack = !!followsYouBackState;
+  const myFollowingIds = (myFollowingData ?? []).map((f: any) => f.following_id as string);
+
+  // Mutual followers: people I follow who also follow this profile (up to 2 named + count)
+  const { data: mutualData } = myFollowingIds.length > 0 && !isOwnProfile
+    ? await supabase
+        .from("follows")
+        .select("follower_id, profiles(username)")
+        .eq("following_id", profile.id)
+        .in("follower_id", myFollowingIds)
+        .limit(3)
+    : { data: null };
+  const mutuals = (mutualData ?? []).map((m: any) => {
+    const p = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+    return p?.username as string | undefined;
+  }).filter(Boolean) as string[];
+
+  // Wishlist cross-referencing: which of this profile's listings are on my wishlist?
+  const myWishlistApiIds = new Set(
+    (myWishlistData ?? []).map((w: any) => w.pokemon_api_id as string | null).filter(Boolean)
+  );
+  const wishlistMatchListings = !isOwnProfile
+    ? (cardListings ?? []).filter((l) => {
+        const card = Array.isArray(l.cards) ? l.cards[0] : l.cards;
+        const apiId = (card?.game_data as any)?.pokemon_api_id as string | undefined;
+        return apiId && myWishlistApiIds.has(apiId);
+      })
+    : [];
 
   const cardListingsWithSeller   = (cardListings   ?? []).map((l) => ({ ...l, seller_username: profile.username }));
   const sealedListingsWithSeller = (sealedListings ?? []).map((l) => ({ ...l, seller_username: profile.username }));
@@ -375,14 +456,42 @@ export default async function ProfilePage({
                 {city}
               </span>
             )}
+            <Link href={`/profile/${profile.username}/followers`} className="hover:text-foreground transition-colors">
+              <span className="font-semibold text-foreground">{followerCount ?? 0}</span>
+              {" "}Followers
+            </Link>
+            <Link href={`/profile/${profile.username}/following`} className="hover:text-foreground transition-colors">
+              <span className="font-semibold text-foreground">{followingCount ?? 0}</span>
+              {" "}Following
+            </Link>
           </p>
-          {bio && (
+          {bio && !isAdmin && (
             <p className="mt-2 text-sm text-foreground-muted leading-relaxed max-w-prose">{bio}</p>
+          )}
+          {mutuals.length > 0 && !isOwnProfile && (
+            <p className="mt-1.5 text-xs text-foreground-muted">
+              Followed by{" "}
+              {mutuals.slice(0, 2).map((u, i) => (
+                <span key={u}>
+                  {i > 0 && ", "}
+                  <Link href={`/profile/${u}`} className="font-medium text-foreground hover:text-gold transition-colors">@{u}</Link>
+                </span>
+              ))}
+              {mutuals.length > 2 && ` and ${mutuals.length - 2} other${mutuals.length - 2 !== 1 ? "s" : ""} you follow`}
+              {mutuals.length <= 2 && " you follow"}
+            </p>
           )}
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
           <ShareProfileButton username={profile.username} />
+          {user && !isOwnProfile && (
+            <FollowButton
+              profileId={profile.id}
+              initialIsFollowing={isFollowing}
+              followsYouBack={followsYouBack}
+            />
+          )}
           {user && !isOwnProfile && <MessageButton recipientId={profile.id} label="Message" />}
           {user && !isOwnProfile && <ReportButton reportedUserId={profile.id} />}
           {isOwnProfile && (
@@ -395,6 +504,35 @@ export default async function ProfilePage({
           )}
         </div>
       </div>
+
+      {/* Admin bio — full-width, larger display */}
+      {isAdmin && bio && (
+        <div className="rounded-2xl border border-gold/20 bg-surface p-6">
+          <p className="text-base text-foreground leading-relaxed">{parseBio(bio)}</p>
+        </div>
+      )}
+
+      {/* Wishlist cross-reference */}
+      {wishlistMatchListings.length > 0 && (
+        <div className="rounded-2xl border border-gold/20 bg-gold/5 px-5 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-gold shrink-0">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+            </svg>
+            <p className="text-sm text-foreground">
+              <span className="font-semibold text-gold">{wishlistMatchListings.length}</span>
+              {" "}card{wishlistMatchListings.length !== 1 ? "s" : ""} on your wishlist{" "}
+              {wishlistMatchListings.length !== 1 ? "are" : "is"} listed here
+            </p>
+          </div>
+          <Link
+            href={`/marketplace/user/${profile.username}`}
+            className="text-xs font-medium text-gold hover:text-gold-light transition-colors shrink-0"
+          >
+            View listings →
+          </Link>
+        </div>
+      )}
 
       {/* Featured card */}
       {featuredCard && (

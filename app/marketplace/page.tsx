@@ -16,7 +16,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function MarketplacePage() {
+export default async function MarketplacePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
+  const { filter: initialFilter } = await searchParams;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -81,19 +86,37 @@ export default async function MarketplacePage() {
     seller_username: sealedProfileMap.get(l.user_id) ?? "Unknown",
   }));
 
-  // Current user's watched item IDs and wishlist
+  // Current user's watched item IDs, wishlist, follows, and seller follower counts
   const [
     { data: watchlistData },
     { data: wishlistItems },
+    { data: myFollowsData },
+    { data: allFollowRows },
   ] = await Promise.all([
     supabase.from("watchlist").select("item_id").eq("user_id", user?.id ?? ""),
     user
       ? supabase.from("wishlist_items").select("pokemon_api_id").eq("user_id", user.id)
       : Promise.resolve({ data: [] }),
+    user
+      ? supabase.from("follows").select("following_id").eq("follower_id", user.id)
+      : Promise.resolve({ data: [] }),
+    supabase.from("follows").select("following_id"),
   ]);
 
-  const watchedItemIds = watchlistData?.map((w) => w.item_id) ?? [];
-  const wishedApiIds = (wishlistItems ?? []).map((w) => w.pokemon_api_id).filter(Boolean) as string[];
+  const watchedItemIds  = watchlistData?.map((w) => w.item_id) ?? [];
+  const wishedApiIds    = (wishlistItems ?? []).map((w) => w.pokemon_api_id).filter(Boolean) as string[];
+  const followingUserIds = (myFollowsData ?? []).map((f) => f.following_id);
+
+  const followerCountMap: Record<string, number> = {};
+  (allFollowRows ?? []).forEach((f) => {
+    followerCountMap[f.following_id] = (followerCountMap[f.following_id] ?? 0) + 1;
+  });
+
+  // Build per-seller follower count using user_id
+  const sellerFollowerCounts: Record<string, number> = {};
+  userIds.forEach((id) => {
+    if (followerCountMap[id]) sellerFollowerCounts[id] = followerCountMap[id];
+  });
 
   return (
     <div className="space-y-8">
@@ -109,6 +132,9 @@ export default async function MarketplacePage() {
         currentUserId={user?.id ?? ""}
         initialWatchedIds={watchedItemIds}
         wishedApiIds={wishedApiIds}
+        followingUserIds={followingUserIds}
+        sellerFollowerCounts={sellerFollowerCounts}
+        initialFilter={initialFilter}
       />
 
       {sealedWithSellers.length > 0 && (

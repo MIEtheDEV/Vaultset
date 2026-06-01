@@ -9,6 +9,7 @@ import { timeAgo } from "@/lib/timeAgo";
 import { OfferActions } from "@/components/OfferActions";
 import { MarkReceivedButton, WaitingForConfirmation } from "@/components/MarkReceivedButton";
 import { CancelAcceptedButton } from "@/components/CancelAcceptedButton";
+import { ReportDisputeButton } from "@/components/ReportDisputeButton";
 
 export const metadata: Metadata = {
   title: "Offer Detail",
@@ -28,6 +29,7 @@ const STATUS_CLASSES: Record<string, string> = {
   cancelled: "text-foreground-muted bg-surface border-border",
   countered: "text-blue-400 bg-blue-400/10 border-blue-400/30",
   completed: "text-teal-400 bg-teal-400/10 border-teal-400/30",
+  expired:   "text-foreground-muted bg-surface border-border",
 };
 
 const OFFER_EXPIRY_DAYS = 7;
@@ -318,19 +320,33 @@ export default async function OfferDetailPage({
               </>
             )}
 
-            <div className="pt-1 border-t border-emerald-500/10">
+            <div className="pt-2 border-t border-emerald-500/10 space-y-2">
               <CancelAcceptedButton offerId={offer.id as string} />
+              <ReportDisputeButton
+                offerId={offer.id as string}
+                cardName={card?.name ?? "Unknown card"}
+                otherUsername={otherUsername}
+              />
             </div>
           </div>
         )}
 
         {/* ── Terminal states ── */}
-        {(["declined", "cancelled", "countered", "completed"] as string[]).includes(status) && (
-          <div className="rounded-2xl border border-border bg-surface p-4 text-center">
+        {(["declined", "cancelled", "countered", "completed", "expired"] as string[]).includes(status) && (
+          <div className="rounded-2xl border border-border bg-surface p-4 space-y-3 text-center">
             <p className="text-sm text-foreground-muted">
               This offer has been{" "}
               <span className="text-foreground font-medium">{status}</span>.
             </p>
+            {status === "completed" && (
+              <div className="flex justify-center">
+                <ReportDisputeButton
+                  offerId={offer.id as string}
+                  cardName={card?.name ?? "Unknown card"}
+                  otherUsername={otherUsername}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
