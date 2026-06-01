@@ -167,7 +167,6 @@ export default async function CommunityPage() {
         <h2 className="font-semibold text-foreground mb-4">Coming in Future Updates</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
-            { title: "Pull Reveals",        description: "Share your pack openings with the community." },
             { title: "Collection Showcase", description: "Display your master sets and top pulls." },
             { title: "Achievement Badges",  description: "Earn badges for collection milestones." },
           ].map(({ title, description }) => (
@@ -176,6 +175,14 @@ export default async function CommunityPage() {
               <p className="text-xs text-foreground-muted leading-relaxed">{description}</p>
             </div>
           ))}
+          <Link
+            href="/reveals"
+            className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-1 hover:border-violet-500/40 transition-colors"
+          >
+            <p className="text-sm font-medium text-foreground">Pull Reveals</p>
+            <p className="text-xs text-foreground-muted leading-relaxed">Share your pack openings with the community.</p>
+            <p className="text-xs text-violet-400 mt-1">View reveals →</p>
+          </Link>
         </div>
       </div>
     </div>

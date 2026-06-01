@@ -4,6 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
 import { RefreshMarketButton } from "@/components/RefreshMarketButton";
 import { SupporterBadge } from "@/components/SupporterBadge";
+import { ReviewPrompt } from "@/components/ReviewPrompt";
 import { timeAgo } from "@/lib/timeAgo";
 
 export const metadata: Metadata = {
@@ -105,6 +106,8 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser();
   const username = user?.user_metadata?.username as string;
 
+  const isAdmin = username === process.env.ADMIN_USERNAME;
+
   const quickActions = [
     { label: "Add Card",      href: "/inventory/add",       comingSoon: false, icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -129,6 +132,14 @@ export default async function DashboardPage() {
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
       </svg>
     )},
+    ...(isAdmin ? [{
+      label: "Review Queue", href: "/admin/reviews", comingSoon: false, icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+        </svg>
+      ),
+    }] : []),
   ];
 
   const [
@@ -144,6 +155,7 @@ export default async function DashboardPage() {
     { data: wishlistItems },
     { data: recentProducts },
     { data: recentMessages },
+    { count: existingReviewCount },
   ] = await Promise.all([
     supabase.from("collection_items").select("quantity, list_price, market_price").eq("user_id", user!.id),
     supabase.from("collection_items").select("*", { count: "exact", head: true }).eq("user_id", user!.id).eq("for_sale", true),
@@ -166,6 +178,7 @@ export default async function DashboardPage() {
     supabase.from("wishlist_items").select("id, card_name, set_name, card_number, image_url, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("product_purchases").select("id, name, product_type, for_sale, for_trade, list_price, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("messages").select("id, body, created_at, sender_id, conversation_id").neq("sender_id", user!.id).order("created_at", { ascending: false }).limit(5),
+    supabase.from("reviews").select("id", { count: "exact", head: true }).eq("user_id", user!.id),
   ]);
 
   // Dedupe matches by listing_id (multiple wishlist items can match same listing)
@@ -319,6 +332,11 @@ export default async function DashboardPage() {
           <RefreshMarketButton lastRefreshedAt={refreshLog?.refreshed_at ?? null} />
         </div>
       </div>
+
+      {/* Review prompt — shown once user has 10+ cards and hasn't reviewed */}
+      {totalCards >= 10 && (existingReviewCount ?? 0) === 0 && (
+        <ReviewPrompt username={username} />
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

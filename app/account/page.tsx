@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { AccountSettingsForm } from "@/components/AccountSettingsForm";
 import { SupporterBadge } from "@/components/SupporterBadge";
+import { EditReviewButton } from "@/components/EditReviewButton";
 
 export default async function AccountPage() {
   const supabase = await createClient();
@@ -14,7 +15,7 @@ export default async function AccountPage() {
   const email       = user.email ?? "";
   const pendingEmail = (user as any).new_email as string | null ?? null;
 
-  const [{ data: profile }, { data: rawItems }] = await Promise.all([
+  const [{ data: profile }, { data: rawItems }, { data: existingReview }] = await Promise.all([
     supabase
       .from("profiles")
       .select("is_supporter, bio, specialty, city, featured_item_id, avatar_url, avatar_color, followers_only_offers")
@@ -25,6 +26,11 @@ export default async function AccountPage() {
       .select("id, cards(name, set_name, card_number, image_url)")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("reviews")
+      .select("rating, body, display_name")
+      .eq("user_id", user.id)
+      .maybeSingle(),
   ]);
 
   const isSupporter     = profile?.is_supporter              ?? false;
@@ -57,6 +63,14 @@ export default async function AccountPage() {
             Help keep Vaultset free →
           </Link>
         )}
+        <div className="mt-2">
+          <EditReviewButton
+            username={username}
+            existingRating={existingReview?.rating ?? undefined}
+            existingBody={existingReview?.body ?? undefined}
+            existingDisplayName={existingReview?.display_name ?? undefined}
+          />
+        </div>
       </div>
 
       <AccountSettingsForm

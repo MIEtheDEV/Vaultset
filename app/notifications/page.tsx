@@ -156,6 +156,25 @@ export default async function NotificationsPage() {
                   {" "}— a card on your wishlist
                 </span>
               );
+            } else if (n.type === "new_review") {
+              const data = n.data as { reviewer_username?: string };
+              icon = (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gold">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              );
+              content = (
+                <span>
+                  <Link href={`/profile/${data.reviewer_username}`} className="font-medium text-foreground hover:text-gold transition-colors">
+                    @{data.reviewer_username ?? "A collector"}
+                  </Link>
+                  {" "}submitted a review —{" "}
+                  <Link href="/admin/reviews" className="font-medium text-gold hover:underline">
+                    Review queue →
+                  </Link>
+                </span>
+              );
             } else {
               icon = (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-foreground-muted">
