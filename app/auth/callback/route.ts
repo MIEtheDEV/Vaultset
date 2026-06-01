@@ -10,6 +10,12 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      // OAuth users may not have a username yet — send them to profile setup
+      const { data: { user } } = await supabase.auth.getUser();
+      const hasUsername = !!user?.user_metadata?.username;
+      if (!hasUsername) {
+        return NextResponse.redirect(`${origin}/auth/setup?next=${encodeURIComponent(next)}`);
+      }
       return NextResponse.redirect(`${origin}${next}`);
     }
   }

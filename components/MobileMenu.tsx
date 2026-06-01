@@ -111,6 +111,18 @@ export function MobileMenu({ username }: { username: string }) {
               My Wishlist
             </Link>
             <Link
+              href="/transactions"
+              className="px-3 py-2 rounded-md text-sm text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"
+            >
+              Transactions
+            </Link>
+            <Link
+              href="/reveals"
+              className="px-3 py-2 rounded-md text-sm text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"
+            >
+              Pack Reveals
+            </Link>
+            <Link
               href="/account"
               className="px-3 py-2 rounded-md text-sm text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"
             >

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
+import { bulkSetForSale, bulkSetForTrade, bulkDelete } from "@/app/inventory/bulk-actions";
 
 const raritySystem = new PokemonRaritySystem();
 import { CardImage } from "@/components/CardImage";
@@ -96,10 +97,44 @@ function resolveCard(item: InventoryItem) {
 }
 
 export function InventoryGrid({ items, proposedItemIds = [] }: { items: InventoryItem[]; proposedItemIds?: string[] }) {
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<FilterKey>("all");
-  const [sort, setSort]     = useState<SortKey>("newest");
+  const [search, setSearch]         = useState("");
+  const [filter, setFilter]         = useState<FilterKey>("all");
+  const [sort, setSort]             = useState<SortKey>("newest");
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected]     = useState<Set<string>>(new Set());
+  const [bulkConfirmDelete, setBulkConfirmDelete] = useState(false);
+  const [bulkError, setBulkError]   = useState("");
+  const [isPending, startTransition] = useTransition();
   const proposedSet = useMemo(() => new Set(proposedItemIds), [proposedItemIds]);
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelected(new Set());
+    setBulkConfirmDelete(false);
+    setBulkError("");
+  }
+
+  function handleBulkAction(action: () => Promise<void>) {
+    setBulkError("");
+    startTransition(async () => {
+      try {
+        await action();
+        exitSelectMode();
+      } catch {
+        setBulkError("Action failed. Please try again.");
+      }
+    });
+  }
+
+  const selectedIds = [...selected];
 
   const visible = useMemo(() => {
     let result = [...items];
@@ -188,7 +223,7 @@ export function InventoryGrid({ items, proposedItemIds = [] }: { items: Inventor
         {/* Filters + Sort */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-wrap">
-            {FILTERS.map(({ key, label }) => (
+            {!selectMode && FILTERS.map(({ key, label }) => (
               <button
                 key={key}
                 type="button"
@@ -202,16 +237,51 @@ export function InventoryGrid({ items, proposedItemIds = [] }: { items: Inventor
                 {label}
               </button>
             ))}
+            {selectMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelected(new Set(visible.map((i) => i.id)))}
+                  className="rounded-full border border-border px-3.5 py-1.5 text-xs font-medium text-foreground-muted hover:text-foreground transition-colors"
+                >
+                  Select all ({visible.length})
+                </button>
+                {selected.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelected(new Set())}
+                    className="rounded-full border border-border px-3.5 py-1.5 text-xs font-medium text-foreground-muted hover:text-foreground transition-colors"
+                  >
+                    Deselect all
+                  </button>
+                )}
+              </>
+            )}
           </div>
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            className="rounded-xl border border-border bg-surface-raised px-3 py-1.5 text-xs text-foreground focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors"
-          >
-            {SORTS.map(({ key, label }) => (
-              <option key={key} value={key}>{label}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            {!selectMode && (
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                className="rounded-xl border border-border bg-surface-raised px-3 py-1.5 text-xs text-foreground focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors"
+              >
+                {SORTS.map(({ key, label }) => (
+                  <option key={key} value={key}>{label}</option>
+                ))}
+              </select>
+            )}
+            <button
+              type="button"
+              onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+              className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                selectMode
+                  ? "border-gold bg-gold/10 text-gold"
+                  : "border-border text-foreground-muted hover:border-gold/40 hover:text-foreground"
+              }`}
+            >
+              {selectMode ? "Cancel" : "Select"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -243,11 +313,19 @@ export function InventoryGrid({ items, proposedItemIds = [] }: { items: Inventor
             const card = resolveCard(item);
             if (!card) return null;
             const condKey = item.condition ?? "";
+            const isSelected = selected.has(item.id);
 
             return (
               <div
                 key={item.id}
-                className="group rounded-2xl border border-border bg-surface hover:border-gold/30 hover:bg-surface-raised transition-all duration-200"
+                onClick={selectMode ? () => toggleSelect(item.id) : undefined}
+                className={`group rounded-2xl border bg-surface transition-all duration-200 ${
+                  selectMode
+                    ? isSelected
+                      ? "border-gold bg-gold/5 cursor-pointer"
+                      : "border-border hover:border-gold/30 cursor-pointer"
+                    : "border-border hover:border-gold/30 hover:bg-surface-raised"
+                }`}
               >
                 {/* Card image */}
                 <div className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-t-2xl bg-surface-raised">
@@ -273,9 +351,21 @@ export function InventoryGrid({ items, proposedItemIds = [] }: { items: Inventor
                       </svg>
                     </div>
                   )}
-                  <span className="absolute top-2 left-2 rounded-full bg-background/80 backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-foreground-muted capitalize">
-                    {card.game}
-                  </span>
+                  {selectMode ? (
+                    <div className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                      isSelected ? "border-gold bg-gold" : "border-white/60 bg-background/60"
+                    }`}>
+                      {isSelected && (
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="text-background">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="absolute top-2 left-2 rounded-full bg-background/80 backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-foreground-muted capitalize">
+                      {card.game}
+                    </span>
+                  )}
                   <div className="absolute top-2 right-2 flex flex-row gap-1">
                     {item.on_hold ? (
                       <span className="rounded-full bg-amber-500/90 px-2 py-0.5 text-xs font-semibold text-background">On Hold</span>
@@ -355,28 +445,109 @@ export function InventoryGrid({ items, proposedItemIds = [] }: { items: Inventor
                     />
                   )}
 
-                  {item.on_hold && item.hold_offer_id ? (
-                    <Link
-                      href={`/offers/${item.hold_offer_id}`}
-                      className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
-                    >
-                      View offer →
-                    </Link>
-                  ) : (
-                    <div className="flex items-center gap-2">
+                  {!selectMode && (
+                    item.on_hold && item.hold_offer_id ? (
                       <Link
-                        href={`/inventory/${item.id}/edit`}
-                        className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+                        href={`/offers/${item.hold_offer_id}`}
+                        className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
                       >
-                        Edit
+                        View offer →
                       </Link>
-                      <RemoveCardButton itemId={item.id} />
-                    </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/inventory/${item.id}/edit`}
+                          className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+                        >
+                          Edit
+                        </Link>
+                        <RemoveCardButton itemId={item.id} />
+                      </div>
+                    )
                   )}
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Batch action bar */}
+      {selectMode && selected.size > 0 && (
+        <div className="sticky bottom-6 z-40 mx-auto max-w-xl rounded-2xl border border-border bg-surface shadow-2xl shadow-black/40 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-foreground">
+              {selected.size} card{selected.size !== 1 ? "s" : ""} selected
+            </p>
+            <button type="button" onClick={exitSelectMode} className="text-xs text-foreground-muted hover:text-foreground transition-colors">
+              Cancel
+            </button>
+          </div>
+
+          {bulkError && <p className="text-xs text-red-400">{bulkError}</p>}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => handleBulkAction(() => bulkSetForSale(selectedIds, true))}
+              className="rounded-full border border-gold/40 bg-gold/10 px-3.5 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 transition-colors disabled:opacity-50"
+            >
+              List for Sale
+            </button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => handleBulkAction(() => bulkSetForSale(selectedIds, false))}
+              className="rounded-full border border-border px-3.5 py-1.5 text-xs font-medium text-foreground-muted hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              Unlist from Sale
+            </button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => handleBulkAction(() => bulkSetForTrade(selectedIds, true))}
+              className="rounded-full border border-blue-400/40 bg-blue-400/10 px-3.5 py-1.5 text-xs font-medium text-blue-400 hover:bg-blue-400/20 transition-colors disabled:opacity-50"
+            >
+              Mark for Trade
+            </button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => handleBulkAction(() => bulkSetForTrade(selectedIds, false))}
+              className="rounded-full border border-border px-3.5 py-1.5 text-xs font-medium text-foreground-muted hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              Unmark Trade
+            </button>
+            {!bulkConfirmDelete ? (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => setBulkConfirmDelete(true)}
+                className="rounded-full border border-red-500/40 px-3.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+              >
+                Delete selected
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => handleBulkAction(() => bulkDelete(selectedIds))}
+                  className="rounded-full border border-red-500/40 bg-red-500/10 px-3.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                >
+                  {isPending ? "Deleting…" : "Confirm delete"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkConfirmDelete(false)}
+                  className="rounded-full border border-border px-3.5 py-1.5 text-xs font-medium text-foreground-muted hover:text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

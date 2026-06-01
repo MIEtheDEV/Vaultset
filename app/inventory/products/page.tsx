@@ -125,6 +125,12 @@ export default async function ProductsPage() {
                       + Add Pulled Card
                     </Link>
                     <Link
+                      href={`/reveals/log?product=${product.id}`}
+                      className="rounded-full border border-violet-500/30 bg-violet-500/5 px-3 py-1 text-xs font-medium text-violet-400 hover:bg-violet-500/10 transition-colors"
+                    >
+                      Log Reveal
+                    </Link>
+                    <Link
                       href={`/inventory/products/${product.id}/edit`}
                       className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
                     >

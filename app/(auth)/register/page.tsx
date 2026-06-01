@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { PasswordInput } from "@/components/PasswordInput";
+import { OAuthButtons } from "@/components/OAuthButtons";
 
 export default function RegisterPage() {
   const [username, setUsername] = useState("");
@@ -170,6 +171,10 @@ export default function RegisterPage() {
             {loading ? "Creating account…" : "Create Account"}
           </button>
         </form>
+
+        <div className="mt-6">
+          <OAuthButtons />
+        </div>
 
         <p className="mt-6 text-center text-sm text-foreground-muted">
           Already have an account?{" "}

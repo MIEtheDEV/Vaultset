@@ -88,11 +88,19 @@ export default async function OffersPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">My Offers</h1>
-        <p className="mt-1 text-sm text-foreground-muted">
-          Manage trade proposals, cash offers, and bundle requests.
-        </p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">My Offers</h1>
+          <p className="mt-1 text-sm text-foreground-muted">
+            Manage trade proposals, cash offers, and bundle requests.
+          </p>
+        </div>
+        <Link
+          href="/transactions"
+          className="text-sm text-foreground-muted hover:text-foreground transition-colors shrink-0"
+        >
+          Transaction history →
+        </Link>
       </div>
 
       {/* Received */}

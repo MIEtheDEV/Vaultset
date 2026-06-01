@@ -94,7 +94,7 @@ E2E_TEST_PASSWORD=
 
 Keys are in the Supabase dashboard under **Settings → API**.
 
-**Database:** Schema is managed directly in Supabase UI — there are no local migration files. To set up a new project, dump the schema from the live instance and run it in the Supabase SQL editor.
+**Database:** Schema changes are tracked in `supabase/migrations/`. Use the Supabase CLI (`supabase db push`) to apply them. To bootstrap a fresh project, run `supabase db pull` to export the live schema as the initial migration, then `supabase db push` for all subsequent changes. See `supabase/migrations/README.md` for details.
 
 **Supabase Auth redirect URLs** (Authentication → URL Configuration):
 - Local: `http://localhost:3000/auth/callback`

@@ -7,6 +7,8 @@ import { createOffer } from "@/app/offers/actions";
 
 type OfferType = "cash" | "trade" | "bundle";
 
+const MAX_PENDING_PER_LISTING = 3;
+
 interface PickerItem {
   id: string;
   condition: string | null;
@@ -343,7 +345,19 @@ export function OfferModal({
                     />
                   </div>
 
-                  {error && <p className="text-xs text-red-400">{error}</p>}
+                  {error && (
+                    error.startsWith("You already have") ? (
+                      <div className="rounded-xl border border-gold/30 bg-gold/5 px-3 py-2.5 text-xs text-foreground-muted">
+                        <p className="font-medium text-gold mb-0.5">Offer limit reached</p>
+                        <p>You have {MAX_PENDING_PER_LISTING} pending offers on this listing. Wait for a response before sending more.</p>
+                        <Link href="/offers" className="text-gold hover:underline mt-1 inline-block" onClick={closeModal}>
+                          View your offers →
+                        </Link>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-red-400">{error}</p>
+                    )
+                  )}
 
                   <div className="flex gap-3 pt-1">
                     <button

@@ -20,6 +20,7 @@ function labelClass() {
 interface Props {
   initialUsername:           string;
   initialEmail:              string;
+  pendingEmail:              string | null;
   initialBio:                string;
   initialSpecialty:          string;
   initialCity:               string;
@@ -35,6 +36,7 @@ interface Props {
 export function AccountSettingsForm({
   initialUsername,
   initialEmail,
+  pendingEmail,
   initialBio,
   initialSpecialty,
   initialCity,
@@ -47,6 +49,7 @@ export function AccountSettingsForm({
   isAdmin = false,
 }: Props) {
   const router = useRouter();
+  const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   // Profile fields
   const [username,       setUsername]       = useState(initialUsername);
@@ -259,6 +262,29 @@ export function AccountSettingsForm({
               className={inputClass()}
             />
           </div>
+
+          {pendingEmail && (
+            <div className="rounded-xl border border-gold/30 bg-gold/5 px-4 py-3 text-sm space-y-1">
+              <p className="font-medium text-gold">Email change pending</p>
+              <p className="text-foreground-muted text-xs">
+                Awaiting confirmation at <span className="text-foreground">{pendingEmail}</span>.
+                Check your inbox or resend the link.
+              </p>
+              <button
+                type="button"
+                disabled={resendStatus === "sending" || resendStatus === "sent"}
+                onClick={async () => {
+                  setResendStatus("sending");
+                  const supabase = createClient();
+                  const { error } = await supabase.auth.resend({ type: "email_change", email: initialEmail });
+                  setResendStatus(error ? "error" : "sent");
+                }}
+                className="text-xs text-gold hover:underline disabled:opacity-50"
+              >
+                {resendStatus === "sending" ? "Sending…" : resendStatus === "sent" ? "Sent!" : resendStatus === "error" ? "Failed — try again" : "Resend confirmation"}
+              </button>
+            </div>
+          )}
 
           <div>
             <label className={labelClass()}>Email</label>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { PasswordInput } from "@/components/PasswordInput";
+import { OAuthButtons } from "@/components/OAuthButtons";
 import { resolveLoginEmail } from "./actions";
 
 export default function LoginPage() {
@@ -96,6 +97,10 @@ export default function LoginPage() {
             {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
+
+        <div className="mt-6">
+          <OAuthButtons />
+        </div>
 
         <p className="mt-6 text-center text-sm text-foreground-muted">
           Don&apos;t have an account?{" "}

@@ -10,8 +10,9 @@ export default async function AccountPage() {
 
   if (!user) redirect("/login");
 
-  const username = (user.user_metadata?.username as string) ?? "";
-  const email    = user.email ?? "";
+  const username    = (user.user_metadata?.username as string) ?? "";
+  const email       = user.email ?? "";
+  const pendingEmail = (user as any).new_email as string | null ?? null;
 
   const [{ data: profile }, { data: rawItems }] = await Promise.all([
     supabase
@@ -61,6 +62,7 @@ export default async function AccountPage() {
       <AccountSettingsForm
         initialUsername={username}
         initialEmail={email}
+        pendingEmail={pendingEmail}
         initialBio={bio}
         initialSpecialty={specialty}
         initialCity={city}

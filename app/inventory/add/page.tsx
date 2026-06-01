@@ -151,6 +151,7 @@ export default function AddCardPage() {
   const [loading, setLoading]               = useState(false);
   const [error, setError]                   = useState("");
   const [duplicateWarning, setDuplicateWarning] = useState(false);
+  const [duplicateItems, setDuplicateItems] = useState<{ id: string; condition: string | null; grader: string | null; grade: number | null; quantity: number }[]>([]);
 
   const computedMarketHint = tcgplayerData
     ? searchProvider.getMarketPrice(
@@ -253,13 +254,18 @@ export default function AddCardPage() {
 
     if (matchingCardIds.length === 0) return false;
 
-    const { count } = await supabase
+    const { data: existing } = await supabase
       .from("collection_items")
-      .select("*", { count: "exact", head: true })
+      .select("id, condition, grader, grade, quantity")
       .eq("user_id", user.id)
-      .in("card_id", matchingCardIds);
+      .in("card_id", matchingCardIds)
+      .is("transfer_status", null)
+      .limit(5);
 
-    return (count ?? 0) > 0;
+    if ((existing ?? []).length === 0) return false;
+
+    setDuplicateItems(existing ?? []);
+    return true;
   }
 
   async function performSave() {
@@ -657,9 +663,29 @@ export default function AddCardPage() {
             <div>
               <p className="text-sm font-semibold text-yellow-400">This card is already in your vault.</p>
               <p className="mt-1 text-sm text-foreground-muted">
-                You can add another entry — for example, a different condition, grade, or price — or go back to review your existing copy.
+                You can add another entry (e.g. a different condition, grade, or price) or go back to review your existing {duplicateItems.length === 1 ? "copy" : "copies"}.
               </p>
             </div>
+            {duplicateItems.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-foreground-muted uppercase tracking-wide">Existing {duplicateItems.length === 1 ? "copy" : "copies"}</p>
+                {duplicateItems.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/inventory/${item.id}`}
+                    className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-2.5 text-sm hover:border-gold/30 transition-colors"
+                  >
+                    <span className="text-foreground-muted capitalize">
+                      {item.grader
+                        ? `${item.grader} ${item.grade}`
+                        : (item.condition?.replace(/_/g, " ") ?? "Unknown condition")}
+                      {item.quantity > 1 ? ` · ×${item.quantity}` : ""}
+                    </span>
+                    <span className="text-xs text-gold">View →</span>
+                  </Link>
+                ))}
+              </div>
+            )}
             <div className="flex gap-3">
               <button
                 type="button"
