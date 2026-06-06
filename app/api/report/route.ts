@@ -27,18 +27,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "You cannot report yourself." }, { status: 400 });
 
   const admin = createAdminClient();
+  const isAdmin = user.user_metadata?.username === process.env.ADMIN_USERNAME;
 
-  // Rate-limit: one report per reporter/target pair per day
-  const since = new Date(Date.now() - 86_400_000).toISOString();
-  const { count } = await admin
-    .from("reports")
-    .select("*", { count: "exact", head: true })
-    .eq("reporter_id", user.id)
-    .eq("reported_user_id", reportedUserId)
-    .gte("created_at", since);
+  if (!isAdmin) {
+    // Rate-limit: one report per reporter/target pair per day
+    const since = new Date(Date.now() - 86_400_000).toISOString();
+    const { count } = await admin
+      .from("reports")
+      .select("*", { count: "exact", head: true })
+      .eq("reporter_id", user.id)
+      .eq("reported_user_id", reportedUserId)
+      .gte("created_at", since);
 
-  if ((count ?? 0) > 0)
-    return NextResponse.json({ error: "You have already reported this user recently." }, { status: 429 });
+    if ((count ?? 0) > 0)
+      return NextResponse.json({ error: "You have already reported this user recently." }, { status: 429 });
+  }
 
   const { error } = await admin.from("reports").insert({
     reporter_id:      user.id,

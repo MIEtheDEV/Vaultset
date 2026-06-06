@@ -58,15 +58,17 @@ export default async function MarketplacePage({
   // Fetch seller usernames for all unique user_ids
   const userIds = [...new Set(listings?.map((l) => l.user_id) ?? [])];
   const { data: profiles } = userIds.length
-    ? await supabase.from("profiles").select("id, username").in("id", userIds)
+    ? await supabase.from("profiles").select("id, username").in("id", userIds).eq("banned", false)
     : { data: [] };
 
   const profileMap = new Map(profiles?.map((p) => [p.id, p.username]) ?? []);
 
-  const listingsWithSellers = (listings ?? []).map((l) => ({
-    ...l,
-    seller_username: profileMap.get(l.user_id) ?? "Unknown",
-  }));
+  const listingsWithSellers = (listings ?? [])
+    .filter((l) => profileMap.has(l.user_id))
+    .map((l) => ({
+      ...l,
+      seller_username: profileMap.get(l.user_id) ?? "Unknown",
+    }));
 
   // Sealed product listings
   const { data: sealedListings } = await supabase
@@ -77,14 +79,16 @@ export default async function MarketplacePage({
 
   const sealedUserIds = [...new Set(sealedListings?.map((l) => l.user_id) ?? [])];
   const { data: sealedProfiles } = sealedUserIds.length
-    ? await supabase.from("profiles").select("id, username").in("id", sealedUserIds)
+    ? await supabase.from("profiles").select("id, username").in("id", sealedUserIds).eq("banned", false)
     : { data: [] };
   const sealedProfileMap = new Map(sealedProfiles?.map((p) => [p.id, p.username]) ?? []);
 
-  const sealedWithSellers = (sealedListings ?? []).map((l) => ({
-    ...l,
-    seller_username: sealedProfileMap.get(l.user_id) ?? "Unknown",
-  }));
+  const sealedWithSellers = (sealedListings ?? [])
+    .filter((l) => sealedProfileMap.has(l.user_id))
+    .map((l) => ({
+      ...l,
+      seller_username: sealedProfileMap.get(l.user_id) ?? "Unknown",
+    }));
 
   // Current user's watched item IDs, wishlist, follows, and seller follower counts
   const [

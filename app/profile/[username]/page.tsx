@@ -89,6 +89,7 @@ export default async function ProfilePage({
     .from("profiles")
     .select("id, username, created_at, is_supporter, bio, specialty, city, featured_item_id, avatar_url, avatar_color")
     .eq("username", username)
+    .eq("banned", false)
     .single();
 
   if (!profile) redirect("/community");

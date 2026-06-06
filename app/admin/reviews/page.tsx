@@ -1,68 +1,55 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { redirect } from "next/navigation";
-import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { AppNav } from "@/components/AppNav";
 import { AdminReviewActions } from "@/components/AdminReviewActions";
 
 export default async function AdminReviewsPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const username = user.user_metadata?.username as string;
-  if (username !== process.env.ADMIN_USERNAME) redirect("/dashboard");
-
   const admin = createAdminClient();
 
-  const { data: pending } = await admin
+  const { data: reviews } = await admin
     .from("reviews")
     .select("id, rating, body, display_name, approved, pinned, created_at, user_id")
     .order("created_at", { ascending: false });
 
-  const userIds = [...new Set((pending ?? []).map((r) => r.user_id as string))];
+  const userIds = [...new Set((reviews ?? []).map((r) => r.user_id as string))];
   const { data: profiles } = userIds.length
     ? await admin.from("profiles").select("id, username").in("id", userIds)
     : { data: [] as { id: string; username: string }[] };
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p.username]));
 
-  const unapproved = (pending ?? []).filter((r) => !r.approved);
-  const approved   = (pending ?? []).filter((r) => r.approved);
+  const pending  = (reviews ?? []).filter((r) => !r.approved);
+  const approved = (reviews ?? []).filter((r) => r.approved);
 
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans">
-      <AppNav username={username} />
-      <main className="mx-auto max-w-3xl px-6 py-10 space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Review Queue</h1>
-          <p className="mt-1 text-sm text-foreground-muted">
-            {unapproved.length} pending · {approved.length} approved
-          </p>
-        </div>
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-xl font-semibold text-foreground">Review Queue</h2>
+        <p className="mt-0.5 text-sm text-foreground-muted">
+          {pending.length} pending · {approved.length} approved
+        </p>
+      </div>
 
-        {unapproved.length > 0 && (
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-foreground-muted uppercase tracking-wide">Pending</h2>
-            {unapproved.map((r) => (
-              <ReviewCard key={r.id} review={r} profileMap={profileMap} />
-            ))}
-          </section>
-        )}
+      {pending.length > 0 && (
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-foreground-muted uppercase tracking-wide">Pending</h3>
+          {pending.map((r) => (
+            <ReviewCard key={r.id} review={r} profileMap={profileMap} />
+          ))}
+        </section>
+      )}
 
-        {approved.length > 0 && (
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-foreground-muted uppercase tracking-wide">Approved</h2>
-            {approved.map((r) => (
-              <ReviewCard key={r.id} review={r} profileMap={profileMap} />
-            ))}
-          </section>
-        )}
+      {approved.length > 0 && (
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-foreground-muted uppercase tracking-wide">Approved</h3>
+          {approved.map((r) => (
+            <ReviewCard key={r.id} review={r} profileMap={profileMap} />
+          ))}
+        </section>
+      )}
 
-        {(pending ?? []).length === 0 && (
-          <p className="text-sm text-foreground-muted">No reviews yet.</p>
-        )}
-      </main>
+      {(reviews ?? []).length === 0 && (
+        <p className="text-sm text-foreground-muted">No reviews yet.</p>
+      )}
     </div>
   );
 }
@@ -96,11 +83,7 @@ function ReviewCard({ review, profileMap }: { review: any; profileMap: Map<strin
           </p>
         </div>
       </div>
-      <AdminReviewActions
-        reviewId={review.id}
-        approved={review.approved}
-        pinned={review.pinned}
-      />
+      <AdminReviewActions reviewId={review.id} approved={review.approved} pinned={review.pinned} />
     </div>
   );
 }

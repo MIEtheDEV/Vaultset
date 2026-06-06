@@ -70,7 +70,7 @@ export default function RegisterPage() {
           </div>
           <h1 className="text-xl font-bold text-foreground">Check your inbox</h1>
           <p className="mt-2 text-sm text-foreground-muted leading-relaxed">
-            We sent a confirmation link to <span className="text-foreground">{email}</span>. Click it to activate your account.
+            We sent a confirmation link to <span className="text-foreground">{email}</span>. Check your spam folder. Our platform is new, so confirmation emails may not land in your inbox. Click it to activate your account.
           </p>
           <Link
             href="/login"
@@ -170,7 +170,7 @@ export default function RegisterPage() {
           >
             {loading ? "Creating account…" : "Create Account"}
           </button>
-        </form>
+          </form>
 
         <div className="mt-6">
           <OAuthButtons />

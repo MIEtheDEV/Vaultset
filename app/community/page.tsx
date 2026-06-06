@@ -17,7 +17,7 @@ export default async function CommunityPage() {
     { data: publicItems },
     { data: followRows },
   ] = await Promise.all([
-    supabase.from("profiles").select("id, username, created_at, city").order("username"),
+    supabase.from("profiles").select("id, username, created_at, city").eq("banned", false).order("username"),
     supabase.from("collection_items").select("user_id").or("for_sale.eq.true,for_trade.eq.true"),
     supabase.from("follows").select("following_id"),
   ]);
