@@ -1,5 +1,7 @@
 import { createAdminClient } from "@/utils/supabase/admin";
 
+export const dynamic = "force-dynamic";
+
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
     <div className="rounded-2xl border border-border bg-surface p-5 space-y-1">
@@ -21,18 +23,20 @@ export default async function AdminAnalyticsPage() {
   const weekAgo  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000).toISOString();
   const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
+  console.log("[admin/analytics] Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+
   const [
-    { data: authData },
-    { count: totalItems },
-    { count: activeListings },
-    { count: tradeListings },
-    { data: offerRows },
-    { count: pendingReviews },
-    { count: approvedReviews },
-    { count: totalReveals },
-    { count: totalWarnings },
-    { data: warningsByType },
-    { data: auditRows },
+    authResult,
+    itemsResult,
+    activeListingsResult,
+    tradeListingsResult,
+    offersResult,
+    pendingReviewsResult,
+    approvedReviewsResult,
+    revealsResult,
+    warningsResult,
+    warningsByTypeResult,
+    auditResult,
   ] = await Promise.all([
     admin.auth.admin.listUsers({ perPage: 1000 }),
     admin.from("collection_items").select("*", { count: "exact", head: true }),
@@ -46,6 +50,42 @@ export default async function AdminAnalyticsPage() {
     admin.from("user_warnings").select("offense_type"),
     admin.from("admin_audit_log").select("action"),
   ]);
+
+  const queryErrors: string[] = [
+    authResult.error          && `auth.listUsers: ${authResult.error.message}`,
+    itemsResult.error         && `collection_items: ${itemsResult.error.message}`,
+    activeListingsResult.error && `active_listings: ${activeListingsResult.error.message}`,
+    tradeListingsResult.error  && `trade_listings: ${tradeListingsResult.error.message}`,
+    offersResult.error         && `offers: ${offersResult.error.message}`,
+    pendingReviewsResult.error && `pending_reviews: ${pendingReviewsResult.error.message}`,
+    approvedReviewsResult.error && `approved_reviews: ${approvedReviewsResult.error.message}`,
+    revealsResult.error        && `pack_reveals: ${revealsResult.error.message}`,
+    warningsResult.error       && `user_warnings: ${warningsResult.error.message}`,
+    warningsByTypeResult.error && `warnings_by_type: ${warningsByTypeResult.error.message}`,
+    auditResult.error          && `admin_audit_log: ${auditResult.error.message}`,
+  ].filter(Boolean) as string[];
+
+  if (queryErrors.length > 0) {
+    console.error("[admin/analytics] Query errors:\n" + queryErrors.map(e => `  • ${e}`).join("\n"));
+  }
+
+  console.log("[admin/analytics] authResult.data keys:", authResult.data ? Object.keys(authResult.data) : "null");
+  console.log("[admin/analytics] user count:", (authResult.data as any)?.users?.length ?? "undefined");
+  console.log("[admin/analytics] collection_items count:", itemsResult.count);
+
+  const fetchFailed = queryErrors.length > 0;
+
+  const authData            = authResult.data;
+  const totalItems          = itemsResult.count;
+  const activeListings      = activeListingsResult.count;
+  const tradeListings       = tradeListingsResult.count;
+  const offerRows           = offersResult.data;
+  const pendingReviews      = pendingReviewsResult.count;
+  const approvedReviews     = approvedReviewsResult.count;
+  const totalReveals        = revealsResult.count;
+  const totalWarnings       = warningsResult.count;
+  const warningsByType      = warningsByTypeResult.data;
+  const auditRows           = auditResult.data;
 
   const users = authData?.users ?? [];
   const totalUsers   = users.length;
@@ -78,6 +118,22 @@ export default async function AdminAnalyticsPage() {
         <h2 className="text-xl font-semibold text-foreground">Analytics</h2>
         <p className="mt-0.5 text-sm text-foreground-muted">Platform-wide metrics</p>
       </div>
+
+      {/* DEBUG - remove after diagnosis */}
+      <div className="rounded-xl border border-gold/30 bg-gold/5 px-4 py-3 font-mono text-xs text-foreground-muted space-y-1">
+        <p>totalUsers: {totalUsers} | totalItems: {totalItems} | activeListings: {activeListings}</p>
+        <p>pendingReviews: {pendingReviews} | approvedReviews: {approvedReviews}</p>
+        <p>errors: {queryErrors.length > 0 ? queryErrors.join(", ") : "none"}</p>
+      </div>
+
+      {fetchFailed && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 space-y-1">
+          <p className="text-sm font-medium text-red-400">Some queries failed — metrics may be incomplete.</p>
+          <ul className="text-xs text-red-400/80 space-y-0.5">
+            {queryErrors.map((e) => <li key={e} className="font-mono">• {e}</li>)}
+          </ul>
+        </div>
+      )}
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground-muted uppercase tracking-wide">Users</h3>
