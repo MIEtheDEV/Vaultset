@@ -5,6 +5,7 @@ import Link from "next/link";
 import { RefreshMarketButton } from "@/components/RefreshMarketButton";
 import { SupporterBadge } from "@/components/SupporterBadge";
 import { ReviewPrompt } from "@/components/ReviewPrompt";
+import { PortfolioChart } from "@/components/PortfolioChart";
 import { timeAgo } from "@/lib/timeAgo";
 
 export const metadata: Metadata = {
@@ -156,6 +157,7 @@ export default async function DashboardPage() {
     { data: recentProducts },
     { data: recentMessages },
     { count: existingReviewCount },
+    { data: priceHistoryRaw },
   ] = await Promise.all([
     supabase.from("collection_items").select("quantity, list_price, market_price").eq("user_id", user!.id),
     supabase.from("collection_items").select("*", { count: "exact", head: true }).eq("user_id", user!.id).eq("for_sale", true),
@@ -179,6 +181,11 @@ export default async function DashboardPage() {
     supabase.from("product_purchases").select("id, name, product_type, for_sale, for_trade, list_price, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("messages").select("id, body, created_at, sender_id, conversation_id").neq("sender_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("reviews").select("id", { count: "exact", head: true }).eq("user_id", user!.id),
+    supabase
+      .from("price_history")
+      .select("snapshotted_at, market_price, collection_items(quantity)")
+      .eq("user_id", user!.id)
+      .order("snapshotted_at", { ascending: true }),
   ]);
 
   // Dedupe matches by listing_id (multiple wishlist items can match same listing)
@@ -283,6 +290,16 @@ export default async function DashboardPage() {
   }, 0) ?? 0;
   const activeListings = (cardListings ?? 0) + (sealedListings ?? 0);
 
+  const portfolioHistory = Object.entries(
+    (priceHistoryRaw ?? []).reduce<Record<string, number>>((acc, row) => {
+      const qty = (row.collection_items as any)?.quantity ?? 1;
+      acc[row.snapshotted_at] = (acc[row.snapshotted_at] ?? 0) + Number(row.market_price) * qty;
+      return acc;
+    }, {})
+  )
+    .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   const dashboardStats = [
     { ...stats[0], value: String(totalCards) },
     { ...stats[1], value: `$${collectionValue.toFixed(2)}` },
@@ -350,6 +367,9 @@ export default async function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Portfolio value chart */}
+      <PortfolioChart data={portfolioHistory} />
 
       {/* Quick actions */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

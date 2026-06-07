@@ -36,7 +36,7 @@ export class PokemonTCGProvider extends CardSearchProvider {
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     const { set, number, promoRequested } = options;
 
-    const nameClause   = `name:${query}*`;
+    const nameClause   = query.trim().split(/\s+/).map((w) => `name:${w}*`).join(" ");
     const setClause    = set    ? ` set.name:${set}*` : "";
     const numberClause = number ? ` number:${number}` : "";
 

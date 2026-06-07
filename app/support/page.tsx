@@ -23,7 +23,7 @@ const methods = [
   },
   {
     name: "PayPal",
-    description: "Pay with your PayPal balance, bank account, or any debit or credit card.",
+    description: "Pay with your PayPal balance, bank account, or any debit or credit card. Venmo is also accepted via PayPal checkout.",
     cta: "Donate via PayPal",
     url: PAYPAL_URL,
     icon: (
@@ -35,7 +35,7 @@ const methods = [
   },
   {
     name: "Card",
-    description: "Donate by debit or credit card directly — powered by Stripe. Secure checkout.",
+    description: "Donate by debit or credit card directly — powered by Stripe. Cash App Pay is also available at checkout.",
     cta: "Donate by Card",
     url: STRIPE_URL,
     icon: (

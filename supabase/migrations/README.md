@@ -10,7 +10,6 @@ Schema changes are tracked here as timestamped SQL files. Each file is a forward
    ```
    supabase db pull
    ```
-   This writes the full schema to `supabase/migrations/<timestamp>_remote_schema.sql`.
 
 ## Adding a migration
 
@@ -29,12 +28,3 @@ supabase db push          # push local migrations to remote
 supabase db diff          # preview what would change
 supabase migration list   # see which migrations have been applied
 ```
-
-## Pending migrations (Phase 1+)
-
-The following migrations need to be written as new features are built:
-
-| File | Feature | Status |
-|------|---------|--------|
-| `*_add_pack_reveals_table.sql` | Pull reveals (Phase 1) | Pending |
-| `*_add_price_history_table.sql` | Price history charts (Phase 2) | Pending |

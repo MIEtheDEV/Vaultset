@@ -2,7 +2,7 @@
 
 ## Overview
 
-Vaultset is a full-stack web application for trading card collectors built on **Next.js 16 App Router**, **React 19**, and **Supabase** (PostgreSQL + Auth + Realtime). It supports card collection management, a peer-to-peer marketplace with a full offer/trade system, sealed product tracking, in-app messaging, wishlists, a community hub, and a follower/social graph.
+Vaultset is a full-stack web application for trading card collectors built on **Next.js 16 App Router**, **React 19**, and **Supabase** (PostgreSQL + Auth + Realtime). It supports card collection management, a peer-to-peer marketplace with a full offer/trade system, sealed product tracking, in-app messaging, wishlists, pull reveal logging, a community hub, a follower/social graph, and portfolio value tracking.
 
 The codebase uses a polymorphic game abstraction layer (`lib/`) so new trading card games can be supported by implementing two abstract classes — `CardSearchProvider` and `RaritySystem` — without touching any existing application code.
 
@@ -29,6 +29,7 @@ graph TD
         DB[(PostgreSQL)]
         RT[Realtime]
         ST[Storage]
+        CRON[pg_cron]
     end
 
     subgraph External[External APIs]
@@ -46,6 +47,7 @@ graph TD
     AR -->|admin client| ST
     CB -->|exchangeCodeForSession| AUTH
     MW -->|getSession cookie check| AUTH
+    CRON -->|snapshot_price_history()| DB
 ```
 
 ---
@@ -55,7 +57,7 @@ graph TD
 | Layer | Path | Responsibility |
 |---|---|---|
 | Pages & Layouts | `app/` | Routing, data fetching, page composition |
-| Components | `components/` | Reusable UI — forms, grids, nav, messaging |
+| Components | `components/` | Reusable UI — forms, grids, nav, messaging, charts |
 | Game Abstraction | `lib/search/` | Pluggable card search per game |
 | Game Abstraction | `lib/rarity/` | Pluggable rarity/variant/finish logic per game |
 | Shared Logic | `lib/parseBio.tsx` | Bio text parser — renders `[label](/path)` as links |
@@ -71,34 +73,42 @@ graph TD
 
 | Route | Protection | Description |
 |---|---|---|
-| `/` | Public | Landing page |
-| `/(auth)/login` | Public | Sign in |
+| `/` | Public | Landing page with reviews, FAQ, How It Works |
+| `/(auth)/login` | Public | Sign in (email/password + OAuth) |
 | `/(auth)/register` | Public | Create account |
 | `/(auth)/forgot-password` | Public | Password reset request |
 | `/(auth)/update-password` | Public | Password reset via email link |
 | `/auth/callback` | Public | Supabase post-login redirect handler |
-| `/dashboard` | Auth | Collection overview, stats, watchlist, wishlist, following feed |
-| `/dashboard/report` | Auth | Printable collection report |
-| `/inventory` | Auth | Card collection CRUD |
+| `/auth/setup` | Public | Username picker for OAuth users |
+| `/dashboard` | Auth | Collection stats, portfolio chart, watchlist, wishlist, following feed |
+| `/dashboard/report` | Auth | Printable collection P&L report |
+| `/inventory` | Auth | Card collection CRUD with bulk select/edit |
 | `/inventory/add` | Auth | Add card form |
 | `/inventory/[id]/edit` | Auth | Edit/delete card |
+| `/inventory/import` | Auth | Bulk CSV import with column mapping |
 | `/inventory/products` | Auth | Sealed product management |
 | `/marketplace` | Public | Browse all sale/trade listings |
-| `/marketplace/[id]` | Auth | Listing detail with offer modal |
-| `/marketplace/user/[username]` | Auth | Listings by a specific seller |
+| `/marketplace/[id]` | Public | Listing detail; offer modal requires auth |
+| `/marketplace/user/[username]` | Public | Listings by a specific seller |
 | `/offers` | Auth | Received and sent offers |
 | `/offers/[id]` | Auth | Offer detail — accept, decline, counter, cancel |
+| `/transactions` | Auth | Completed transaction history (sold/bought) |
 | `/messages` | Auth | Conversation inbox |
 | `/messages/[id]` | Auth | Message thread with Realtime updates |
-| `/notifications` | Auth | New follower and offer notifications |
-| `/community` | Auth | Collector directory with leaderboard |
+| `/notifications` | Auth | New follower, offer, and price alert notifications |
+| `/reveals` | Auth | Community pull reveal feed |
+| `/reveals/log` | Auth | Log a new pack reveal |
+| `/community` | Public | Collector directory with leaderboard |
 | `/account` | Auth | Profile, password, followers-only-offers setting |
-| `/profile/[username]` | Auth | Public profile — listings, collection, wishlist, follows |
-| `/profile/[username]/followers` | Auth | List of followers |
-| `/profile/[username]/following` | Auth | List of followed collectors |
+| `/profile/[username]` | Public | Public profile — listings, collection, wishlist, follows |
+| `/profile/[username]/followers` | Public | List of followers |
+| `/profile/[username]/following` | Public | List of followed collectors |
 | `/wishlist` | Auth | Personal wishlist management |
 | `/wishlist/add` | Auth | Add card to wishlist |
-| `/support` | Public | Ko-fi supporter link |
+| `/reviews` | Public | Collector reviews landing page |
+| `/support` | Public | Donation options (Ko-fi, PayPal, Stripe) |
+| `/support/thank-you` | Public | Post-donation thank-you redirect |
+| `/admin/analytics` | Admin | Admin dashboard — reports, user management |
 
 ---
 
@@ -117,6 +127,7 @@ classDiagram
         +featured_item_id uuid
         +is_supporter boolean
         +followers_only_offers boolean
+        +cumulative_warnings int
         +created_at timestamp
     }
 
@@ -152,6 +163,15 @@ classDiagram
         +grade numeric
         +cert_number string
         +notes string
+    }
+
+    class PriceHistory {
+        +id uuid
+        +collection_item_id uuid
+        +user_id uuid
+        +market_price numeric
+        +snapshotted_at date
+        +created_at timestamp
     }
 
     class Offer {
@@ -236,18 +256,40 @@ classDiagram
         +notes string
     }
 
+    class PackReveal {
+        +id uuid
+        +user_id uuid
+        +product_purchase_id uuid
+        +caption string
+        +visibility string
+        +created_at timestamp
+    }
+
+    class Review {
+        +id uuid
+        +user_id uuid
+        +rating int
+        +body text
+        +status string
+        +created_at timestamp
+    }
+
     Profile "1" --> "0..*" CollectionItem : owns
     Profile "1" --> "0..*" ProductPurchase : owns
     Profile "1" --> "0..*" WishlistItem : wants
     Profile "1" --> "0..*" Conversation : participates in
     Profile "1" --> "0..*" Follow : follows
     Profile "1" --> "0..*" Notification : receives
+    Profile "1" --> "0..*" PackReveal : logs
+    Profile "1" --> "0..*" Review : writes
     Card "1" --> "0..*" CollectionItem : describes
     CollectionItem "0..*" --> "0..1" ProductPurchase : pulled from
+    CollectionItem "1" --> "0..*" PriceHistory : tracks
     Conversation "1" --> "0..*" Message : contains
     Conversation "0..1" --> "0..1" CollectionItem : references
     Offer "1" --> "0..*" OfferItem : includes
     Offer --> CollectionItem : holds
+    ProductPurchase "1" --> "0..*" PackReveal : revealed from
 ```
 
 ---
@@ -263,10 +305,10 @@ sequenceDiagram
     participant App as Next.js App
     participant Auth as Supabase Auth
 
-    User->>App: Submit login form
-    App->>Auth: signInWithPassword()
+    User->>App: Submit login form (or OAuth)
+    App->>Auth: signInWithPassword() / OAuth redirect
     Auth-->>App: session tokens
-    App-->>User: redirect to dashboard
+    App-->>User: redirect to dashboard (or /auth/setup for new OAuth users)
 
     User->>MW: Visit protected page
     MW->>Auth: getSession() (cookie read, no network)
@@ -304,6 +346,10 @@ On acceptance, inventory changes execute atomically before the status update:
 - Original availability flags stored in `offer_items` for restoration on cancel
 
 Both parties must confirm receipt (`markItemReceived`) before completion. Either can cancel, which releases all holds and restores original flags.
+
+### Price History Snapshots
+
+A pg_cron job (`daily-price-snapshot`) runs at **02:00 UTC every day** and calls `snapshot_price_history()`. This function inserts one row into `price_history` per `collection_item` that has a non-null `market_price`, using `current_date` as the snapshot date. A unique constraint on `(collection_item_id, snapshotted_at)` allows the function to be run multiple times safely (upsert). The dashboard `PortfolioChart` component aggregates these rows by date to show portfolio value over time.
 
 ### Messaging
 
@@ -368,13 +414,31 @@ Most notifications are created by `SECURITY DEFINER` Postgres triggers:
 - `offers_notification_trigger` — fires on `offers` INSERT → creates `new_offer` notification for recipient
 - `auto_expire_on_offer_change` — fires on `offers` INSERT/UPDATE → sets stale pending offers to `expired`
 
-Price alert notifications are created by the market refresh API route (`/api/market-refresh`) after prices update, using the `check_wishlist_price_alerts(p_user_id)` RPC to find listings at or below each wishlist item's `target_price`. Duplicates are suppressed by checking for existing `price_alert` notifications with the same `listing_id`.
+Price alert notifications are created by the market refresh API route (`/api/market-refresh`) after prices update, using the `check_wishlist_price_alerts(p_user_id)` RPC to find listings at or below each wishlist item's `target_price`.
 
 ### Row-Level Security
 All tables enforce RLS. Users read/write only their own data. Marketplace listings and profiles are readable by all authenticated users. Conversations are readable only by their two participants. Notifications are readable only by their recipient.
 
 ### Admin Client for Privileged Writes
 Operations that span multiple users (offer acceptance, cancellation, inventory transfer) use the service-role client from `utils/supabase/admin.ts` to bypass RLS safely within server actions.
+
+### Card Search
+`PokemonTCGProvider.search()` builds a Lucene query against the pokemontcg.io API. Multi-word card names are split into per-token `name:word*` clauses (ANDed) to support partial prefix matching across all tokens (e.g. `name:Hop's* name:Z*` finds "Hop's Zacian ex"). Known gap: cards absent from pokemontcg.io (some XY-era promos) cannot be found via search.
+
+---
+
+## SEO
+
+All SEO work is complete. Key implementations:
+- Marketplace and community pages are publicly indexed (no auth redirect for bots)
+- `Product` JSON-LD schema on listing detail pages
+- `FAQPage` JSON-LD on homepage
+- Canonical tags on all public pages
+- Dynamic `generateMetadata` on listing, profile, and storefront pages
+- `BreadcrumbList` JSON-LD on listing and profile sub-pages
+- Sitemap includes marketplace listings, profiles, and community page with real `lastModified` dates
+- OG image served from `/opengraph-image` (Next.js dynamic image generation)
+- Twitter card with `@vaultsetapp` site handle
 
 ---
 
@@ -384,10 +448,10 @@ Operations that span multiple users (offer acceptance, cancellation, inventory t
 
 **Creating an account**
 1. Click **Start for Free** on the homepage
-2. Enter a username, email, and password
+2. Enter a username, email, and password — or use Google/Discord OAuth
 3. Click **Create Account** and confirm your email
 
-**Signing in** — click **Sign in**, enter email and password.
+**Signing in** — click **Sign in**, enter email and password, or use OAuth.
 
 **Forgot password** — click **Forgot password?** on the login page and follow the email link.
 
@@ -397,11 +461,13 @@ Operations that span multiple users (offer acceptance, cancellation, inventory t
 
 Your home base. Shows:
 - **Total Cards / Collection Value / Active Listings / Pending Trades** — live stats
+- **Portfolio Value chart** — collection value over time (7D / 30D / 90D / All), powered by daily price history snapshots
 - **Available Now** — wishlist cards currently listed for sale by other collectors
 - **Trade Matches** — wishlist cards other collectors are willing to trade
 - **Following Feed** — recent listings from collectors you follow
 - **Recently Added** — your last 8 inventory additions
 - **Watchlist / Wishlist** — quick access panels
+- **Recent Activity** — chronological feed of your actions
 
 **Quick actions:** Add Card · Browse Market · Start a Trade · View Profile
 
@@ -416,6 +482,10 @@ Split into **Cards** and **Products**.
 2. Search by card name and select the correct result
 3. Set condition, quantity, paid price, list price, for sale/trade toggles, and grading info
 4. Click **Save**
+
+**Bulk import** — Inventory → Import CSV. Upload a CSV, map columns, preview, and import in bulk.
+
+**Bulk edit** — enable Select mode in the inventory grid to check multiple cards, then use the batch action bar to list for sale, mark for trade, or delete.
 
 **Sealed Products** — manage booster boxes, ETBs, bundles. Track cost, link pulled cards, and list for sale or trade.
 
@@ -449,16 +519,14 @@ Accessed from any listing detail page. Three offer types:
 
 Offers expire after 7 days if not responded to.
 
-**Dispute reporting** — a **Report a problem** link appears on accepted and completed offer detail pages. Submitting the form opens a direct message thread with support pre-filled with the offer ID, card name, and the user's description.
+**Dispute reporting** — a **Report a problem** link appears on accepted and completed offer detail pages.
 
 ---
 
 ### Followers & Following
 
-- **Follow** a collector from their profile page — button appears next to Share and Message
+- **Follow** a collector from their profile page
 - **Followers / Following counts** on profile headers are clickable links to the full lists
-- **"Follows you"** label appears below the Follow button when the relationship is mutual
-- **"Followed by @x and N others you follow"** — shown on profiles of collectors your network already follows
 - **Following feed** on the dashboard surfaces their recent listings
 - **Following filter** on the Marketplace shows only their listings
 
@@ -471,11 +539,9 @@ Offers expire after 7 days if not responded to.
 A bell icon in the nav bar shows unread count. Click it to go to `/notifications`.
 
 Notification types:
-- **New follower** — someone followed you (links to their profile)
-- **New offer** — someone made an offer on your listing (links to the offer)
-- **Price alert** — a wishlist card is listed at or below your target price (links to the listing)
-
-Notifications are marked read when you open the notifications page.
+- **New follower** — someone followed you
+- **New offer** — someone made an offer on your listing
+- **Price alert** — a wishlist card is listed at or below your target price
 
 ---
 
@@ -484,7 +550,6 @@ Notifications are marked read when you open the notifications page.
 - **Start a conversation** from any listing (Contact Seller) or profile (Message)
 - Existing conversations are reused — one thread per user pair
 - Messages appear in real time without a page refresh
-- Gold badge on the Messages nav link indicates unread messages
 
 ---
 
@@ -494,8 +559,13 @@ Track cards you are looking for. Publicly visible on your profile.
 
 1. Wishlist → **Add Card** → search and select
 2. Optionally add a note (e.g. "NM only")
-3. Optionally set a **price alert** — enter a target price and you'll be notified whenever a listing for that card drops to or below it
-4. When a wishlist card is listed by another collector, it surfaces on your dashboard and in the marketplace with a **★ Wanted** badge
+3. Optionally set a **price alert** — enter a target price and you'll be notified when a listing drops to or below it
+
+---
+
+### Pull Reveals
+
+Log pack openings from sealed products. Each reveal can include a caption and visibility setting (public/private). Public reveals appear in the community `/reveals` feed.
 
 ---
 
@@ -504,13 +574,9 @@ Track cards you are looking for. Publicly visible on your profile.
 Every user has a public profile at `/profile/[username]` showing:
 - Avatar, username, join date, city, bio, specialty
 - Follower / following counts (clickable)
-- Mutual followers from your network
-- Wishlist cross-reference banner (if they have cards you want)
 - Tabs: Listings · Collection · Wishlist
 
 **Editing your profile** — go to Account Settings to update bio, specialty, city, avatar, featured card, and offer privacy settings.
-
-**Admin bio** — the platform admin's bio supports `[label](/path)` link syntax and renders in an expanded block.
 
 ---
 
@@ -526,7 +592,7 @@ Lists all collectors with follower counts. Includes a **Top Collectors** leaderb
 |---|---|
 | Username | Your display name across the platform |
 | Email | Used for login and notifications |
-| Bio | Short description on your profile (500 chars for admin, 160 for others) |
+| Bio | Short description on your profile |
 | Specialty | Collecting focus shown as a badge |
 | City | Location shown on profile and community directory |
 | Avatar | Color picker or photo upload |
@@ -534,3 +600,14 @@ Lists all collectors with follower counts. Includes a **Top Collectors** leaderb
 | Followers-only offers | Restrict offer buttons to your followers |
 | Password | Change your login password |
 | Delete Account | Permanently removes your account and all data |
+
+---
+
+### Support & Donations
+
+Vaultset is free to use. Donations are accepted at `/support` via:
+- **Ko-fi** — one-time contributions; triggers a Supporter badge via webhook
+- **PayPal** — PayPal balance, bank, or card; Venmo also available at PayPal checkout
+- **Stripe** — debit/credit card; Cash App Pay also available at Stripe checkout
+
+Donations are not tax-deductible.

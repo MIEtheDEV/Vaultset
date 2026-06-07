@@ -30,7 +30,7 @@
 
 ### Phase 2
 
-- [ ] **Price history charts** — Graph `market_price` over time per card; **Pro feature**. *No time-series data is stored yet — requires a new table and a scheduled job to snapshot prices daily. Must ship before portfolio analytics.*
+- [x] **Price history charts** — Area chart on dashboard showing portfolio value over time with 7D/30D/90D/All range selector. `price_history` table snapshots daily via pg_cron at 02:00 UTC. Per-card chart is a future enhancement.
 - [ ] **Portfolio analytics** — Total collection value over time, ROI tracking; **Pro feature**. *Depends on price history data from above.*
 - [ ] **Collection showcase** — Curated public collection views per user; **Pro feature** (advanced customization). *Profiles show a basic card tab but no curated/showcase layout.*
 - [ ] **Achievement badges** — Milestone rewards (e.g., 100 cards added, first sale). *Supporter badge for donors exists; milestone badges do not.*
@@ -50,6 +50,10 @@
 - [ ] **2FA** — Optional TOTP for account security.
 - [ ] **Error monitoring** — No error tracking service (e.g. Sentry) is integrated. *Uncaught client and server errors are currently invisible.*
 
+### Known Issues / Backlog
+
+- [ ] **Manual card entry fallback** — Some promo cards (e.g. Riolu XY Black Star Promo from the Mega Evolutions ETB) are absent from pokemontcg.io entirely. Need a manual entry form for cards the API doesn't have.
+
 ### Phase 5
 
 - [ ] **Shipping integration** — Label generation or shipping cost estimation; required before collecting transaction fees on shipped orders.
@@ -60,7 +64,7 @@
 ## Completed
 
 - [x] **Homepage overhaul** — Rotating headline, How It Works section, comparison table, FAQ with `FAQPage` JSON-LD schema, collector reviews system (submission, admin approval queue, star bar, `/reviews` landing page), review prompt on dashboard at 10+ cards, admin notifications on review submit/edit.
-- [x] **Donation button** — Ko-fi + PayPal + Stripe payment links on `/support`; Supporter badge displayed on profiles for Ko-fi donors
+- [x] **Donation button** — Ko-fi + PayPal + Stripe payment links on `/support`; Supporter badge displayed on profiles for Ko-fi donors. PayPal and Stripe verified working in production; Venmo accessible via PayPal checkout, Cash App via Stripe checkout.
 - [x] **Offer system** — Buyers send cash/trade/bundle offers; sellers accept/reject/counter; full lifecycle (pending → accepted → completed) with 7-day auto-expiry, inventory holds, both-party receipt confirmation, and offer history
 - [x] **Public user profiles** — Public profile at `/profile/[username]` with avatar, bio, specialty, city, followers, featured card, and tabbed listings/collection/wishlist views
 - [x] **Card wishlist** — Cards the user wants to acquire with optional notes and price targets
