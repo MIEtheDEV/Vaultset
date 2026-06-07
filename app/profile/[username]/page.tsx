@@ -6,6 +6,8 @@ import { createClient } from "@/utils/supabase/server";
 import { MarketplaceGrid } from "@/components/MarketplaceGrid";
 import { SealedProductsGrid } from "@/components/SealedProductsGrid";
 import { SupporterBadge } from "@/components/SupporterBadge";
+import { BadgeBoard } from "@/components/BadgeBoard";
+import type { BadgeSlug } from "@/lib/badges";
 import { ShareProfileButton } from "@/components/ShareProfileButton";
 import { ProfileTabs } from "@/components/ProfileTabs";
 import { ReportButton } from "@/components/ReportButton";
@@ -117,6 +119,7 @@ export default async function ProfilePage({
     { data: followsYouBackState },
     { data: myFollowingData },
     { data: myWishlistData },
+    { data: profileBadgeData },
   ] = await Promise.all([
     // All collection items for stats (total cards, graded count, unique sets)
     supabase
@@ -215,6 +218,9 @@ export default async function ProfilePage({
     user && !isOwnProfile
       ? supabase.from("wishlist_items").select("card_name, set_name, pokemon_api_id").eq("user_id", user.id)
       : Promise.resolve({ data: null, error: null }),
+
+    // Achievement badges earned by this profile
+    supabase.from("user_badges").select("badge_slug, earned_at").eq("user_id", profile.id),
   ]);
 
   // ── Compute stats ──────────────────────────────────────────────────────────
@@ -266,6 +272,18 @@ export default async function ProfilePage({
         return apiId && myWishlistApiIds.has(apiId);
       })
     : [];
+
+  const profileBadges = (profileBadgeData ?? []).map((b) => ({
+    badge_slug: b.badge_slug as string,
+    earned_at: b.earned_at as string,
+  }));
+
+  const { data: featuredBadgeData } = await supabase
+    .from("profiles")
+    .select("featured_badge_slugs")
+    .eq("id", profile.id)
+    .single();
+  const featuredBadgeSlugs = (featuredBadgeData as any)?.featured_badge_slugs as string[] ?? [];
 
   const cardListingsWithSeller   = (cardListings   ?? []).map((l) => ({ ...l, seller_username: profile.username }));
   const sealedListingsWithSeller = (sealedListings ?? []).map((l) => ({ ...l, seller_username: profile.username }));
@@ -623,6 +641,14 @@ export default async function ProfilePage({
           </div>
         ))}
       </div>
+
+      {/* Achievement badges */}
+      <BadgeBoard
+        earnedBadges={profileBadges}
+        isOwnProfile={isOwnProfile}
+        profileUserId={profile.id}
+        initialFeaturedSlugs={featuredBadgeSlugs}
+      />
 
       {/* Tabbed content */}
       <ProfileTabs

@@ -175,6 +175,25 @@ export default async function NotificationsPage() {
                   </Link>
                 </span>
               );
+            } else if (n.type === "badge_earned") {
+              const data = n.data as { badge_slug?: string; badge_label?: string; badge_description?: string };
+              icon = (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gold">
+                  <polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5" />
+                  <polyline points="2,8.5 12,15 22,8.5" />
+                  <line x1="12" y1="15" x2="12" y2="22" />
+                </svg>
+              );
+              content = (
+                <span>
+                  You earned the{" "}
+                  <span className="font-medium text-foreground">{data.badge_label ?? data.badge_slug}</span>
+                  {" "}badge
+                  {data.badge_description && (
+                    <span className="text-foreground-muted"> — {data.badge_description}</span>
+                  )}
+                </span>
+              );
             } else {
               icon = (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-foreground-muted">

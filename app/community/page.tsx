@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { timeAgo } from "@/lib/timeAgo";
+import { BadgeChip } from "@/components/BadgeChip";
+import { BADGE_MAP, type BadgeSlug } from "@/lib/badges";
 
 export const metadata: Metadata = {
   title: "Community",
@@ -12,15 +14,56 @@ export const metadata: Metadata = {
 export default async function CommunityPage() {
   const supabase = await createClient();
 
+  const { data: allProfiles } = await supabase
+    .from("profiles")
+    .select("id, username, created_at, city")
+    .eq("banned", false)
+    .order("username");
+
+  const profileIds = (allProfiles ?? []).map((p) => p.id);
+
   const [
-    { data: allProfiles },
     { data: publicItems },
     { data: followRows },
+    { data: featuredRows },
+    { data: earnedRows },
   ] = await Promise.all([
-    supabase.from("profiles").select("id, username, created_at, city").eq("banned", false).order("username"),
     supabase.from("collection_items").select("user_id").or("for_sale.eq.true,for_trade.eq.true"),
     supabase.from("follows").select("following_id"),
+    // Resilient: returns null data (not a crash) if column doesn't exist yet
+    profileIds.length
+      ? supabase.from("profiles").select("id, featured_badge_slugs").in("id", profileIds)
+      : Promise.resolve({ data: [] as { id: string }[] }),
+    profileIds.length
+      ? supabase.from("user_badges").select("user_id, badge_slug, earned_at").in("user_id", profileIds)
+      : Promise.resolve({ data: [] as { user_id: string; badge_slug: string; earned_at: string }[] }),
   ]);
+
+  // userId → explicitly featured slug list (may be empty if column doesn't exist yet)
+  const featuredMap = new Map<string, string[]>(
+    (featuredRows ?? []).map((r) => [r.id, (r as any).featured_badge_slugs as string[] ?? []])
+  );
+
+  // userId → earned slugs sorted newest-first (for fallback display)
+  const earnedByUser = new Map<string, string[]>();
+  [...(earnedRows ?? [])]
+    .sort((a, b) => new Date((b as any).earned_at).getTime() - new Date((a as any).earned_at).getTime())
+    .forEach((r) => {
+      if (!earnedByUser.has(r.user_id)) earnedByUser.set(r.user_id, []);
+      earnedByUser.get(r.user_id)!.push(r.badge_slug);
+    });
+
+  // Returns badges to display: explicit selection if set, otherwise 5 most recently earned
+  function getFeaturedBadges(userId: string) {
+    const featured = featuredMap.get(userId) ?? [];
+    const earned   = new Set(earnedByUser.get(userId) ?? []);
+    const slugs    = featured.filter((s) => earned.has(s)).length > 0
+      ? featured.filter((s) => earned.has(s))
+      : (earnedByUser.get(userId) ?? []).slice(0, 5);
+    return slugs
+      .map((s) => BADGE_MAP.get(s as BadgeSlug))
+      .filter(Boolean) as NonNullable<ReturnType<typeof BADGE_MAP.get>>[];
+  }
 
   const listingCountMap = new Map<string, number>();
   publicItems?.forEach((l) => {
@@ -74,6 +117,7 @@ export default async function CommunityPage() {
             {topCollectors.map((profile, index) => {
               const followers = followerCountMap.get(profile.id) ?? 0;
               const listings  = listingCountMap.get(profile.id) ?? 0;
+              const badges    = getFeaturedBadges(profile.id);
               return (
                 <Link
                   key={profile.id}
@@ -84,7 +128,16 @@ export default async function CommunityPage() {
                     {index + 1}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">@{profile.username}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-foreground">@{profile.username}</span>
+                      {badges.length > 0 && (
+                        <div className="flex items-center gap-0.5">
+                          {badges.map((badge) => (
+                            <BadgeChip key={badge.slug} badge={badge} earned size="mini" />
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <p className="text-xs text-foreground-muted">
                       {followers} follower{followers !== 1 ? "s" : ""}
                       {listings > 0 ? ` · ${listings} listing${listings !== 1 ? "s" : ""}` : ""}
@@ -116,6 +169,7 @@ export default async function CommunityPage() {
             {allProfiles.map((profile) => {
               const listingCount  = listingCountMap.get(profile.id) ?? 0;
               const followerCount = followerCountMap.get(profile.id) ?? 0;
+              const badges        = getFeaturedBadges(profile.id);
 
               return (
                 <Link
@@ -123,8 +177,17 @@ export default async function CommunityPage() {
                   href={`/profile/${profile.username}`}
                   className="flex items-center justify-between px-5 py-3 hover:bg-surface-raised transition-colors"
                 >
-                  <div>
-                    <p className="text-sm font-medium text-foreground">@{profile.username}</p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-foreground">@{profile.username}</span>
+                      {badges.length > 0 && (
+                        <div className="flex items-center gap-0.5">
+                          {badges.map((badge) => (
+                            <BadgeChip key={badge.slug} badge={badge} earned size="mini" />
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <p className="text-xs text-foreground-muted flex items-center gap-2 flex-wrap">
                       <span>Joined {timeAgo(profile.created_at)}</span>
                       {(profile as any).city && (
@@ -138,7 +201,7 @@ export default async function CommunityPage() {
                       )}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 shrink-0">
                     {followerCount > 0 && (
                       <span className="text-xs text-foreground-muted">
                         {followerCount} follower{followerCount !== 1 ? "s" : ""}
@@ -165,16 +228,11 @@ export default async function CommunityPage() {
       {/* Coming Soon */}
       <div className="rounded-2xl border border-border bg-surface p-6">
         <h2 className="font-semibold text-foreground mb-4">Coming in Future Updates</h2>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-            { title: "Collection Showcase", description: "Display your master sets and top pulls." },
-            { title: "Achievement Badges",  description: "Earn badges for collection milestones." },
-          ].map(({ title, description }) => (
-            <div key={title} className="rounded-xl border border-border bg-surface-raised p-4 space-y-1">
-              <p className="text-sm font-medium text-foreground">{title}</p>
-              <p className="text-xs text-foreground-muted leading-relaxed">{description}</p>
-            </div>
-          ))}
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-border bg-surface-raised p-4 space-y-1">
+            <p className="text-sm font-medium text-foreground">Collection Showcase</p>
+            <p className="text-xs text-foreground-muted leading-relaxed">Display your master sets and top pulls.</p>
+          </div>
           <Link
             href="/reveals"
             className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-1 hover:border-violet-500/40 transition-colors"
@@ -185,6 +243,7 @@ export default async function CommunityPage() {
           </Link>
         </div>
       </div>
+
     </div>
   );
 }

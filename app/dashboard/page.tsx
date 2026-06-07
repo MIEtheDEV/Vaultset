@@ -5,8 +5,10 @@ import Link from "next/link";
 import { RefreshMarketButton } from "@/components/RefreshMarketButton";
 import { SupporterBadge } from "@/components/SupporterBadge";
 import { ReviewPrompt } from "@/components/ReviewPrompt";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { timeAgo } from "@/lib/timeAgo";
+import { BADGE_MAP, computeEarnedSlugs, awardBadges, type BadgeSlug } from "@/lib/badges";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -94,7 +96,7 @@ function greeting() {
 
 type ActivityEvent = {
   id: string;
-  type: "card_added" | "card_listed" | "wishlist_added" | "product_added" | "product_listed" | "message_received";
+  type: "card_added" | "card_listed" | "wishlist_added" | "product_added" | "product_listed" | "message_received" | "badge_earned";
   created_at: string;
   label: string;
   sublabel?: string;
@@ -158,6 +160,10 @@ export default async function DashboardPage() {
     { data: recentMessages },
     { count: existingReviewCount },
     { data: priceHistoryRaw },
+    { count: gradedItemCount },
+    { count: userFollowerCount },
+    { data: badgeData },
+    { data: rpcBadgeSlugs },
   ] = await Promise.all([
     supabase.from("collection_items").select("quantity, list_price, market_price").eq("user_id", user!.id),
     supabase.from("collection_items").select("*", { count: "exact", head: true }).eq("user_id", user!.id).eq("for_sale", true),
@@ -186,6 +192,20 @@ export default async function DashboardPage() {
       .select("snapshotted_at, market_price, collection_items(quantity)")
       .eq("user_id", user!.id)
       .order("snapshotted_at", { ascending: true }),
+    supabase
+      .from("collection_items")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user!.id)
+      .not("grader", "is", null),
+    supabase
+      .from("follows")
+      .select("*", { count: "exact", head: true })
+      .eq("following_id", user!.id),
+    supabase
+      .from("user_badges")
+      .select("badge_slug, earned_at")
+      .eq("user_id", user!.id),
+    supabase.rpc("check_user_badges", { p_user_id: user!.id }),
   ]);
 
   // Dedupe matches by listing_id (multiple wishlist items can match same listing)
@@ -229,6 +249,65 @@ export default async function DashboardPage() {
     ? await supabase.from("profiles").select("id, username").in("id", senderIds)
     : { data: [] as { id: string; username: string }[] };
   const senderMap = new Map((senderProfiles ?? []).map((p) => [p.id, p.username]));
+
+  const totalCards       = quantityData?.reduce((sum, r) => sum + (r.quantity ?? 1), 0) ?? 0;
+  const collectionValue  = quantityData?.reduce((sum, r) => {
+    const price = r.market_price ?? r.list_price;
+    return sum + (price != null ? Number(price) * (r.quantity ?? 1) : 0);
+  }, 0) ?? 0;
+  const activeListings = (cardListings ?? 0) + (sealedListings ?? 0);
+
+  // Check and award any newly earned achievement badges
+  const existingBadgeMap = new Map(
+    (badgeData ?? []).map((b) => [b.badge_slug as BadgeSlug, b.earned_at as string])
+  );
+  const inMemorySlugs = computeEarnedSlugs({
+    totalCards,
+    activeListings,
+    forTradeCount: pendingTrades ?? 0,
+    gradedCount: gradedItemCount ?? 0,
+    collectionValue,
+    followerCount: userFollowerCount ?? 0,
+    followingCount: followingIds.length,
+  });
+  const dbSlugs = (rpcBadgeSlugs ?? []) as BadgeSlug[];
+  const computedSlugs = [...new Set([...inMemorySlugs, ...dbSlugs])];
+  const newSlugs = computedSlugs.filter((s) => !existingBadgeMap.has(s));
+  const awardedSlugs = await awardBadges(supabase, user!.id, newSlugs);
+
+  // Fire a system notification for each newly earned badge
+  if (awardedSlugs.length > 0) {
+    const admin = createAdminClient();
+    await admin.from("notifications").insert(
+      awardedSlugs.map((slug) => ({
+        user_id:  user!.id,
+        type:     "badge_earned",
+        actor_id: null,
+        data:     { badge_slug: slug, badge_label: BADGE_MAP.get(slug)?.label, badge_description: BADGE_MAP.get(slug)?.description },
+      }))
+    );
+  }
+
+  // Badge activity events: all earned (from DB) + any newly awarded this load
+  const nowIso = new Date().toISOString();
+  const badgeActivityEvents: ActivityEvent[] = [
+    ...(badgeData ?? []).map((b) => ({
+      id:         `badge-${b.badge_slug}`,
+      type:       "badge_earned" as const,
+      created_at: b.earned_at as string,
+      label:      `Earned the ${BADGE_MAP.get(b.badge_slug as BadgeSlug)?.label ?? b.badge_slug} badge`,
+      sublabel:   BADGE_MAP.get(b.badge_slug as BadgeSlug)?.description,
+      href:       `/profile/${username}`,
+    })),
+    ...awardedSlugs.map((slug) => ({
+      id:         `badge-${slug}`,
+      type:       "badge_earned" as const,
+      created_at: nowIso,
+      label:      `Earned the ${BADGE_MAP.get(slug)?.label ?? slug} badge`,
+      sublabel:   BADGE_MAP.get(slug)?.description,
+      href:       `/profile/${username}`,
+    })),
+  ];
 
   const activityEvents: ActivityEvent[] = [
     ...(recentItems ?? []).map((item) => {
@@ -278,17 +357,11 @@ export default async function DashboardPage() {
       image_url: null,
       href: `/messages/${m.conversation_id}`,
     })),
+    ...(badgeActivityEvents ?? []),
   ]
     .filter((e) => e.created_at)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 15);
-
-  const totalCards       = quantityData?.reduce((sum, r) => sum + (r.quantity ?? 1), 0) ?? 0;
-  const collectionValue  = quantityData?.reduce((sum, r) => {
-    const price = r.market_price ?? r.list_price;
-    return sum + (price != null ? Number(price) * (r.quantity ?? 1) : 0);
-  }, 0) ?? 0;
-  const activeListings = (cardListings ?? 0) + (sealedListings ?? 0);
 
   const portfolioHistory = Object.entries(
     (priceHistoryRaw ?? []).reduce<Record<string, number>>((acc, row) => {
@@ -323,6 +396,15 @@ export default async function DashboardPage() {
         </div>
         <div className="flex flex-col items-start sm:items-end gap-2">
           <div className="flex items-center gap-3">
+            <Link
+              href="/dashboard/analytics"
+              className="inline-flex w-fit items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+              Analytics
+            </Link>
             <Link
               href="/dashboard/report"
               className="inline-flex w-fit items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
@@ -735,6 +817,10 @@ export default async function DashboardPage() {
                 message_received: {
                   bg: "bg-teal-500/10 text-teal-400",
                   icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+                },
+                badge_earned: {
+                  bg: "bg-gold/10 text-gold",
+                  icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5" /><polyline points="2,8.5 12,15 22,8.5" /><line x1="12" y1="15" x2="12" y2="22" /></svg>,
                 },
               };
               const { bg, icon } = iconConfig[event.type];

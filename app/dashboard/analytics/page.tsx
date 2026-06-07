@@ -1,0 +1,125 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { createClient } from "@/utils/supabase/server";
+import { PortfolioAnalyticsClient } from "@/components/PortfolioAnalyticsClient";
+
+export const metadata: Metadata = {
+  title: "Portfolio Analytics",
+  robots: { index: false },
+};
+
+export default async function PortfolioAnalyticsPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [{ data: collectionData }, { data: priceHistoryRaw }] = await Promise.all([
+    supabase
+      .from("collection_items")
+      .select(
+        `id, quantity, paid_price, market_price, list_price, condition, grader, grade,
+         cards ( name, set_name, card_number, image_url )`
+      )
+      .eq("user_id", user!.id),
+    supabase
+      .from("price_history")
+      .select("snapshotted_at, market_price, collection_items(quantity)")
+      .eq("user_id", user!.id)
+      .order("snapshotted_at", { ascending: true }),
+  ]);
+
+  const items = collectionData ?? [];
+
+  const totalMarketValue = items.reduce((sum, r) => {
+    const price = r.market_price ?? r.list_price;
+    return sum + (price != null ? Number(price) * (r.quantity ?? 1) : 0);
+  }, 0);
+
+  const totalCostBasis = items.reduce((sum, r) => {
+    if (r.paid_price == null) return sum;
+    return sum + Number(r.paid_price) * (r.quantity ?? 1);
+  }, 0);
+
+  const coveredMarketValue = items.reduce((sum, r) => {
+    if (r.paid_price == null) return sum;
+    const price = r.market_price ?? r.list_price;
+    return sum + (price != null ? Number(price) * (r.quantity ?? 1) : 0);
+  }, 0);
+
+  const cardsWithCostBasis = items.filter((r) => r.paid_price != null).length;
+  const totalCards = items.length;
+
+  const portfolioHistory = Object.entries(
+    (priceHistoryRaw ?? []).reduce<Record<string, number>>((acc, row) => {
+      const qty = (row.collection_items as { quantity?: number } | null)?.quantity ?? 1;
+      acc[row.snapshotted_at] =
+        (acc[row.snapshotted_at] ?? 0) + Number(row.market_price) * qty;
+      return acc;
+    }, {})
+  )
+    .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const cards = items.map((item) => {
+    const card = Array.isArray(item.cards) ? item.cards[0] : item.cards;
+    return {
+      id: item.id,
+      name: card?.name ?? "Unknown",
+      set_name: card?.set_name ?? "",
+      card_number: card?.card_number ?? null,
+      image_url: card?.image_url ?? null,
+      quantity: item.quantity ?? 1,
+      paid_price: item.paid_price != null ? Number(item.paid_price) : null,
+      market_price:
+        item.market_price != null
+          ? Number(item.market_price)
+          : item.list_price != null
+          ? Number(item.list_price)
+          : null,
+      condition: item.condition ?? null,
+      grader: item.grader ?? null,
+      grade: item.grade ?? null,
+    };
+  });
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center gap-4">
+        <Link
+          href="/dashboard"
+          className="text-foreground-muted hover:text-foreground transition-colors"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+        </Link>
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Portfolio Analytics</h1>
+          <p className="text-sm text-foreground-muted mt-0.5">
+            ROI tracking and collection performance
+          </p>
+        </div>
+      </div>
+
+      <PortfolioAnalyticsClient
+        portfolioHistory={portfolioHistory}
+        totalMarketValue={totalMarketValue}
+        totalCostBasis={totalCostBasis}
+        coveredMarketValue={coveredMarketValue}
+        cardsWithCostBasis={cardsWithCostBasis}
+        totalCards={totalCards}
+        cards={cards}
+      />
+    </div>
+  );
+}

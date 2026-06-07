@@ -31,9 +31,9 @@
 ### Phase 2
 
 - [x] **Price history charts** — Area chart on dashboard showing portfolio value over time with 7D/30D/90D/All range selector. `price_history` table snapshots daily via pg_cron at 02:00 UTC. Per-card chart is a future enhancement.
-- [ ] **Portfolio analytics** — Total collection value over time, ROI tracking; **Pro feature**. *Depends on price history data from above.*
+- [x] **Portfolio analytics** — Total collection value over time, ROI tracking; **Pro feature**. *Depends on price history data from above.*
 - [ ] **Collection showcase** — Curated public collection views per user; **Pro feature** (advanced customization). *Profiles show a basic card tab but no curated/showcase layout.*
-- [ ] **Achievement badges** — Milestone rewards (e.g., 100 cards added, first sale). *Supporter badge for donors exists; milestone badges do not.*
+- [x] **Achievement badges** — 50 hexagonal milestone badges across 14 categories (collection size/value, marketplace, grading, sealed products, pack reveals, transactions, social, messages, profile, reviews, ROI, longevity, multi-format). Awarded on dashboard load via `check_user_badges` RPC + `computeEarnedSlugs`. BadgeBoard dropdown on profiles with 5 user-selected featured badges. Featured badges shown inline on community page. Badge earn events in Recent Activity feed + system notifications.
 - [ ] **Community pricing stats** — "More Stats Coming Soon" placeholder on community page. *Top-10 leaderboard and aggregate stats exist; per-set or per-card community pricing is not implemented.*
 
 ### Phase 3
