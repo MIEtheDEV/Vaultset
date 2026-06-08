@@ -5,26 +5,27 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Papa from "papaparse";
 import { createClient } from "@/utils/supabase/client";
+import type { ResolvedCard } from "@/app/api/import/resolve/route";
 
 // CSV column mapping (case-insensitive header matching)
 const COLUMN_MAP: Record<string, string> = {
-  name:      "name",
-  card_name: "name",
-  set:       "set_name",
-  set_name:  "set_name",
-  number:    "card_number",
+  name:        "name",
+  card_name:   "name",
+  set:         "set_name",
+  set_name:    "set_name",
+  number:      "card_number",
   card_number: "card_number",
-  condition: "condition",
-  finish:    "finish",
-  quantity:  "quantity",
-  qty:       "quantity",
-  paid:      "paid_price",
-  paid_price: "paid_price",
-  price_paid: "paid_price",
+  condition:   "condition",
+  finish:      "finish",
+  quantity:    "quantity",
+  qty:         "quantity",
+  paid:        "paid_price",
+  paid_price:  "paid_price",
+  price_paid:  "paid_price",
   list_price:  "list_price",
   for_sale:    "for_sale",
   for_trade:   "for_trade",
-  notes:     "notes",
+  notes:       "notes",
 };
 
 const CONDITION_MAP: Record<string, string> = {
@@ -58,7 +59,7 @@ function normalizeRow(raw: Record<string, string>): ParsedRow {
     if (normalized) mapped[normalized] = v.trim();
   }
 
-  const name = mapped.name ?? "";
+  const name     = mapped.name ?? "";
   const set_name = mapped.set_name ?? "";
 
   if (!name) return { name: "", set_name: "", quantity: 1, for_sale: false, for_trade: false, _error: "Missing card name" };
@@ -71,26 +72,29 @@ function normalizeRow(raw: Record<string, string>): ParsedRow {
     set_name,
     card_number: mapped.card_number || undefined,
     condition,
-    finish: mapped.finish || undefined,
+    finish:     mapped.finish || undefined,
     quantity:   Math.max(1, parseInt(mapped.quantity ?? "1", 10) || 1),
-    paid_price: mapped.paid_price ? parseFloat(mapped.paid_price) || undefined : undefined,
-    list_price: mapped.list_price ? parseFloat(mapped.list_price) || undefined : undefined,
-    for_sale:  ["true", "yes", "1"].includes((mapped.for_sale ?? "").toLowerCase()),
-    for_trade: ["true", "yes", "1"].includes((mapped.for_trade ?? "").toLowerCase()),
-    notes: mapped.notes || undefined,
+    paid_price: mapped.paid_price  ? parseFloat(mapped.paid_price)  || undefined : undefined,
+    list_price: mapped.list_price  ? parseFloat(mapped.list_price)  || undefined : undefined,
+    for_sale:   ["true", "yes", "1"].includes((mapped.for_sale  ?? "").toLowerCase()),
+    for_trade:  ["true", "yes", "1"].includes((mapped.for_trade ?? "").toLowerCase()),
+    notes:      mapped.notes || undefined,
   };
 }
 
-export default function ImportPage() {
-  const router    = useRouter();
-  const fileRef   = useRef<HTMLInputElement>(null);
+type Phase = "idle" | "resolving" | "importing";
 
-  const [rows,    setRows]    = useState<ParsedRow[]>([]);
+export default function ImportPage() {
+  const router  = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const [rows,     setRows]     = useState<ParsedRow[]>([]);
   const [fileName, setFileName] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [phase,    setPhase]    = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
-  const [done,    setDone]    = useState(false);
-  const [error,   setError]   = useState("");
+  const [done,     setDone]     = useState(false);
+  const [error,    setError]    = useState("");
+  const [resolvedCount, setResolvedCount] = useState(0);
 
   function handleFile(file: File) {
     setFileName(file.name);
@@ -101,13 +105,8 @@ export default function ImportPage() {
     Papa.parse<Record<string, string>>(file, {
       header: true,
       skipEmptyLines: true,
-      complete(results) {
-        const parsed = results.data.map(normalizeRow);
-        setRows(parsed);
-      },
-      error(err) {
-        setError(`Failed to parse file: ${err.message}`);
-      },
+      complete(results) { setRows(results.data.map(normalizeRow)); },
+      error(err)        { setError(`Failed to parse file: ${err.message}`); },
     });
   }
 
@@ -118,66 +117,102 @@ export default function ImportPage() {
   }
 
   async function handleImport() {
-    setLoading(true);
+    setPhase("resolving");
     setError("");
     setProgress(0);
+    setResolvedCount(0);
 
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push("/login"); return; }
 
     const validRows = rows.filter((r) => !r._error && r.name);
+
+    // Phase 1: resolve cards against pokemontcg.io
+    let resolved: (ResolvedCard | null)[] = validRows.map(() => null);
+    try {
+      const res = await fetch("/api/import/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rows: validRows.map((r) => ({
+            name:        r.name,
+            set_name:    r.set_name,
+            card_number: r.card_number,
+          })),
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        resolved = json.results ?? resolved;
+        setResolvedCount(resolved.filter(Boolean).length);
+      }
+    } catch {
+      // resolution failed — continue with empty game_data
+    }
+
+    // Phase 2: insert cards and collection items
+    setPhase("importing");
     let imported = 0;
 
-    for (const row of validRows) {
-      // Upsert card record
+    for (let i = 0; i < validRows.length; i++) {
+      const row = validRows[i];
+      const r   = resolved[i];
+
+      const game_data: Record<string, unknown> = {};
+      if (r?.pokemon_api_id) game_data.pokemon_api_id = r.pokemon_api_id;
+      if (r?.rarity)         game_data.rarity         = r.rarity;
+      if (r?.is_promo)       game_data.is_promo       = r.is_promo;
+
       const { data: card, error: cardError } = await supabase
         .from("cards")
         .insert({
           game:        "pokemon",
-          name:        row.name,
-          set_name:    row.set_name || null,
-          card_number: row.card_number || null,
-          game_data:   {},
+          name:        r?.name        ?? row.name,
+          set_name:    r?.set_name    || row.set_name    || null,
+          card_number: r?.card_number || row.card_number || null,
+          image_url:   r?.image_url   || null,
+          game_data,
         })
         .select("id")
         .single();
 
-      if (cardError || !card) {
-        // Card might already exist — try to find it
-        const { data: existing } = await supabase
-          .from("cards")
-          .select("id")
-          .eq("name", row.name)
-          .eq("set_name", row.set_name ?? "")
-          .maybeSingle();
+      let cardId: string | null = card?.id ?? null;
 
-        if (!existing) { imported++; setProgress(Math.round((imported / validRows.length) * 100)); continue; }
+      if (cardError || !cardId) {
+        // Card exists — look it up, preferring pokemon_api_id match
+        if (r?.pokemon_api_id) {
+          const { data: existing } = await supabase
+            .from("cards")
+            .select("id")
+            .contains("game_data", { pokemon_api_id: r.pokemon_api_id })
+            .maybeSingle();
+          cardId = existing?.id ?? null;
+        }
 
+        if (!cardId) {
+          const nameQuery = supabase
+            .from("cards")
+            .select("id")
+            .eq("name", r?.name ?? row.name)
+            .eq("set_name", r?.set_name ?? row.set_name ?? "");
+          const { data: existing } = await nameQuery.maybeSingle();
+          cardId = existing?.id ?? null;
+        }
+      }
+
+      if (cardId) {
         await supabase.from("collection_items").insert({
           user_id:    user.id,
-          card_id:    existing.id,
-          condition:  row.condition   ?? null,
-          finish:     row.finish      ?? null,
+          card_id:    cardId,
+          condition:  row.condition  ?? null,
+          finish:     row.finish     ?? null,
           quantity:   row.quantity,
-          paid_price: row.paid_price  ?? null,
-          list_price: row.list_price  ?? null,
+          paid_price: row.paid_price ?? null,
+          list_price: row.list_price ?? null,
           for_sale:   row.for_sale,
           for_trade:  row.for_trade,
-          notes:      row.notes       ?? null,
-        });
-      } else {
-        await supabase.from("collection_items").insert({
-          user_id:    user.id,
-          card_id:    card.id,
-          condition:  row.condition   ?? null,
-          finish:     row.finish      ?? null,
-          quantity:   row.quantity,
-          paid_price: row.paid_price  ?? null,
-          list_price: row.list_price  ?? null,
-          for_sale:   row.for_sale,
-          for_trade:  row.for_trade,
-          notes:      row.notes       ?? null,
+          notes:      row.notes      ?? null,
         });
       }
 
@@ -185,12 +220,13 @@ export default function ImportPage() {
       setProgress(Math.round((imported / validRows.length) * 100));
     }
 
-    setLoading(false);
+    setPhase("idle");
     setDone(true);
   }
 
-  const validCount  = rows.filter((r) => !r._error).length;
-  const errorCount  = rows.filter((r) => !!r._error).length;
+  const validCount = rows.filter((r) => !r._error).length;
+  const errorCount = rows.filter((r) => !!r._error).length;
+  const loading    = phase !== "idle";
 
   return (
     <div className="space-y-8 max-w-4xl">
@@ -209,7 +245,14 @@ export default function ImportPage() {
       {done ? (
         <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-8 text-center space-y-4">
           <p className="text-lg font-semibold text-emerald-400">Import complete</p>
-          <p className="text-sm text-foreground-muted">{validCount} card{validCount !== 1 ? "s" : ""} added to your vault.</p>
+          <p className="text-sm text-foreground-muted">
+            {validCount} card{validCount !== 1 ? "s" : ""} added to your vault.
+            {resolvedCount > 0 && (
+              <span className="block mt-1 text-xs">
+                {resolvedCount} of {validCount} matched with card art and market pricing.
+              </span>
+            )}
+          </p>
           <Link
             href="/inventory"
             className="inline-block rounded-full bg-gold px-6 py-2.5 text-sm font-semibold text-background hover:bg-gold-light transition-colors"
@@ -243,7 +286,9 @@ export default function ImportPage() {
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-foreground-muted">* Required. Condition values: mint, near_mint (or nm), lightly_played (lp), moderately_played (mp), heavily_played (hp), damaged.</p>
+            <p className="text-xs text-foreground-muted">
+              * Required. Including <span className="font-medium text-foreground">set</span> and <span className="font-medium text-foreground">number</span> improves card matching. Condition values: mint, near_mint (nm), lightly_played (lp), moderately_played (mp), heavily_played (hp), damaged.
+            </p>
           </div>
 
           {/* File drop zone */}
@@ -284,13 +329,15 @@ export default function ImportPage() {
                     {errorCount > 0 && <span className="text-red-400"> · {errorCount} skipped (missing name)</span>}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => { setRows([]); setFileName(""); }}
-                  className="text-xs text-foreground-muted hover:text-foreground transition-colors"
-                >
-                  Change file
-                </button>
+                {!loading && (
+                  <button
+                    type="button"
+                    onClick={() => { setRows([]); setFileName(""); }}
+                    className="text-xs text-foreground-muted hover:text-foreground transition-colors"
+                  >
+                    Change file
+                  </button>
+                )}
               </div>
 
               <div className="rounded-2xl border border-border bg-surface overflow-hidden">
@@ -334,10 +381,14 @@ export default function ImportPage() {
                   <div className="h-2 rounded-full bg-surface-raised overflow-hidden">
                     <div
                       className="h-full bg-gold transition-all duration-300 rounded-full"
-                      style={{ width: `${progress}%` }}
+                      style={{ width: phase === "resolving" ? "30%" : `${30 + Math.round(progress * 0.7)}%` }}
                     />
                   </div>
-                  <p className="text-xs text-foreground-muted text-center">Importing… {progress}%</p>
+                  <p className="text-xs text-foreground-muted text-center">
+                    {phase === "resolving"
+                      ? "Matching cards against pokemontcg.io…"
+                      : `Importing… ${progress}%`}
+                  </p>
                 </div>
               ) : validCount > 0 ? (
                 <div className="flex gap-3">

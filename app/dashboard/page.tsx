@@ -165,7 +165,7 @@ export default async function DashboardPage() {
     { data: badgeData },
     { data: rpcBadgeSlugs },
   ] = await Promise.all([
-    supabase.from("collection_items").select("quantity, list_price, market_price").eq("user_id", user!.id),
+    supabase.from("collection_items").select("quantity, market_price").eq("user_id", user!.id),
     supabase.from("collection_items").select("*", { count: "exact", head: true }).eq("user_id", user!.id).eq("for_sale", true),
     supabase.from("product_purchases").select("*", { count: "exact", head: true }).eq("user_id", user!.id).or("for_sale.eq.true,for_trade.eq.true"),
     supabase.from("collection_items").select("*", { count: "exact", head: true }).eq("user_id", user!.id).eq("for_trade", true),
@@ -252,8 +252,7 @@ export default async function DashboardPage() {
 
   const totalCards       = quantityData?.reduce((sum, r) => sum + (r.quantity ?? 1), 0) ?? 0;
   const collectionValue  = quantityData?.reduce((sum, r) => {
-    const price = r.market_price ?? r.list_price;
-    return sum + (price != null ? Number(price) * (r.quantity ?? 1) : 0);
+    return sum + (r.market_price != null ? Number(r.market_price) * (r.quantity ?? 1) : 0);
   }, 0) ?? 0;
   const activeListings = (cardListings ?? 0) + (sealedListings ?? 0);
 

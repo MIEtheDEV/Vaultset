@@ -219,12 +219,20 @@ export function ListingDetail({
               <p className="text-xs text-foreground-muted">Joined {joinedDate}</p>
               <p className="text-xs text-foreground-muted mt-0.5">Listed {timeAgo(listing.created_at)}</p>
             </div>
-            <Link
-              href={`/profile/${seller.username}`}
-              className="text-xs text-gold hover:text-gold-light transition-colors flex-shrink-0"
-            >
-              View profile →
-            </Link>
+            <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+              <Link
+                href={`/profile/${seller.username}`}
+                className="text-xs text-gold hover:text-gold-light transition-colors"
+              >
+                View profile →
+              </Link>
+              <Link
+                href={`/marketplace/user/${seller.username}`}
+                className="text-xs text-foreground-muted hover:text-foreground transition-colors"
+              >
+                All listings →
+              </Link>
+            </div>
           </div>
 
           {/* On Hold banner */}

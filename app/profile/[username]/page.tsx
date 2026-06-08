@@ -120,12 +120,14 @@ export default async function ProfilePage({
     { data: myFollowingData },
     { data: myWishlistData },
     { data: profileBadgeData },
+    { data: showcaseData },
   ] = await Promise.all([
-    // All collection items for stats (total cards, graded count, unique sets)
+    // All collection items — used for stats and vault tab display
     supabase
       .from("collection_items")
-      .select("quantity, grader, cards(set_name)")
-      .eq("user_id", profile.id),
+      .select("id, quantity, condition, finish, grader, grade, for_sale, for_trade, cards(name, set_name, image_url)")
+      .eq("user_id", profile.id)
+      .order("created_at", { ascending: false }),
 
     // Card listings (for_sale or for_trade)
     supabase
@@ -221,15 +223,23 @@ export default async function ProfilePage({
 
     // Achievement badges earned by this profile
     supabase.from("user_badges").select("badge_slug, earned_at").eq("user_id", profile.id),
+
+    // Collections created by this user
+    supabase
+      .from("collections")
+      .select("id, name, type, card_total, created_at, collection_entries(count)")
+      .eq("user_id", profile.id)
+      .order("created_at", { ascending: false }),
   ]);
 
   // ── Compute stats ──────────────────────────────────────────────────────────
 
-  const totalCards  = allItems?.reduce((s, r) => s + (r.quantity ?? 1), 0) ?? 0;
-  const gradedCount = allItems?.filter((r) => !!(r as any).grader).length ?? 0;
+  const vaultItems  = allItems ?? [];
+  const totalCards  = vaultItems.reduce((s, r) => s + ((r as any).quantity ?? 1), 0);
+  const gradedCount = vaultItems.filter((r) => !!(r as any).grader).length;
 
   const setNames = new Set<string>();
-  allItems?.forEach((r) => {
+  vaultItems.forEach((r) => {
     const raw   = (r as any).cards;
     const cards = Array.isArray(raw) ? raw : raw ? [raw] : [];
     cards.forEach((c: any) => { if (c?.set_name) setNames.add(c.set_name); });
@@ -278,6 +288,18 @@ export default async function ProfilePage({
     earned_at: b.earned_at as string,
   }));
 
+  // ── Collections ────────────────────────────────────────────────────────────
+
+  type CollectionRow = {
+    id: string;
+    name: string;
+    type: string;
+    card_total: number | null;
+    created_at: string;
+    collection_entries: { count: number }[];
+  };
+  const userCollections = (showcaseData ?? []) as unknown as CollectionRow[];
+
   const { data: featuredBadgeData } = await supabase
     .from("profiles")
     .select("featured_badge_slugs")
@@ -312,6 +334,80 @@ export default async function ProfilePage({
   const customHex  = storedColor && isHexColor(storedColor) ? storedColor : null;
   const avatar     = customHex ? null : AVATAR_COLORS[resolveAvatarColor(storedColor, profile.username)];
   const initial    = profile.username.charAt(0).toUpperCase();
+
+  // ── Vault tab content ──────────────────────────────────────────────────────
+
+  const VAULT_LIMIT = 200;
+  const vaultContent = (
+    <div className="space-y-4">
+      {vaultItems.length === 0 ? (
+        <div className="rounded-2xl border border-border bg-surface py-12 text-center">
+          <p className="text-sm text-foreground-muted">
+            {isOwnProfile ? "Add cards to your inventory to see them here." : "This collector hasn't added any cards yet."}
+          </p>
+          {isOwnProfile && (
+            <Link
+              href="/inventory/add"
+              className="mt-3 inline-block rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+            >
+              Add a card
+            </Link>
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+            {vaultItems.slice(0, VAULT_LIMIT).map((item) => {
+              const raw  = (item as any).cards;
+              const card = Array.isArray(raw) ? raw[0] ?? null : raw ?? null;
+              return (
+                <div
+                  key={(item as any).id}
+                  className="rounded-xl border border-border bg-surface p-2 flex flex-col gap-2 hover:border-gold/30 transition-colors"
+                >
+                  <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-surface-raised">
+                    {card?.image_url ? (
+                      <Image
+                        src={card.image_url}
+                        alt={card.name ?? "Card"}
+                        fill
+                        sizes="(max-width: 640px) 33vw, (max-width: 1024px) 25vw, 16vw"
+                        className="object-contain"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-foreground-muted text-sm font-medium">
+                        {card?.name?.[0] ?? "?"}
+                      </div>
+                    )}
+                    {((item as any).for_sale || (item as any).for_trade) && (
+                      <div className="absolute bottom-1 left-1 flex gap-0.5">
+                        {(item as any).for_sale  && <span className="rounded-sm bg-emerald-500/80 px-1 py-0.5 text-[9px] font-semibold text-white leading-none">$</span>}
+                        {(item as any).for_trade && <span className="rounded-sm bg-blue-500/80    px-1 py-0.5 text-[9px] font-semibold text-white leading-none">T</span>}
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-medium text-foreground truncate leading-tight">{card?.name ?? "—"}</p>
+                    <p className="text-xs text-foreground-muted truncate">{card?.set_name ?? "—"}</p>
+                    {(item as any).grader ? (
+                      <p className="text-xs text-gold">{(item as any).grader} {(item as any).grade}</p>
+                    ) : (item as any).condition ? (
+                      <p className="text-xs text-foreground-muted capitalize">{((item as any).condition as string).replace(/_/g, " ")}</p>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {vaultItems.length > VAULT_LIMIT && (
+            <p className="text-xs text-foreground-muted text-center">
+              Showing first {VAULT_LIMIT} of {totalCards} cards
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
 
   // ── Listings tab content ───────────────────────────────────────────────────
 
@@ -375,57 +471,82 @@ export default async function ProfilePage({
     </div>
   );
 
-  // ── Collection tab content ─────────────────────────────────────────────────
+  // ── Collections tab content ────────────────────────────────────────────────
+
+  const TYPE_COLORS: Record<string, string> = {
+    set:    "border-blue-500/30 bg-blue-500/10 text-blue-400",
+    rarity: "border-purple-500/30 bg-purple-500/10 text-purple-400",
+    custom: "border-border bg-surface-raised text-foreground-muted",
+  };
+  const TYPE_LABELS: Record<string, string> = {
+    set:    "Set",
+    rarity: "Rarity",
+    custom: "Custom",
+  };
 
   const collectionContent = (
     <div className="space-y-4">
-      <h3 className="font-semibold text-foreground">
-        Graded Cards
-        <span className="ml-2 text-sm font-normal text-foreground-muted">({spotlight.length})</span>
-      </h3>
-      {spotlight.length > 0 ? (
-        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-          {spotlight.map((item) => (
-            <div
-              key={item.id}
-              className="rounded-xl border border-border bg-surface p-2 flex flex-col gap-2 hover:border-gold/30 transition-colors"
-            >
-              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-surface-raised">
-                {item.card?.image_url ? (
-                  <Image
-                    src={item.card.image_url}
-                    alt={item.card.name ?? "Card"}
-                    fill
-                    sizes="(max-width: 640px) 33vw, (max-width: 1024px) 25vw, 16vw"
-                    className="object-contain"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-foreground-muted text-xs">
-                    {item.card?.name?.[0] ?? "?"}
-                  </div>
-                )}
-              </div>
-              <div className="space-y-0.5">
-                <p className="text-xs font-medium text-foreground truncate leading-tight">
-                  {item.card?.name ?? "—"}
-                </p>
-                <p className="text-xs text-foreground-muted truncate">{item.card?.set_name ?? ""}</p>
-                {(item as any).grader && (
-                  <span className="inline-block rounded-full border border-gold/30 bg-gold/10 px-1.5 py-0.5 text-xs font-semibold text-gold">
-                    {(item as any).grader} {(item as any).grade}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-foreground">
+          Collections
+          <span className="ml-2 text-sm font-normal text-foreground-muted">({userCollections.length})</span>
+        </h3>
+        {isOwnProfile && (
+          <Link
+            href="/collections/new"
+            className="text-xs font-medium text-foreground-muted hover:text-foreground transition-colors flex items-center gap-1"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New
+          </Link>
+        )}
+      </div>
+
+      {userCollections.length === 0 ? (
         <div className="rounded-2xl border border-border bg-surface py-12 text-center">
           <p className="text-sm text-foreground-muted">
             {isOwnProfile
-              ? "Add graded cards to your inventory to showcase them here."
-              : "This collector has no graded cards to display."}
+              ? "Track set completion, rarity hunts, and custom lists."
+              : "This collector hasn't created any collections yet."}
           </p>
+          {isOwnProfile && (
+            <Link
+              href="/collections/new"
+              className="mt-3 inline-block rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+            >
+              Create a collection
+            </Link>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {userCollections.map((col) => {
+            const count = (col.collection_entries?.[0] as any)?.count ?? 0;
+            return (
+              <Link
+                key={col.id}
+                href={`/collections/${col.id}`}
+                className="rounded-xl border border-border bg-surface p-4 hover:border-gold/30 transition-colors flex items-center justify-between gap-4"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">{col.name}</p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${TYPE_COLORS[col.type]}`}>
+                      {TYPE_LABELS[col.type]}
+                    </span>
+                    <span className="text-xs text-foreground-muted">
+                      {col.type === "set" && col.card_total ? `${count} / ${col.card_total}` : `${count} ${count === 1 ? "card" : "cards"}`}
+                    </span>
+                  </div>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-foreground-muted shrink-0">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
@@ -626,20 +747,60 @@ export default async function ProfilePage({
         </div>
       )}
 
+      {/* Collections — read-only display */}
+      {userCollections.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide">Collections</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {userCollections.map((col) => {
+              const count = (col.collection_entries?.[0] as any)?.count ?? 0;
+              return (
+                <Link
+                  key={col.id}
+                  href={`/collections/${col.id}`}
+                  className="rounded-xl border border-border bg-surface px-4 py-3 hover:border-gold/30 transition-colors flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{col.name}</p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${TYPE_COLORS[col.type]}`}>
+                        {TYPE_LABELS[col.type]}
+                      </span>
+                      <span className="text-xs text-foreground-muted">
+                        {col.type === "set" && col.card_total ? `${count} / ${col.card_total}` : `${count} ${count === 1 ? "card" : "cards"}`}
+                      </span>
+                    </div>
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-foreground-muted shrink-0">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         {[
-          { label: "Total Cards",     value: totalCards     },
-          { label: "Unique Sets",     value: uniqueSets     },
-          { label: "Graded",          value: gradedCount    },
-          { label: "Active Listings", value: activeListings },
-          { label: "For Trade",       value: forTradeCount  },
-        ].map(({ label, value }) => (
-          <div key={label} className="rounded-2xl border border-border bg-surface p-5 text-center">
-            <p className="text-3xl font-bold text-gold">{value}</p>
-            <p className="mt-1 text-xs text-foreground-muted">{label}</p>
-          </div>
-        ))}
+          { label: "Total Cards",     value: totalCards,     href: null },
+          { label: "Unique Sets",     value: uniqueSets,     href: null },
+          { label: "Graded",          value: gradedCount,    href: null },
+          { label: "Active Listings", value: activeListings, href: `/marketplace/user/${profile.username}` },
+          { label: "For Trade",       value: forTradeCount,  href: null },
+        ].map(({ label, value, href }) => {
+          const card = (
+            <div className={`rounded-2xl border border-border bg-surface p-5 text-center ${href ? "hover:border-gold/30 transition-colors" : ""}`}>
+              <p className="text-3xl font-bold text-gold">{value}</p>
+              <p className="mt-1 text-xs text-foreground-muted">{label}</p>
+              {href && <p className="mt-0.5 text-xs text-foreground-muted opacity-60">View →</p>}
+            </div>
+          );
+          return href
+            ? <Link key={label} href={href}>{card}</Link>
+            : <div key={label}>{card}</div>;
+        })}
       </div>
 
       {/* Achievement badges */}
@@ -653,9 +814,11 @@ export default async function ProfilePage({
       {/* Tabbed content */}
       <ProfileTabs
         listingCount={activeListings}
-        collectionCount={spotlight.length}
+        vaultCount={vaultItems.length}
+        collectionCount={userCollections.length}
         wishlistCount={wishlistItems?.length ?? 0}
         listingsContent={listingsContent}
+        vaultContent={vaultContent}
         collectionContent={collectionContent}
         wishlistContent={
           <div className="space-y-4">

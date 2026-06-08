@@ -225,21 +225,25 @@ export default async function CommunityPage() {
         )}
       </div>
 
-      {/* Coming Soon */}
+      {/* More features */}
       <div className="rounded-2xl border border-border bg-surface p-6">
-        <h2 className="font-semibold text-foreground mb-4">Coming in Future Updates</h2>
+        <h2 className="font-semibold text-foreground mb-4">More on Vaultset</h2>
         <div className="grid sm:grid-cols-2 gap-4">
-          <div className="rounded-xl border border-border bg-surface-raised p-4 space-y-1">
-            <p className="text-sm font-medium text-foreground">Collection Showcase</p>
-            <p className="text-xs text-foreground-muted leading-relaxed">Display your master sets and top pulls.</p>
-          </div>
           <Link
             href="/reveals"
             className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-1 hover:border-violet-500/40 transition-colors"
           >
             <p className="text-sm font-medium text-foreground">Pull Reveals</p>
-            <p className="text-xs text-foreground-muted leading-relaxed">Share your pack openings with the community.</p>
+            <p className="text-xs text-foreground-muted leading-relaxed">Share your pack openings and see what the community is pulling.</p>
             <p className="text-xs text-violet-400 mt-1">View reveals →</p>
+          </Link>
+          <Link
+            href="/collections/new"
+            className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-1 hover:border-blue-500/40 transition-colors"
+          >
+            <p className="text-sm font-medium text-foreground">Collections</p>
+            <p className="text-xs text-foreground-muted leading-relaxed">Track set completion and rarity hunts. Collections are visible on your profile.</p>
+            <p className="text-xs text-blue-400 mt-1">Create a collection →</p>
           </Link>
         </div>
       </div>

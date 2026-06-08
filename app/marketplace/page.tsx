@@ -25,38 +25,37 @@ export default async function MarketplacePage({
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: listings } = await supabase
-    .from("collection_items")
-    .select(`
-      id,
-      user_id,
-      condition,
-      finish,
-      for_sale,
-      for_trade,
-      list_price,
-      grader,
-      grade,
-      quantity,
-      created_at,
-      cards (
-        id,
-        game,
-        name,
-        set_name,
-        card_number,
-        year,
-        image_url,
-        game_data
-      )
-    `)
-    .or("for_sale.eq.true,for_trade.eq.true")
-    .eq("on_hold", false)
-    .order("created_at", { ascending: false })
-    .limit(200);
+  const listingSelect = `
+    id, user_id, condition, finish, for_sale, for_trade,
+    list_price, grader, grade, quantity, created_at,
+    cards ( id, game, name, set_name, card_number, year, image_url, game_data )
+  `;
 
-  // Fetch seller usernames for all unique user_ids
-  const userIds = [...new Set(listings?.map((l) => l.user_id) ?? [])];
+  const [{ data: listings }, { data: myListingsRaw }] = await Promise.all([
+    supabase
+      .from("collection_items")
+      .select(listingSelect)
+      .or("for_sale.eq.true,for_trade.eq.true")
+      .eq("on_hold", false)
+      .neq("user_id", user?.id ?? "")
+      .order("created_at", { ascending: false })
+      .limit(200),
+    user
+      ? supabase
+          .from("collection_items")
+          .select(listingSelect)
+          .or("for_sale.eq.true,for_trade.eq.true")
+          .eq("on_hold", false)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  // Fetch seller usernames for all unique user_ids (include current user for the "Your Listings" bar)
+  const userIds = [...new Set([
+    ...(listings?.map((l) => l.user_id) ?? []),
+    ...(user ? [user.id] : []),
+  ])];
   const { data: profiles } = userIds.length
     ? await supabase.from("profiles").select("id, username").in("id", userIds).eq("banned", false)
     : { data: [] };
@@ -70,11 +69,17 @@ export default async function MarketplacePage({
       seller_username: profileMap.get(l.user_id) ?? "Unknown",
     }));
 
+  const myListingsWithSeller = (myListingsRaw ?? []).map((l) => ({
+    ...l,
+    seller_username: user ? (profileMap.get(user.id) ?? "Unknown") : "Unknown",
+  }));
+
   // Sealed product listings
   const { data: sealedListings } = await supabase
     .from("product_purchases")
     .select("id, user_id, name, product_type, cost, for_sale, for_trade, list_price, purchased_at, notes")
     .or("for_sale.eq.true,for_trade.eq.true")
+    .neq("user_id", user?.id ?? "")
     .order("created_at", { ascending: false });
 
   const sealedUserIds = [...new Set(sealedListings?.map((l) => l.user_id) ?? [])];
@@ -133,6 +138,7 @@ export default async function MarketplacePage({
 
       <MarketplaceGrid
         listings={listingsWithSellers}
+        myListings={myListingsWithSeller}
         currentUserId={user?.id ?? ""}
         initialWatchedIds={watchedItemIds}
         wishedApiIds={wishedApiIds}

@@ -98,6 +98,7 @@ const VALID_FILTERS = new Set<FilterKey>(["all", "for_sale", "for_trade", "grade
 
 export function MarketplaceGrid({
   listings,
+  myListings = [],
   currentUserId,
   initialWatchedIds = [],
   wishedApiIds = [],
@@ -106,6 +107,7 @@ export function MarketplaceGrid({
   initialFilter,
 }: {
   listings: MarketplaceListing[];
+  myListings?: MarketplaceListing[];
   currentUserId: string;
   initialWatchedIds?: string[];
   wishedApiIds?: string[];
@@ -174,29 +176,6 @@ export function MarketplaceGrid({
     return result;
   }, [listings, search, filter, sort, wishedApiSet]);
 
-  const myListings = listings.filter((l) => l.user_id === currentUserId);
-
-  if (listings.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-surface py-24 text-center gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-raised text-foreground-muted">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-            <circle cx="7" cy="7" r="1" fill="currentColor" />
-          </svg>
-        </div>
-        <div>
-          <p className="font-semibold text-foreground">No listings yet</p>
-          <p className="mt-1 text-sm text-foreground-muted">
-            Cards listed for sale or trade will appear here.
-          </p>
-        </div>
-        <Link href="/inventory" className="rounded-full bg-gold px-6 py-2.5 text-sm font-semibold text-background hover:bg-gold-light transition-colors">
-          Go to Inventory
-        </Link>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-8">
@@ -446,7 +425,7 @@ export function MarketplaceGrid({
                           <span className="text-gold font-medium">Your listing</span>
                         ) : (
                           <span className="flex items-center gap-1.5 flex-wrap">
-                            <span>by <Link href={`/profile/${item.seller_username}`} className="text-foreground hover:text-gold transition-colors">@{item.seller_username}</Link></span>
+                            <span>by <Link href={`/marketplace/user/${item.seller_username}`} className="text-foreground hover:text-gold transition-colors">@{item.seller_username}</Link></span>
                             {(sellerFollowerCounts[item.user_id] ?? 0) > 0 && (
                               <span className="text-foreground-muted opacity-60">
                                 · {sellerFollowerCounts[item.user_id]} follower{sellerFollowerCounts[item.user_id] !== 1 ? "s" : ""}

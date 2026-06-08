@@ -17,7 +17,7 @@ const features = [
   },
   {
     title: "Buy, Sell & Trade",
-    description: "List cards for sale or trade, browse the community market, and send cash or trade offers. Both parties confirm receipt before a deal closes.",
+    description: "List cards for sale or trade, browse the community market, and send cash, trade, or counter-offers. Both parties confirm receipt before a deal closes.",
     icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><circle cx="7" cy="7" r="1" fill="currentColor" /></svg>),
   },
   {
@@ -45,6 +45,11 @@ const features = [
     description: "Follow other collectors, browse their storefronts, and see what they're listing. A real community built around the hobby.",
     icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>),
   },
+  {
+    title: "Collections",
+    description: "Track set completion and rarity hunts. Collections live on your profile and let other collectors see what you're chasing.",
+    icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="14" height="18" rx="2" /><rect x="8" y="1" width="14" height="18" rx="2" /></svg>),
+  },
 ];
 
 const faqs = [
@@ -62,7 +67,7 @@ const faqs = [
   },
   {
     q: "Is Vaultset free?",
-    a: "Core features — inventory tracking, market prices, marketplace, trade matching, and community — are free. A Pro plan with advanced analytics and unlimited listings is coming soon.",
+    a: "Core features are free forever with no card limits: inventory management, current market prices, the full marketplace (buy, sell, trade, and counter-offers), collections, pack reveals, wishlist, and community features. A Pro plan unlocks advanced tools — portfolio history charts, the detailed P&L analytics report, price alerts, and bulk CSV import.",
   },
   {
     q: "Does Vaultset support graded cards?",
@@ -131,19 +136,19 @@ export default async function Home() {
     { data: totalCardsData },
     { data: gamesData },
     { count: collectors },
-    { data: listedValueData },
+    { data: marketValueData },
     { data: reviewsData },
   ] = await Promise.all([
     supabase.rpc("get_platform_card_count"),
     supabase.from("cards").select("game").not("game", "is", null),
     supabase.from("profiles").select("*", { count: "exact", head: true }),
-    supabase.rpc("get_platform_listed_value"),
+    supabase.rpc("get_platform_market_value"),
     supabase.from("reviews").select("id, rating, body, display_name, pinned").eq("approved", true).order("pinned", { ascending: false }).order("created_at", { ascending: false }),
   ]);
 
   const totalCards     = (totalCardsData as number) ?? 0;
   const supportedGames = new Set(gamesData?.map((r) => r.game)).size;
-  const marketVolume   = (listedValueData as number) ?? 0;
+  const marketVolume   = (marketValueData as number) ?? 0;
   const allReviews     = reviewsData ?? [];
   const reviews        = allReviews.slice(0, 3);
   const reviewCount    = allReviews.length;
@@ -160,7 +165,7 @@ export default async function Home() {
   const stats = [
     { value: formatCount(totalCards),       label: "Cards Tracked" },
     { value: formatCount(collectors ?? 0),  label: "Collectors" },
-    { value: formatCurrency(marketVolume),  label: "Listed Value" },
+    { value: formatCurrency(marketVolume),  label: "Market Value" },
     { value: formatCount(supportedGames),   label: "Supported Games" },
   ];
 

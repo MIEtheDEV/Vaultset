@@ -611,3 +611,25 @@ Vaultset is free to use. Donations are accepted at `/support` via:
 - **Stripe** — debit/credit card; Cash App Pay also available at Stripe checkout
 
 Donations are not tax-deductible.
+
+---
+
+## Deferred / Future Work
+
+### Complete Set & Master Set Collections
+
+**Status:** Deferred — blocked on a better card catalog data source.
+
+**What was built (then reverted):** Two new collection types that pulled a full set checklist from the pokemontcg.io free API and let users track which cards they own vs. are missing. Schema work was partially implemented (`required_finish` column, widened unique constraint, extended type check).
+
+**Why reverted:** The pokemontcg.io free tier returns incomplete data for newer sets (e.g. only a fraction of cards indexed), making the feature unreliable. Ownership cross-referencing by `pokemon_api_id` also breaks for cards added before pokemontcg.io indexed the set.
+
+**What's needed to re-implement properly:**
+- A comprehensive, up-to-date card catalog API (TCGPlayer, own DB seeded from official checklists, or paid pokemontcg.io tier)
+- A shared `set_cards` cache table so card lists aren't duplicated per-user
+- A cron job to update `set_cards` when new sets release
+- Ownership matched by `set_name + card_number` as the primary key (not `pokemon_api_id`) for resilience
+
+**Migration files to reapply when resuming:**
+- `supabase/migrations/20260612200000_complete_master_set.sql` — original forward migration
+- `supabase/migrations/20260612300000_revert_complete_master_set.sql` — the revert (drop before re-running forward)

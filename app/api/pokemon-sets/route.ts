@@ -8,7 +8,7 @@ export async function GET() {
 
   const params = new URLSearchParams({
     pageSize: "250",
-    select:   "id,name,series,releaseDate",
+    select:   "id,name,series,releaseDate,total,printedTotal",
     orderBy:  "-releaseDate",
   });
 
