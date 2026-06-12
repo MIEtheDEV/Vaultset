@@ -32,19 +32,19 @@
 
 - [x] **Price history charts** — Area chart on dashboard showing portfolio value over time with 7D/30D/90D/All range selector. `price_history` table snapshots daily via pg_cron at 02:00 UTC. Per-card chart is a future enhancement.
 - [x] **Portfolio analytics** — Total collection value over time, ROI tracking; **Pro feature**. *Depends on price history data from above.*
-- [ ] **Collection showcase** — Curated public collection views per user; **Pro feature** (advanced customization). *Profiles show a basic card tab but no curated/showcase layout.*
+- [x] **Collection showcase** — Curated public collection views per user; **Pro feature** (advanced customization). *Vault tab shows full card grid (up to 200); Collections tab shows curated set/rarity/custom lists. Advanced customization gated in Phase 4.*
 - [x] **Achievement badges** — 50 hexagonal milestone badges across 14 categories (collection size/value, marketplace, grading, sealed products, pack reveals, transactions, social, messages, profile, reviews, ROI, longevity, multi-format). Awarded on dashboard load via `check_user_badges` RPC + `computeEarnedSlugs`. BadgeBoard dropdown on profiles with 5 user-selected featured badges. Featured badges shown inline on community page. Badge earn events in Recent Activity feed + system notifications.
-- [ ] **Community pricing stats** — "More Stats Coming Soon" placeholder on community page. *Top-10 leaderboard and aggregate stats exist; per-set or per-card community pricing is not implemented.*
+- [x] **Community pricing stats** — Market Snapshot section on community page: top 5 sets by listing count with avg price, top 8 cards by listing count with price range. Section is hidden when no for-sale listings exist.
 
 ### Phase 3
 
-- [ ] **Stripe integration** — Subscription billing, webhook handling, customer portal. *No Stripe dependency exists in the project yet.*
+- [x] **Stripe integration** — `stripe` 22.2 added. `utils/stripe.ts` client. Migration `20260611100000_add_stripe_fields.sql` adds `stripe_customer_id` + `is_pro` to profiles. API routes: `POST /api/stripe/checkout` (create checkout session), `POST /api/stripe/webhook` (sync subscription status), `POST /api/stripe/portal` (billing portal). `lib/isPro.ts` server helper for Phase 4 gates. Env vars needed: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SITE_URL`.
 - [ ] **Transaction fee hook** — When offer is accepted, record a 2–3% platform fee against the sale; enforce/collect once Stripe is in place. *Offers table currently has no `fee` column; payment is arranged off-platform.*
 
 ### Phase 4
 
 - [ ] **Pro plan enforcement** — Gate Pro features (price history, portfolio analytics, collection showcase, pull reveal publishing) behind subscription check; existing users grandfathered free.
-- [ ] **Pricing page** — Clear free vs. Pro comparison; highlight price alerts, analytics, unlimited inventory.
+- [x] **Pricing page** — `/pricing` with 5 plan cards (Lifetime/Monthly/Quarterly/6-Month/Annual), savings % vs monthly fetched live from Stripe, Free vs Pro feature table, FAQ, nav link added to homepage.
 - [ ] **Upgrade prompts** — Contextual upsell nudges at feature limits (e.g., "Upgrade to Pro for price alerts").
 - [ ] **Freemium limits** — Enforce free-tier caps: ~500 card inventory limit, ~10 active listings. *No cap enforcement exists in the codebase today.*
 - [ ] **2FA** — Optional TOTP for account security.

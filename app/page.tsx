@@ -217,6 +217,7 @@ export default async function Home() {
             <Link href="#features" className="hover:text-foreground transition-colors">Features</Link>
             <Link href="/marketplace" className="hover:text-foreground transition-colors">Marketplace</Link>
             <Link href="/community" className="hover:text-foreground transition-colors">Community</Link>
+            <Link href="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
           </div>
           <div className="flex items-center gap-4">
             {username ? (

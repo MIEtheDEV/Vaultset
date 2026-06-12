@@ -4,13 +4,19 @@ import { createClient } from "@/utils/supabase/server";
 import { AccountSettingsForm } from "@/components/AccountSettingsForm";
 import { SupporterBadge } from "@/components/SupporterBadge";
 import { EditReviewButton } from "@/components/EditReviewButton";
+import { ManageBillingButton } from "@/components/ManageBillingButton";
 
-export default async function AccountPage() {
+export default async function AccountPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ subscription?: string }>;
+}) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
 
+  const { subscription: subscriptionParam } = await searchParams;
   const username    = (user.user_metadata?.username as string) ?? "";
   const email       = user.email ?? "";
   const pendingEmail = (user as any).new_email as string | null ?? null;
@@ -18,7 +24,7 @@ export default async function AccountPage() {
   const [{ data: profile }, { data: rawItems }, { data: existingReview }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("is_supporter, bio, specialty, city, featured_item_id, avatar_url, avatar_color, followers_only_offers")
+      .select("is_supporter, is_pro, pro_expires_at, pro_auto_renews, bio, specialty, city, featured_item_id, avatar_url, avatar_color, followers_only_offers")
       .eq("id", user.id)
       .single(),
     supabase
@@ -34,6 +40,9 @@ export default async function AccountPage() {
   ]);
 
   const isSupporter     = profile?.is_supporter              ?? false;
+  const isPro           = (profile as any)?.is_pro           as boolean ?? false;
+  const proExpiresAt    = (profile as any)?.pro_expires_at   as string | null ?? null;
+  const proAutoRenews   = (profile as any)?.pro_auto_renews  as boolean ?? false;
   const isAdmin         = username === process.env.ADMIN_USERNAME;
   const bio             = (profile as any)?.bio              as string ?? "";
   const specialty       = (profile as any)?.specialty        as string ?? "";
@@ -71,6 +80,45 @@ export default async function AccountPage() {
             existingDisplayName={existingReview?.display_name ?? undefined}
           />
         </div>
+      </div>
+
+      {/* Subscription */}
+      <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Subscription</h2>
+            <p className="mt-0.5 text-xs text-foreground-muted">
+              {isPro
+                ? proExpiresAt
+                  ? `Vaultset Pro — ${proAutoRenews ? "renews" : "ends"} ${new Date(proExpiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`
+                  : "You're on Vaultset Pro."
+                : "You're on the free plan."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {isPro ? (
+              <>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-gold/10 px-3 py-1 text-xs font-semibold text-gold">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                  Pro
+                </span>
+                <ManageBillingButton />
+              </>
+            ) : (
+              <Link
+                href="/pricing"
+                className="rounded-full bg-gold px-4 py-1.5 text-xs font-semibold text-background hover:bg-gold-light transition-colors"
+              >
+                Upgrade to Pro
+              </Link>
+            )}
+          </div>
+        </div>
+        {subscriptionParam === "success" && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
+            You&apos;re now on Pro — welcome aboard!
+          </div>
+        )}
       </div>
 
       <AccountSettingsForm

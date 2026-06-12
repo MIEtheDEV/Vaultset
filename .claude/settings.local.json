@@ -10,7 +10,10 @@
       "Bash(pnpm tsc *)",
       "Bash(Remove-Item *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\micha\\\\Documents\\\\code\\\\trade-platform\\\\app\\\\\\(auth\\)\")",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm add *)",
+      "Bash(node -e \"const s = require\\('stripe'\\); console.log\\(s.LATEST_API_VERSION\\)\")"
     ]
   }
 }

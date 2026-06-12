@@ -29,7 +29,7 @@ export async function proxy(request: NextRequest) {
   // Protected pages call getUser() themselves for full server-side verification.
   const { data: { session } } = await supabase.auth.getSession();
 
-  const protectedPaths = ["/dashboard", "/inventory", "/account", "/profile", "/messages", "/wishlist", "/offers", "/transactions", "/reveals"];
+  const protectedPaths = ["/dashboard", "/inventory", "/account", "/messages", "/wishlist", "/offers", "/transactions", "/reveals"];
   if (!session && protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p))) {
     return NextResponse.redirect(new URL("/login", request.url));
   }

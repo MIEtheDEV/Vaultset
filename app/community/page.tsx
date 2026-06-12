@@ -27,6 +27,7 @@ export default async function CommunityPage() {
     { data: followRows },
     { data: featuredRows },
     { data: earnedRows },
+    { data: pricingItems },
   ] = await Promise.all([
     supabase.from("collection_items").select("user_id").or("for_sale.eq.true,for_trade.eq.true"),
     supabase.from("follows").select("following_id"),
@@ -37,6 +38,12 @@ export default async function CommunityPage() {
     profileIds.length
       ? supabase.from("user_badges").select("user_id, badge_slug, earned_at").in("user_id", profileIds)
       : Promise.resolve({ data: [] as { user_id: string; badge_slug: string; earned_at: string }[] }),
+    supabase
+      .from("collection_items")
+      .select("list_price, cards(name, set_name)")
+      .eq("for_sale", true)
+      .not("list_price", "is", null)
+      .gt("list_price", 0),
   ]);
 
   // userId → explicitly featured slug list (may be empty if column doesn't exist yet)
@@ -83,6 +90,50 @@ export default async function CommunityPage() {
     .filter((p) => (followerCountMap.get(p.id) ?? 0) > 0)
     .sort((a, b) => (followerCountMap.get(b.id) ?? 0) - (followerCountMap.get(a.id) ?? 0))
     .slice(0, 10);
+
+  // ── Pricing stats ──────────────────────────────────────────────────────────
+
+  const setStatsMap = new Map<string, { count: number; prices: number[] }>();
+  const cardStatsMap = new Map<string, { name: string; setName: string; count: number; prices: number[] }>();
+
+  (pricingItems ?? []).forEach((item) => {
+    const raw  = (item as any).cards;
+    const card = Array.isArray(raw) ? raw[0] ?? null : raw ?? null;
+    const price = item.list_price as number;
+    if (!card?.set_name) return;
+
+    // Per set
+    if (!setStatsMap.has(card.set_name)) setStatsMap.set(card.set_name, { count: 0, prices: [] });
+    const setEntry = setStatsMap.get(card.set_name)!;
+    setEntry.count++;
+    setEntry.prices.push(price);
+
+    // Per card (name + set as key)
+    if (!card?.name) return;
+    const key = `${card.name}||${card.set_name}`;
+    if (!cardStatsMap.has(key)) cardStatsMap.set(key, { name: card.name, setName: card.set_name, count: 0, prices: [] });
+    const cardEntry = cardStatsMap.get(key)!;
+    cardEntry.count++;
+    cardEntry.prices.push(price);
+  });
+
+  const topSets = [...setStatsMap.entries()]
+    .map(([name, { count, prices }]) => ({
+      name,
+      count,
+      avgPrice: prices.reduce((s, p) => s + p, 0) / prices.length,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  const topCards = [...cardStatsMap.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8)
+    .map((c) => ({
+      ...c,
+      minPrice: Math.min(...c.prices),
+      maxPrice: Math.max(...c.prices),
+    }));
 
   return (
     <div className="space-y-8">
@@ -150,6 +201,57 @@ export default async function CommunityPage() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Market Snapshot */}
+      {(topSets.length > 0 || topCards.length > 0) && (
+        <div className="space-y-5">
+          <h2 className="font-semibold text-foreground">Market Snapshot</h2>
+
+          {topSets.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-medium text-foreground-muted uppercase tracking-wide">Most Active Sets</h3>
+              <div className="rounded-2xl border border-border bg-surface divide-y divide-border overflow-hidden">
+                {topSets.map((set, i) => (
+                  <div key={set.name} className="flex items-center gap-4 px-5 py-3">
+                    <span className={`w-5 text-center text-sm font-bold shrink-0 ${i === 0 ? "text-gold" : "text-foreground-muted"}`}>
+                      {i + 1}
+                    </span>
+                    <span className="flex-1 text-sm text-foreground truncate">{set.name}</span>
+                    <div className="flex items-center gap-4 text-xs shrink-0">
+                      <span className="text-foreground-muted">{set.count} listing{set.count !== 1 ? "s" : ""}</span>
+                      <span className="text-gold font-medium w-16 text-right">avg ${set.avgPrice.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {topCards.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-medium text-foreground-muted uppercase tracking-wide">Most Listed Cards</h3>
+              <div className="rounded-2xl border border-border bg-surface divide-y divide-border overflow-hidden">
+                {topCards.map((card) => (
+                  <div key={`${card.name}||${card.setName}`} className="flex items-center gap-4 px-5 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{card.name}</p>
+                      <p className="text-xs text-foreground-muted truncate">{card.setName}</p>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs shrink-0">
+                      <span className="text-foreground-muted">{card.count} listing{card.count !== 1 ? "s" : ""}</span>
+                      <span className="text-gold font-medium w-20 text-right">
+                        {card.minPrice === card.maxPrice
+                          ? `$${card.minPrice.toFixed(2)}`
+                          : `$${card.minPrice.toFixed(2)}–$${card.maxPrice.toFixed(2)}`}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
