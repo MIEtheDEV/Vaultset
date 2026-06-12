@@ -46,11 +46,12 @@ export async function POST(request: NextRequest) {
         const customerId = sub.customer as string;
         const isActive   = (sub.status === "active" || sub.status === "trialing");
 
+        const periodEnd = sub.items.data[0]?.current_period_end;
         const { error } = await admin
           .from("profiles")
           .update({
             is_pro:          isActive,
-            pro_expires_at:  new Date(sub.current_period_end * 1000).toISOString(),
+            pro_expires_at:  periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
             pro_auto_renews: !sub.cancel_at_period_end && !sub.cancel_at,
           })
           .eq("stripe_customer_id", customerId);
