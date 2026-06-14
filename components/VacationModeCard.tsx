@@ -163,22 +163,22 @@ export function VacationModeCard({
         </p>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
+          <div className="min-w-0">
             <label className={labelClass()}>Pause from</label>
             <input
               type="datetime-local"
               value={startsAt}
               onChange={(e) => setStartsAt(e.target.value)}
-              className={inputClass()}
+              className={`${inputClass()} min-w-0 max-w-full`}
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <label className={labelClass()}>Relist on</label>
             <input
               type="datetime-local"
               value={endsAt}
               onChange={(e) => setEndsAt(e.target.value)}
-              className={inputClass()}
+              className={`${inputClass()} min-w-0 max-w-full`}
             />
           </div>
         </div>

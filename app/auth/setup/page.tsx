@@ -46,9 +46,14 @@ function AuthSetupForm() {
       return;
     }
 
+    // The profile row already exists (created by the handle_new_user trigger),
+    // so UPDATE it. An upsert would run as INSERT…ON CONFLICT and require an
+    // INSERT RLS policy that profiles intentionally doesn't grant — that's what
+    // surfaced "new row violates row-level security policy for table profiles".
     const { error: profileError } = await supabase
       .from("profiles")
-      .upsert({ id: user.id, username: trimmed }, { onConflict: "id" });
+      .update({ username: trimmed })
+      .eq("id", user.id);
 
     if (profileError) {
       setError(profileError.message);

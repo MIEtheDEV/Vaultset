@@ -866,7 +866,8 @@ export default async function ProfilePage({
             <div className={`rounded-2xl border border-border bg-surface p-5 text-center ${href ? "hover:border-gold/30 transition-colors" : ""}`}>
               <p className="text-3xl font-bold text-gold">{value}</p>
               <p className="mt-1 text-xs text-foreground-muted">{label}</p>
-              {href && <p className="mt-0.5 text-xs text-foreground-muted opacity-60">View →</p>}
+              {/* Always rendered (hidden when not a link) so every stat box stays the same height */}
+              <p className={`mt-0.5 text-xs text-foreground-muted opacity-60 ${href ? "" : "invisible"}`} aria-hidden={!href}>View →</p>
             </div>
           );
           return href

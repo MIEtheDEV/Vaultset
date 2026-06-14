@@ -85,7 +85,7 @@ export function InstallAppButton() {
       </button>
 
       {iosHelp && showIos && (
-        <div className="absolute right-0 top-full mt-2 w-60 rounded-xl border border-border bg-surface p-3 text-xs text-foreground-muted shadow-lg z-50">
+        <div className="fixed right-3 top-16 z-[60] w-[min(20rem,calc(100vw-1.5rem))] rounded-xl border border-border bg-surface p-3 text-xs text-foreground-muted shadow-lg">
           <p className="font-medium text-foreground mb-1">Install on iPhone / iPad</p>
           <p className="leading-relaxed">
             Tap the <span className="font-semibold text-foreground">Share</span> button in Safari, then{" "}
