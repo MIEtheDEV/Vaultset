@@ -342,9 +342,17 @@ export function MarketplaceGrid({
               const condKey  = item.condition ?? "";
               const isOwn    = item.user_id === currentUserId;
               const isPromo  = !!(card.game_data as any)?.is_promo;
+              const isWanted = !isOwn && wishedApiSet.has(getCardApiId(item));
 
               return (
-                <div key={item.id} className="group rounded-2xl border border-border bg-surface hover:border-gold/30 hover:bg-surface-raised transition-all duration-200 flex flex-col">
+                <div
+                  key={item.id}
+                  className={`group rounded-2xl border bg-surface hover:bg-surface-raised transition-all duration-200 flex flex-col ${
+                    isWanted
+                      ? "border-gold/60 ring-1 ring-gold/30 hover:border-gold"
+                      : "border-border hover:border-gold/30"
+                  }`}
+                >
 
                   {/* Card image */}
                   <div className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-t-2xl bg-surface-raised">
@@ -382,7 +390,7 @@ export function MarketplaceGrid({
                     </div>
 
                     {/* Wanted badge */}
-                    {!isOwn && wishedApiSet.has(getCardApiId(item)) && (
+                    {isWanted && (
                       <span className="absolute bottom-2 left-2 rounded-full bg-gold px-2 py-0.5 text-xs font-semibold text-background shadow-sm">
                         ★ Wanted
                       </span>

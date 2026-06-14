@@ -73,11 +73,17 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
     seller_username: seller.username,
   }));
 
-  const { data: watchlistData } = user
-    ? await supabase.from("watchlist").select("item_id").eq("user_id", user.id)
-    : { data: [] };
+  const [{ data: watchlistData }, { data: wishlistItems }] = await Promise.all([
+    user
+      ? supabase.from("watchlist").select("item_id").eq("user_id", user.id)
+      : Promise.resolve({ data: [] }),
+    user
+      ? supabase.from("wishlist_items").select("pokemon_api_id").eq("user_id", user.id)
+      : Promise.resolve({ data: [] }),
+  ]);
 
   const watchedItemIds = watchlistData?.map((w) => w.item_id) ?? [];
+  const wishedApiIds   = (wishlistItems ?? []).map((w) => w.pokemon_api_id).filter(Boolean) as string[];
   const joinedDate     = timeAgo(seller.created_at);
 
   return (
@@ -143,6 +149,7 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
         listings={listingsWithSeller}
         currentUserId={user?.id ?? ""}
         initialWatchedIds={watchedItemIds}
+        wishedApiIds={wishedApiIds}
       />
     </div>
   );

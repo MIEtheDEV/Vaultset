@@ -672,6 +672,11 @@ export default async function ProfilePage({
             <h1 className="text-xl font-bold text-foreground">@{profile.username}</h1>
             {isProSubscriber(profile as any) && <ProBadge />}
             {profile.is_supporter && <SupporterBadge />}
+            {user && !isOwnProfile && followsYouBack && (
+              <span className="inline-flex items-center rounded-full border border-border bg-surface-raised px-2 py-0.5 text-[11px] font-medium text-foreground-muted">
+                Follows you
+              </span>
+            )}
             {specialty && (
               <span className="inline-flex items-center rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400">
                 {specialty}
@@ -727,7 +732,6 @@ export default async function ProfilePage({
             <FollowButton
               profileId={profile.id}
               initialIsFollowing={isFollowing}
-              followsYouBack={followsYouBack}
             />
           )}
           {user && !isOwnProfile && <MessageButton recipientId={profile.id} label="Message" />}
