@@ -12,8 +12,9 @@ export default function ContactPage() {
       {/* Nav */}
       <nav className="border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto max-w-4xl px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="text-lg font-bold tracking-widest text-gold hover:text-gold-light transition-colors">
-            VAULTSET
+          <Link href="/" className="flex items-center gap-2 group">
+            <img src="/img/icon.png" alt="Vaultset" width={28} height={28} />
+            <span className="text-lg font-bold tracking-widest text-gold group-hover:text-gold-light transition-colors">VAULTSET</span>
           </Link>
           <Link href="/" className="text-sm text-foreground-muted hover:text-foreground transition-colors">
             ← Back to home
@@ -88,17 +89,6 @@ export default function ContactPage() {
           </div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-border">
-        <div className="mx-auto max-w-4xl px-6 py-6 flex items-center justify-between text-sm text-foreground-muted">
-          <span>© 2026 Vaultset. All rights reserved.</span>
-          <div className="flex gap-6">
-            <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
-            <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { PRODUCT_TYPE_LABEL } from "@/lib/products";
+import { ProSellerBadge } from "@/components/ProBadge";
 
 export interface SealedListing {
   id:              string;
@@ -30,12 +31,15 @@ const SORTS: { key: SortKey; label: string }[] = [
 export function SealedProductsGrid({
   listings,
   currentUserId,
+  proSellerIds = [],
 }: {
   listings:      SealedListing[];
   currentUserId: string;
+  proSellerIds?: string[];
 }) {
   const [search, setSearch] = useState("");
   const [sort, setSort]     = useState<SortKey>("newest");
+  const proSellerSet = useMemo(() => new Set(proSellerIds), [proSellerIds]);
 
   const visible = useMemo(() => {
     let result = [...listings];
@@ -122,7 +126,12 @@ export function SealedProductsGrid({
                       <span className="text-xs text-foreground-muted">
                         {isOwn
                           ? <span className="text-gold font-medium">Your listing</span>
-                          : <>by <Link href={`/profile/${item.seller_username}`} className="text-foreground hover:text-gold transition-colors">@{item.seller_username}</Link></>
+                          : (
+                            <span className="inline-flex items-center gap-1.5 flex-wrap">
+                              <span>by <Link href={`/profile/${item.seller_username}`} className="text-foreground hover:text-gold transition-colors">@{item.seller_username}</Link></span>
+                              {proSellerSet.has(item.user_id) && <ProSellerBadge />}
+                            </span>
+                          )
                         }
                       </span>
                       {item.for_sale && item.list_price != null ? (

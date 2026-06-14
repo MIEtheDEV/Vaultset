@@ -6,6 +6,8 @@ import { createClient } from "@/utils/supabase/server";
 import { MarketplaceGrid } from "@/components/MarketplaceGrid";
 import { SealedProductsGrid } from "@/components/SealedProductsGrid";
 import { SupporterBadge } from "@/components/SupporterBadge";
+import { ProBadge, ProTitle } from "@/components/ProBadge";
+import { isProSubscriber } from "@/lib/proStatus";
 import { BadgeBoard } from "@/components/BadgeBoard";
 import type { BadgeSlug } from "@/lib/badges";
 import { ShareProfileButton } from "@/components/ShareProfileButton";
@@ -89,7 +91,7 @@ export default async function ProfilePage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, username, created_at, is_supporter, bio, specialty, city, featured_item_id, avatar_url, avatar_color")
+    .select("id, username, created_at, is_supporter, is_pro, pro_plan, pro_expires_at, bio, specialty, city, featured_item_id, avatar_url, avatar_color, showcase_border")
     .eq("username", username)
     .eq("banned", false)
     .single();
@@ -235,6 +237,17 @@ export default async function ProfilePage({
   // ── Compute stats ──────────────────────────────────────────────────────────
 
   const vaultItems  = allItems ?? [];
+
+  // Public showcase — cards the user pinned via /showcase/edit, shown in their own tab.
+  const { data: showcasePins } = await supabase
+    .from("profile_showcase")
+    .select("collection_item_id")
+    .eq("user_id", profile.id);
+  const showcasePinIds = new Set((showcasePins ?? []).map((s) => s.collection_item_id));
+  const showcaseItems  = vaultItems.filter((i) => showcasePinIds.has((i as any).id));
+  const showcaseBorder = ((profile as any).showcase_border as string | null) ?? "none";
+  const showcaseBorderClass =
+    showcaseBorder === "foil" ? "showcase-foil" : showcaseBorder === "gold" ? "showcase-gold" : "";
   const totalCards  = vaultItems.reduce((s, r) => s + ((r as any).quantity ?? 1), 0);
   const gradedCount = vaultItems.filter((r) => !!(r as any).grader).length;
 
@@ -410,6 +423,55 @@ export default async function ProfilePage({
   );
 
   // ── Listings tab content ───────────────────────────────────────────────────
+
+  const showcaseContent = (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+        {showcaseItems.map((item) => {
+          const raw  = (item as any).cards;
+          const card = Array.isArray(raw) ? raw[0] ?? null : raw ?? null;
+          return (
+            <div
+              key={(item as any).id}
+              className={`rounded-xl border border-border bg-surface p-2 flex flex-col gap-2 ${showcaseBorderClass}`}
+            >
+              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-surface-raised">
+                {card?.image_url ? (
+                  <Image
+                    src={card.image_url}
+                    alt={card.name ?? "Card"}
+                    fill
+                    sizes="(max-width: 640px) 33vw, (max-width: 1024px) 25vw, 16vw"
+                    className="object-contain"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-foreground-muted text-sm font-medium">
+                    {card?.name?.[0] ?? "?"}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-xs font-medium text-foreground truncate leading-tight">{card?.name ?? "—"}</p>
+                <p className="text-xs text-foreground-muted truncate">{card?.set_name ?? "—"}</p>
+                {(item as any).grader ? (
+                  <p className="text-xs text-gold">{(item as any).grader} {(item as any).grade}</p>
+                ) : (item as any).condition ? (
+                  <p className="text-xs text-foreground-muted capitalize">{((item as any).condition as string).replace(/_/g, " ")}</p>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {isOwnProfile && (
+        <div className="text-center">
+          <Link href="/showcase/edit" className="text-xs text-gold hover:text-gold-light transition-colors">
+            Edit showcase →
+          </Link>
+        </div>
+      )}
+    </div>
+  );
 
   const listingsContent = (
     <div className="space-y-8">
@@ -608,6 +670,7 @@ export default async function ProfilePage({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl font-bold text-foreground">@{profile.username}</h1>
+            {isProSubscriber(profile as any) && <ProBadge />}
             {profile.is_supporter && <SupporterBadge />}
             {specialty && (
               <span className="inline-flex items-center rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400">
@@ -615,6 +678,11 @@ export default async function ProfilePage({
               </span>
             )}
           </div>
+          {isProSubscriber(profile as any) && (
+            <div className="mt-0.5">
+              <ProTitle />
+            </div>
+          )}
           <p className="mt-0.5 text-sm text-foreground-muted flex items-center gap-3 flex-wrap">
             <span>Joined {timeAgo(profile.created_at)}</span>
             {city && (
@@ -813,10 +881,12 @@ export default async function ProfilePage({
 
       {/* Tabbed content */}
       <ProfileTabs
+        showcaseCount={showcaseItems.length}
         listingCount={activeListings}
         vaultCount={vaultItems.length}
         collectionCount={userCollections.length}
         wishlistCount={wishlistItems?.length ?? 0}
+        showcaseContent={showcaseItems.length > 0 ? showcaseContent : undefined}
         listingsContent={listingsContent}
         vaultContent={vaultContent}
         collectionContent={collectionContent}

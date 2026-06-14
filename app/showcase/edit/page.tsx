@@ -19,6 +19,7 @@ export default async function ShowcaseEditPage() {
   const [
     { data: inventoryItems },
     { data: showcaseItems },
+    { data: profileRow },
   ] = await Promise.all([
     supabase
       .from("collection_items")
@@ -33,7 +34,15 @@ export default async function ShowcaseEditPage() {
       .from("profile_showcase")
       .select("collection_item_id")
       .eq("user_id", user.id),
+
+    supabase
+      .from("profiles")
+      .select("showcase_border")
+      .eq("id", user.id)
+      .single(),
   ]);
+
+  const initialBorder = ((profileRow as any)?.showcase_border as string | null) ?? "none";
 
   const showcasedIds = new Set((showcaseItems ?? []).map((s) => s.collection_item_id));
 
@@ -85,7 +94,7 @@ export default async function ShowcaseEditPage() {
           </Link>
         </div>
       ) : (
-        <ShowcaseEditor userId={user.id} initialItems={items} />
+        <ShowcaseEditor userId={user.id} initialItems={items} initialBorder={initialBorder} />
       )}
     </div>
   );

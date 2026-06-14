@@ -18,17 +18,35 @@ export type ShowcaseItem = {
 
 const MAX_SHOWCASE = 12;
 
+const BORDER_OPTIONS = [
+  { value: "none", label: "None", cls: "" },
+  { value: "foil", label: "Foil", cls: "showcase-foil" },
+  { value: "gold", label: "Gold", cls: "showcase-gold" },
+];
+
 export function ShowcaseEditor({
   userId,
   initialItems,
+  initialBorder = "none",
 }: {
   userId: string;
   initialItems: ShowcaseItem[];
+  initialBorder?: string;
 }) {
   const supabase = createClient();
   const [items, setItems]   = useState<ShowcaseItem[]>(initialItems);
   const [query, setQuery]   = useState("");
   const [saving, setSaving] = useState<string | null>(null);
+  const [border, setBorder] = useState<string>(initialBorder);
+  const [savingBorder, setSavingBorder] = useState(false);
+
+  async function saveBorder(value: string) {
+    if (savingBorder || value === border) return;
+    setSavingBorder(true);
+    setBorder(value);
+    await supabase.from("profiles").update({ showcase_border: value }).eq("id", userId);
+    setSavingBorder(false);
+  }
 
   const pinnedCount = items.filter((i) => i.showcased).length;
   const isFull      = pinnedCount >= MAX_SHOWCASE;
@@ -72,6 +90,34 @@ export function ShowcaseEditor({
 
   return (
     <div className="space-y-8">
+
+      {/* Showcase border (advanced — Pro) */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Showcase border</h2>
+          <span className="inline-flex items-center rounded-full border border-gold/40 bg-gold/15 px-2 py-0.5 text-[10px] font-semibold text-gold">Pro</span>
+        </div>
+        <p className="text-xs text-foreground-muted">An animated border applied to your showcased cards on your public profile.</p>
+        <div className="flex flex-wrap gap-3">
+          {BORDER_OPTIONS.map((opt) => {
+            const selected = border === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => saveBorder(opt.value)}
+                disabled={savingBorder}
+                className={`flex flex-col items-center gap-1.5 rounded-xl border p-2 transition-colors disabled:opacity-60 ${
+                  selected ? "border-gold bg-gold/5" : "border-border hover:border-gold/40"
+                }`}
+              >
+                <span className={`h-12 w-9 rounded-md bg-surface-raised ${opt.cls}`} />
+                <span className={`text-xs font-medium ${selected ? "text-gold" : "text-foreground-muted"}`}>{opt.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Slot counter */}
       <div className="flex items-center justify-between">

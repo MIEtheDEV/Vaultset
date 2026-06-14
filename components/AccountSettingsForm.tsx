@@ -233,7 +233,7 @@ export function AccountSettingsForm({
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6">
       <form onSubmit={handleSaveAll} className="space-y-6">
 
         {/* Profile */}

@@ -4,6 +4,8 @@ import { createClient } from "@/utils/supabase/server";
 import { timeAgo } from "@/lib/timeAgo";
 import { BadgeChip } from "@/components/BadgeChip";
 import { BADGE_MAP, type BadgeSlug } from "@/lib/badges";
+import { ProBadge } from "@/components/ProBadge";
+import { isProSubscriber } from "@/lib/proStatus";
 
 export const metadata: Metadata = {
   title: "Community",
@@ -16,7 +18,7 @@ export default async function CommunityPage() {
 
   const { data: allProfiles } = await supabase
     .from("profiles")
-    .select("id, username, created_at, city")
+    .select("id, username, created_at, city, is_pro, pro_plan, pro_expires_at")
     .eq("banned", false)
     .order("username");
 
@@ -181,6 +183,7 @@ export default async function CommunityPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-foreground">@{profile.username}</span>
+                      {isProSubscriber(profile as any) && <ProBadge />}
                       {badges.length > 0 && (
                         <div className="flex items-center gap-0.5">
                           {badges.map((badge) => (
@@ -282,6 +285,7 @@ export default async function CommunityPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-foreground">@{profile.username}</span>
+                      {isProSubscriber(profile as any) && <ProBadge />}
                       {badges.length > 0 && (
                         <div className="flex items-center gap-0.5">
                           {badges.map((badge) => (

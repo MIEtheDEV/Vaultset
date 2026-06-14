@@ -2,6 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { AccountSettingsForm } from "@/components/AccountSettingsForm";
+import { VacationModeCard } from "@/components/VacationModeCard";
+import { PushToggle } from "@/components/PushToggle";
+import { NotificationPreferences } from "@/components/NotificationPreferences";
 import { SupporterBadge } from "@/components/SupporterBadge";
 import { EditReviewButton } from "@/components/EditReviewButton";
 import { ManageBillingButton } from "@/components/ManageBillingButton";
@@ -21,10 +24,10 @@ export default async function AccountPage({
   const email       = user.email ?? "";
   const pendingEmail = (user as any).new_email as string | null ?? null;
 
-  const [{ data: profile }, { data: rawItems }, { data: existingReview }] = await Promise.all([
+  const [{ data: profile }, { data: rawItems }, { data: existingReview }, { data: notifPrefs }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("is_supporter, is_pro, pro_expires_at, pro_auto_renews, bio, specialty, city, featured_item_id, avatar_url, avatar_color, followers_only_offers")
+      .select("is_supporter, is_pro, pro_expires_at, pro_auto_renews, bio, specialty, city, featured_item_id, avatar_url, avatar_color, followers_only_offers, vacation_mode, vacation_message, vacation_starts_at, vacation_ends_at")
       .eq("id", user.id)
       .single(),
     supabase
@@ -37,7 +40,20 @@ export default async function AccountPage({
       .select("rating, body, display_name")
       .eq("user_id", user.id)
       .maybeSingle(),
+    supabase
+      .from("notification_preferences")
+      .select("push_offers, push_followers, push_alerts, push_achievements")
+      .eq("user_id", user.id)
+      .maybeSingle(),
   ]);
+
+  // Opt-out model: no row means everything is on.
+  const notificationPrefs = {
+    push_offers:       (notifPrefs as any)?.push_offers       ?? true,
+    push_followers:    (notifPrefs as any)?.push_followers    ?? true,
+    push_alerts:       (notifPrefs as any)?.push_alerts       ?? true,
+    push_achievements: (notifPrefs as any)?.push_achievements ?? true,
+  };
 
   const isSupporter     = profile?.is_supporter              ?? false;
   const isPro           = (profile as any)?.is_pro           as boolean ?? false;
@@ -51,6 +67,10 @@ export default async function AccountPage({
   const avatarUrl       = (profile as any)?.avatar_url        as string | null ?? null;
   const avatarColor           = (profile as any)?.avatar_color           as string | null ?? null;
   const followersOnlyOffers   = (profile as any)?.followers_only_offers  as boolean ?? false;
+  const vacationMode          = (profile as any)?.vacation_mode          as boolean ?? false;
+  const vacationMessage       = (profile as any)?.vacation_message       as string | null ?? null;
+  const vacationStartsAt      = (profile as any)?.vacation_starts_at     as string | null ?? null;
+  const vacationEndsAt        = (profile as any)?.vacation_ends_at       as string | null ?? null;
 
   // Normalise the cards join — Supabase may return object or single-element array
   const collectionItems = (rawItems ?? []).map((item) => {
@@ -60,7 +80,7 @@ export default async function AccountPage({
   });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-w-3xl mx-auto">
       <div>
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-bold text-foreground">Account Settings</h1>
@@ -136,6 +156,18 @@ export default async function AccountPage({
         isAdmin={isAdmin}
         initialFollowersOnlyOffers={followersOnlyOffers}
       />
+
+      <VacationModeCard
+        userId={user.id}
+        initialVacationMode={vacationMode}
+        initialMessage={vacationMessage ?? ""}
+        initialStartsAt={vacationStartsAt}
+        initialEndsAt={vacationEndsAt}
+      />
+
+      <PushToggle isPro={isPro} />
+
+      <NotificationPreferences userId={user.id} initial={notificationPrefs} />
     </div>
   );
 }

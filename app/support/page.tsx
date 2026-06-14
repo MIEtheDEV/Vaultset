@@ -55,8 +55,9 @@ export default function SupportPage() {
       {/* Nav */}
       <nav className="border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto max-w-4xl px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="text-lg font-bold tracking-widest text-gold hover:text-gold-light transition-colors">
-            VAULTSET
+          <Link href="/" className="flex items-center gap-2 group">
+            <img src="/img/icon.png" alt="Vaultset" width={28} height={28} />
+            <span className="text-lg font-bold tracking-widest text-gold group-hover:text-gold-light transition-colors">VAULTSET</span>
           </Link>
           <Link href="/" className="text-sm text-foreground-muted hover:text-foreground transition-colors">
             ← Back to home
@@ -79,19 +80,23 @@ export default function SupportPage() {
 
           <div className="mt-10 space-y-4">
             {methods.map(({ name, description, cta, url, icon }) => (
-              <div key={name} className="rounded-2xl border border-border bg-surface p-6 flex items-start gap-4">
-                <div className="shrink-0 mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 text-gold">
-                  {icon}
+              <div key={name} className="rounded-2xl border border-border bg-surface p-6 flex flex-col gap-4 sm:flex-row sm:items-start">
+                {/* Icon + title — share a row on mobile; on desktop title moves into the text column */}
+                <div className="flex items-center gap-4">
+                  <div className="shrink-0 sm:mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 text-gold">
+                    {icon}
+                  </div>
+                  <h2 className="font-semibold text-foreground sm:hidden">{name}</h2>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h2 className="font-semibold text-foreground">{name}</h2>
-                  <p className="mt-1 text-sm text-foreground-muted leading-relaxed">{description}</p>
+                  <h2 className="hidden sm:block font-semibold text-foreground">{name}</h2>
+                  <p className="text-sm text-foreground-muted leading-relaxed sm:mt-1">{description}</p>
                 </div>
                 <a
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0 self-center rounded-full border border-gold/30 bg-gold/5 px-4 py-2 text-sm font-medium text-gold hover:bg-gold/10 hover:border-gold/50 transition-colors"
+                  className="shrink-0 self-start sm:self-center rounded-full border border-gold/30 bg-gold/5 px-4 py-2 text-sm font-medium text-gold hover:bg-gold/10 hover:border-gold/50 transition-colors"
                 >
                   {cta}
                 </a>
@@ -105,18 +110,6 @@ export default function SupportPage() {
           </p>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-border">
-        <div className="mx-auto max-w-4xl px-6 py-6 flex items-center justify-between text-sm text-foreground-muted">
-          <span>© 2026 Vaultset. All rights reserved.</span>
-          <div className="flex gap-6">
-            <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
-            <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
-            <Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

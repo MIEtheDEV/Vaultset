@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { ListingDetail } from "@/components/ListingDetail";
+import { isOnVacation, vacationReturnDate } from "@/lib/vacation";
 
 const CONDITION_LABEL: Record<string, string> = {
   mint: "Mint", near_mint: "Near Mint", lightly_played: "Lightly Played",
@@ -83,7 +84,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
 
   const { data: seller } = await supabase
     .from("profiles")
-    .select("id, username, created_at, followers_only_offers")
+    .select("id, username, created_at, followers_only_offers, is_pro, pro_plan, pro_expires_at, vacation_mode, vacation_message, vacation_starts_at, vacation_ends_at")
     .eq("id", listing.user_id)
     .single();
 
@@ -101,6 +102,8 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     .limit(6);
 
   const sellerFollowersOnly = !!(seller as any)?.followers_only_offers;
+  const sellerOnVacation    = isOnVacation(seller as any);
+  const vacationReturn      = vacationReturnDate(seller as any);
 
   const [{ data: watchEntry }, { data: followEntry }] = await Promise.all([
     user
@@ -219,6 +222,9 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
         initialWatched={!!watchEntry}
         sellerFollowersOnly={sellerFollowersOnly}
         currentUserFollowsSeller={!!followEntry}
+        sellerOnVacation={sellerOnVacation}
+        vacationMessage={(seller as any)?.vacation_message ?? null}
+        vacationReturnAt={vacationReturn ? vacationReturn.toISOString() : null}
       />
     </>
   );

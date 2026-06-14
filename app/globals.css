@@ -88,6 +88,46 @@ body {
   .print-section { page-break-before: auto; }
 }
 
+/*
+  Showcase card borders (Pro "advanced showcase customization").
+  An animated holographic/gold ring masked to the card's rounded border,
+  using the same mask-composite ring technique as .spin-border above.
+*/
+@keyframes showcase-foil-shift {
+  to { background-position: 200% 50%; }
+}
+
+.showcase-foil,
+.showcase-gold {
+  position: relative;
+  isolation: isolate;
+}
+
+.showcase-foil::before,
+.showcase-gold::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background-size: 200% 200%;
+  animation: showcase-foil-shift 3s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: destination-out;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.showcase-foil::before {
+  background-image: linear-gradient(115deg, #ff5f6d, #ffc371, #47e5bc, #4f9bff, #b15cff, #ff5f6d);
+}
+
+.showcase-gold::before {
+  background-image: linear-gradient(115deg, #8a6d1d, #e8b84b, #fff3c4, #e8b84b, #8a6d1d);
+}
+
 /* Remove native number input spinners */
 .no-spinner { -moz-appearance: textfield; appearance: textfield; }
 .no-spinner::-webkit-outer-spin-button,

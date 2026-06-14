@@ -43,10 +43,21 @@
 
 ### Phase 4
 
-- [ ] **Pro plan enforcement** — Gate Pro features (price history, portfolio analytics, collection showcase, pull reveal publishing) behind subscription check; existing users grandfathered free.
 - [x] **Pricing page** — `/pricing` with 5 plan cards (Lifetime/Monthly/Quarterly/6-Month/Annual), savings % vs monthly fetched live from Stripe, Free vs Pro feature table, FAQ, nav link added to homepage.
-- [ ] **Upgrade prompts** — Contextual upsell nudges at feature limits (e.g., "Upgrade to Pro for price alerts").
-- [ ] **Freemium limits** — Enforce free-tier caps: ~500 card inventory limit, ~10 active listings. *No cap enforcement exists in the codebase today.*
+
+**Pro feature build-out — build these *before* gating, in order. Source of truth: [`docs/monetization-gating-strategy.md`](docs/monetization-gating-strategy.md).**
+
+- [x] **1. Pro Seller badge on listings** — `ProSellerBadge` ("Pro Seller" pill) added to `components/ProBadge.tsx` and rendered on `MarketplaceGrid` cards, `ListingDetail`, and `SealedProductsGrid`, subscriber-gated via `isProSubscriber()`. Seller pro fields added to the marketplace + listing queries.
+- [x] **2. Bulk CSV export + tax/insurance presets** — `/inventory/export` page + `components/InventoryExport.tsx` with three presets (**Full**, **Tax / cost-basis**, **Insurance inventory**), shared `lib/exportCsv.ts` (`buildCsv` + `downloadCsv`), an **Export** button in the inventory header, and a "not tax/insurance advice" disclaimer. *Cards only (`collection_items`); sealed products not included yet. Not yet Pro-gated — gating happens in the enforcement step below. PDF deferred.*
+- [x] **3. Foil/holo showcase borders + public showcase display** — Discovered the public showcase didn't exist (pins were written but never rendered), so built it: a **Showcase** tab on the profile rendering pinned `profile_showcase` cards (`ProfileTabs` + profile page). Added the Pro **foil/gold animated borders** — `showcase_border` column (migration `20260613100000_add_showcase_border.sql`), a border picker in `ShowcaseEditor`, CSS rings in `globals.css`, applied on the public showcase. *Border picker is functional for all users until the enforcement step gates it. **Requires both `pro_plan` and `showcase_border` migrations applied** (see below).*
+- [x] **4. Marketplace "Vacation Mode"** — Per-seller listing pause via profile flags (migration `20260614000000_add_vacation_mode.sql`). **Basic pause is free**: a `vacation_mode` toggle hides all of a seller's active listings from the marketplace + storefront and disables offers on detail pages, with amber banners everywhere (inventory untouched). **Scheduled window (`vacation_starts_at`/`ends_at`) + auto-reply message are Pro** — functional for all until enforcement. `lib/vacation.ts` `isOnVacation()` computes effective state; settings live in a new "Marketplace Availability" card in account settings.
+- [x] **5. Push notifications (all types) + per-type preferences** — Full web-push stack: `web-push` dep, `push_subscriptions` table (migration `20260614100000`), service worker `public/sw.js`, `POST /api/push/subscribe` + `/api/push/unsubscribe`, `lib/push.ts` `sendPushToUser()` (prunes dead endpoints), `PushToggle` device card in account settings. **Wired for *every* notification type** via a single chokepoint (migration `20260614200000`): an AFTER INSERT trigger on `notifications` calls `POST /api/push/dispatch` through `pg_net`, catching the DB-trigger-created `new_offer`/`new_follower` as well as app-code `price_alert`/`wishlist_listing_match`/`badge_earned`. The endpoint (secret-authed via `PUSH_DISPATCH_SECRET`) honors per-type opt-outs in `notification_preferences` and builds copy via `lib/notificationPush.ts`. **User settings UI**: `NotificationPreferences` toggles (offers / alerts / followers / achievements). Also fixed/installed the PWA manifest + icon set so push reaches mobile (Android install + iOS add-to-home-screen). New env: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUSH_DISPATCH_SECRET`. *Requires per-env setup: VAPID keys + `push_dispatch_config` row (see `docs/docs.md`). Hosted DB can't reach localhost, so trigger delivery needs a public URL. Instant-vs-digest tiering (Pro) deferred to enforcement. SMS deferred.*
+
+**Gating & limits — only after the build-out above:**
+
+- [ ] **Pro plan enforcement** — Gate the Pro features behind an `isPro()` check; grandfather existing users free. *Already built — gating only:* price history charts, portfolio analytics/ROI report, collection showcase (base→advanced split), manual/on-demand refresh button, base price alerts. *Built in the build-out above:* bulk export + presets, foil/holo borders, scheduled vacation mode, instant alert delivery, Pro Seller listing badge. *Do not gate:* inventory (uncapped), pack reveals, standard price alerts, basic listing pause.
+- [ ] **Freemium limits** — Enforce the one free-tier cap: 100 active listings (count query + limit constant + upsell). *Inventory is uncapped — gate the insight, not the storage. No cap enforcement exists today.*
+- [ ] **Upgrade prompts** — Contextual upsell nudges at each gated surface (e.g., "Upgrade to Pro for price history charts" / "for unlimited listings"). *Build after gates exist — the gate is what triggers the nudge.*
 - [ ] **2FA** — Optional TOTP for account security.
 - [ ] **Error monitoring** — No error tracking service (e.g. Sentry) is integrated. *Uncaught client and server errors are currently invisible.*
 
@@ -77,18 +88,27 @@
 
 ## Free vs. Pro Reference
 
+> Source of truth for gating decisions: [`docs/monetization-gating-strategy.md`](docs/monetization-gating-strategy.md) (decided 2026-06-13).
+
 | Feature | Free | Pro |
 |---|---|---|
-| Card inventory | Up to 500 cards | Unlimited |
-| Active marketplace listings | Up to 10 | Unlimited |
-| Market price refresh | 1/day | Multiple/day |
+| Card inventory | Unlimited | Unlimited |
+| Current market value | Yes | Yes |
+| Active marketplace listings | Up to 100 | Unlimited |
+| Market price refresh | Daily (auto) | On-demand (manual) |
 | Watchlist | Yes | Yes |
 | Dashboard & basic stats | Yes | Yes |
 | Community & storefronts | Yes | Yes |
 | Price alerts | Yes | Yes |
+| Price alert delivery | Standard | Instant push |
+| Pack reveals (log + publish) | Yes | Yes |
+| Bulk CSV import | Yes | Yes |
+| Collections (basic) | Yes | Yes |
+| Listing pause / vacation mode | Basic | Scheduled |
 | Price history charts | — | Yes |
 | Portfolio analytics (ROI) | — | Yes |
-| Pull reveal publishing | — | Yes |
-| Collection showcase | — | Yes (advanced) |
-| Bulk import | Singleton purchase | Included |
+| Collection showcase | Basic | Advanced |
+| Foil / holo card borders | — | Yes |
+| Bulk CSV export (tax/insurance) | — | Yes |
+| Pro Seller badge | — | Yes |
 | Supporter badge | Donors only | — |

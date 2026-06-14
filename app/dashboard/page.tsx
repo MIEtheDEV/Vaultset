@@ -4,6 +4,8 @@ import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
 import { RefreshMarketButton } from "@/components/RefreshMarketButton";
 import { SupporterBadge } from "@/components/SupporterBadge";
+import { ProBadge } from "@/components/ProBadge";
+import { isProSubscriber } from "@/lib/proStatus";
 import { ReviewPrompt } from "@/components/ReviewPrompt";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { PortfolioChart } from "@/components/PortfolioChart";
@@ -181,7 +183,7 @@ export default async function DashboardPage() {
       )
     `).eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("market_refresh_log").select("refreshed_at").eq("user_id", user!.id).maybeSingle(),
-    supabase.from("profiles").select("is_supporter").eq("id", user!.id).single(),
+    supabase.from("profiles").select("is_supporter, is_pro, pro_plan, pro_expires_at").eq("id", user!.id).single(),
     supabase.rpc("get_wishlist_matches", { p_user_id: user!.id }),
     supabase.from("wishlist_items").select("id, card_name, set_name, card_number, image_url, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("product_purchases").select("id, name, product_type, for_sale, for_trade, list_price, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
@@ -214,6 +216,7 @@ export default async function DashboardPage() {
   ).slice(0, 10);
 
   const isSupporter = profileData?.is_supporter ?? false;
+  const isProSub    = isProSubscriber(profileData as any);
 
   // Following feed: get who this user follows, then their recent listings
   const { data: myFollowsData } = await supabase
@@ -387,6 +390,7 @@ export default async function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2 flex-wrap">
             {greeting()}, <span className="text-gold">@{username}</span>
+            {isProSub && <ProBadge />}
             {isSupporter && <SupporterBadge />}
           </h1>
           <p className="mt-1 text-sm text-foreground-muted">
@@ -394,10 +398,10 @@ export default async function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-col items-start sm:items-end gap-2">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Link
               href="/dashboard/analytics"
-              className="inline-flex w-fit items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+              className="inline-flex w-fit items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-medium text-foreground-muted whitespace-nowrap hover:border-gold/40 hover:text-foreground transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
@@ -406,7 +410,7 @@ export default async function DashboardPage() {
             </Link>
             <Link
               href="/dashboard/report"
-              className="inline-flex w-fit items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+              className="inline-flex w-fit items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-medium text-foreground-muted whitespace-nowrap hover:border-gold/40 hover:text-foreground transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -416,15 +420,6 @@ export default async function DashboardPage() {
                 <polyline points="10 9 9 9 8 9" />
               </svg>
               Generate Report
-            </Link>
-            <Link
-              href="/inventory/add"
-              className="inline-flex w-fit items-center gap-2 rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-background hover:bg-gold-light transition-colors"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Add Card
             </Link>
           </div>
           <RefreshMarketButton lastRefreshedAt={refreshLog?.refreshed_at ?? null} />

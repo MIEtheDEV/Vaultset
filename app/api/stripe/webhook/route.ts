@@ -32,8 +32,10 @@ export async function POST(request: NextRequest) {
           if (session.mode === "payment") {
             update.pro_expires_at  = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
             update.pro_auto_renews = false;
+            update.pro_plan        = "one_time";
           } else {
             update.pro_auto_renews = true;
+            update.pro_plan        = "subscription";
           }
           const { error } = await admin.from("profiles").update(update).eq("id", userId);
           if (error) throw new Error(`DB update failed: ${error.message}`);
@@ -53,6 +55,7 @@ export async function POST(request: NextRequest) {
             is_pro:          isActive,
             pro_expires_at:  periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
             pro_auto_renews: !sub.cancel_at_period_end && !sub.cancel_at,
+            pro_plan:        "subscription",
           })
           .eq("stripe_customer_id", customerId);
         if (error) throw new Error(`DB update failed: ${error.message}`);
@@ -65,7 +68,7 @@ export async function POST(request: NextRequest) {
 
         const { error } = await admin
           .from("profiles")
-          .update({ is_pro: false, pro_expires_at: null, pro_auto_renews: false })
+          .update({ is_pro: false, pro_expires_at: null, pro_auto_renews: false, pro_plan: null })
           .eq("stripe_customer_id", customerId);
         if (error) throw new Error(`DB update failed: ${error.message}`);
         break;

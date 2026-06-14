@@ -7,7 +7,7 @@ import { PricingCheckout, type PricePlan } from "@/components/PricingCheckout";
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: "Upgrade to Vaultset Pro — price history charts, portfolio analytics, unlimited inventory, and more.",
+  description: "Upgrade to Vaultset Pro — price history charts, portfolio analytics, on-demand pricing, and more.",
   alternates: { canonical: "/pricing" },
 };
 
@@ -19,18 +19,24 @@ const CHECK = (
 const DASH = <span className="text-foreground-muted/40 text-sm">—</span>;
 
 const FEATURES: { label: string; free: React.ReactNode; pro: React.ReactNode }[] = [
-  { label: "Card inventory",           free: "Up to 500 cards",   pro: "Unlimited"         },
-  { label: "Marketplace listings",     free: "Up to 10 active",   pro: "Unlimited"         },
-  { label: "Market price refresh",     free: "Once daily",        pro: "Multiple / day"    },
-  { label: "Buy, sell & trade",        free: CHECK,               pro: CHECK               },
-  { label: "Wishlist & price alerts",  free: CHECK,               pro: CHECK               },
-  { label: "Community & storefronts",  free: CHECK,               pro: CHECK               },
-  { label: "Collections",             free: CHECK,               pro: CHECK               },
-  { label: "Price history charts",     free: DASH,                pro: CHECK               },
-  { label: "Portfolio analytics (ROI)",free: DASH,                pro: CHECK               },
-  { label: "Pull reveal publishing",   free: DASH,                pro: CHECK               },
-  { label: "Collection showcase",      free: DASH,                pro: "Advanced"          },
-  { label: "Bulk CSV import",          free: "One-time purchase", pro: "Included"          },
+  { label: "Card inventory",              free: "Unlimited",        pro: "Unlimited"  },
+  { label: "Current market value",        free: CHECK,              pro: CHECK        },
+  { label: "Buy, sell & trade",           free: CHECK,              pro: CHECK        },
+  { label: "Marketplace listings",        free: "Up to 100 active", pro: "Unlimited"  },
+  { label: "Wishlist & price alerts",     free: CHECK,              pro: CHECK        },
+  { label: "Pack reveals",                free: CHECK,              pro: CHECK        },
+  { label: "Community & storefronts",     free: CHECK,              pro: CHECK        },
+  { label: "Collections",                 free: CHECK,              pro: CHECK        },
+  { label: "Bulk CSV import",             free: CHECK,              pro: CHECK        },
+  { label: "Listing pause",               free: "Basic",            pro: "Scheduled" },
+  { label: "Market price refresh",        free: "Daily",            pro: "On-demand" },
+  { label: "Instant alert delivery",      free: DASH,               pro: CHECK        },
+  { label: "Price history charts",        free: DASH,               pro: CHECK        },
+  { label: "Portfolio analytics (ROI)",   free: DASH,               pro: CHECK        },
+  { label: "Collection showcase",         free: "Basic",            pro: "Advanced"  },
+  { label: "Foil & holo card borders",    free: DASH,               pro: CHECK        },
+  { label: "Bulk export (tax/insurance)", free: DASH,               pro: CHECK        },
+  { label: "Pro Seller badge",            free: DASH,               pro: CHECK        },
 ];
 
 async function fetchPlans(): Promise<PricePlan[]> {
@@ -193,8 +199,8 @@ export default async function PricingPage() {
                   className={`grid grid-cols-3 px-6 py-3 items-center ${i !== FEATURES.length - 1 ? "border-b border-border" : ""}`}
                 >
                   <span className="text-sm text-foreground">{label}</span>
-                  <div className="flex justify-center text-sm text-foreground-muted">{free}</div>
-                  <div className="flex justify-center text-sm text-foreground">{pro}</div>
+                  <div className="flex justify-center text-center text-sm text-foreground-muted">{free}</div>
+                  <div className="flex justify-center text-center text-sm text-foreground">{pro}</div>
                 </div>
               ))}
             </div>
@@ -207,6 +213,10 @@ export default async function PricingPage() {
               {
                 q: "Can I cancel anytime?",
                 a: "Yes. Cancel from your account settings or the billing portal at any time. Your Pro access continues until the end of the current billing period.",
+              },
+              {
+                q: "What happens when I cancel?",
+                a: "Nothing changes right away. Your membership stays active and simply stops auto-renewing — it ends on the date it would have renewed. Every Pro feature is preserved in full until that end date, so you keep everything you paid for through the rest of the period.",
               },
               {
                 q: "What happens to my data if I downgrade?",

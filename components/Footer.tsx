@@ -5,7 +5,10 @@ export function Footer() {
   return (
     <footer className="border-t border-border bg-background">
       <div className="mx-auto max-w-7xl px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <span className="text-lg font-bold tracking-widest text-gold">VAULTSET</span>
+        <div className="flex items-center gap-2">
+          <img src="/img/icon.png" alt="Vaultset" width={28} height={28} />
+          <span className="hidden md:block text-lg font-bold tracking-widest text-gold">VAULTSET</span>
+        </div>
         <KofiButton />
         <div className="flex gap-6 text-sm text-foreground-muted">
           <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>

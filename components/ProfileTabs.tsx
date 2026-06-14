@@ -2,30 +2,39 @@
 
 import { useState } from "react";
 
-type TabId = "listings" | "vault" | "collection" | "wishlist";
+type TabId = "showcase" | "listings" | "vault" | "collection" | "wishlist";
 
 export function ProfileTabs({
+  showcaseContent,
   listingsContent,
   vaultContent,
   collectionContent,
   wishlistContent,
+  showcaseCount,
   listingCount,
   vaultCount,
   collectionCount,
   wishlistCount,
 }: {
+  showcaseContent?: React.ReactNode;
   listingsContent: React.ReactNode;
   vaultContent?: React.ReactNode;
   collectionContent: React.ReactNode;
   wishlistContent?: React.ReactNode;
+  showcaseCount?: number;
   listingCount: number;
   vaultCount?: number;
   collectionCount: number;
   wishlistCount?: number;
 }) {
-  const [active, setActive] = useState<TabId>(vaultContent !== undefined ? "vault" : "listings");
+  const [active, setActive] = useState<TabId>(
+    showcaseContent !== undefined ? "showcase" : vaultContent !== undefined ? "vault" : "listings"
+  );
 
   const tabs: { id: TabId; label: string; count: number }[] = [
+    ...(showcaseContent !== undefined
+      ? [{ id: "showcase" as const, label: "Showcase", count: showcaseCount ?? 0 }]
+      : []),
     ...(vaultContent !== undefined
       ? [{ id: "vault" as const, label: "Vault", count: vaultCount ?? 0 }]
       : []),
@@ -56,10 +65,12 @@ export function ProfileTabs({
       </div>
 
       <div className="mt-6 space-y-8">
-        {active === "listings"   && listingsContent}
-        {active === "vault"      && vaultContent}
-        {active === "collection" && collectionContent}
-        {active === "wishlist"   && wishlistContent}
+        {active === "showcase"     ? showcaseContent
+          : active === "listings"   ? listingsContent
+          : active === "vault"      ? vaultContent
+          : active === "collection" ? collectionContent
+          : active === "wishlist"   ? wishlistContent
+          : null}
       </div>
     </div>
   );

@@ -33,11 +33,11 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <footer className="relative z-10 pb-8 text-center">
         <p className="text-xs text-foreground-muted">
           By continuing, you agree to our{" "}
-          <Link href="#" className="underline underline-offset-2 hover:text-foreground transition-colors">
+          <Link href="/terms" className="underline underline-offset-2 hover:text-foreground transition-colors">
             Terms
           </Link>{" "}
           and{" "}
-          <Link href="#" className="underline underline-offset-2 hover:text-foreground transition-colors">
+          <Link href="/privacy" className="underline underline-offset-2 hover:text-foreground transition-colors">
             Privacy Policy
           </Link>
         </p>

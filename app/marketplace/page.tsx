@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { createClient } from "@/utils/supabase/server";
 import { MarketplaceGrid } from "@/components/MarketplaceGrid";
 import { SealedProductsGrid } from "@/components/SealedProductsGrid";
+import { isProSubscriber } from "@/lib/proStatus";
+import { isOnVacation } from "@/lib/vacation";
 
 export const metadata: Metadata = {
   title: "Marketplace",
@@ -57,13 +59,16 @@ export default async function MarketplacePage({
     ...(user ? [user.id] : []),
   ])];
   const { data: profiles } = userIds.length
-    ? await supabase.from("profiles").select("id, username").in("id", userIds).eq("banned", false)
+    ? await supabase.from("profiles").select("id, username, is_pro, pro_plan, pro_expires_at, vacation_mode, vacation_starts_at, vacation_ends_at").in("id", userIds).eq("banned", false)
     : { data: [] };
 
   const profileMap = new Map(profiles?.map((p) => [p.id, p.username]) ?? []);
+  const proSellerIds = (profiles ?? []).filter((p) => isProSubscriber(p as any)).map((p) => p.id);
+  // Sellers on vacation: their active listings are hidden from the marketplace.
+  const pausedSellerIds = new Set((profiles ?? []).filter((p) => isOnVacation(p as any)).map((p) => p.id));
 
   const listingsWithSellers = (listings ?? [])
-    .filter((l) => profileMap.has(l.user_id))
+    .filter((l) => profileMap.has(l.user_id) && !pausedSellerIds.has(l.user_id))
     .map((l) => ({
       ...l,
       seller_username: profileMap.get(l.user_id) ?? "Unknown",
@@ -84,12 +89,14 @@ export default async function MarketplacePage({
 
   const sealedUserIds = [...new Set(sealedListings?.map((l) => l.user_id) ?? [])];
   const { data: sealedProfiles } = sealedUserIds.length
-    ? await supabase.from("profiles").select("id, username").in("id", sealedUserIds).eq("banned", false)
+    ? await supabase.from("profiles").select("id, username, is_pro, pro_plan, pro_expires_at").in("id", sealedUserIds).eq("banned", false)
     : { data: [] };
   const sealedProfileMap = new Map(sealedProfiles?.map((p) => [p.id, p.username]) ?? []);
+  const sealedProSellerIds = (sealedProfiles ?? []).filter((p) => isProSubscriber(p as any)).map((p) => p.id);
+  const sealedPausedSellerIds = new Set((sealedProfiles ?? []).filter((p) => isOnVacation(p as any)).map((p) => p.id));
 
   const sealedWithSellers = (sealedListings ?? [])
-    .filter((l) => sealedProfileMap.has(l.user_id))
+    .filter((l) => sealedProfileMap.has(l.user_id) && !sealedPausedSellerIds.has(l.user_id))
     .map((l) => ({
       ...l,
       seller_username: sealedProfileMap.get(l.user_id) ?? "Unknown",
@@ -144,6 +151,7 @@ export default async function MarketplacePage({
         wishedApiIds={wishedApiIds}
         followingUserIds={followingUserIds}
         sellerFollowerCounts={sellerFollowerCounts}
+        proSellerIds={proSellerIds}
         initialFilter={initialFilter}
       />
 
@@ -158,6 +166,7 @@ export default async function MarketplacePage({
           <SealedProductsGrid
             listings={sealedWithSellers}
             currentUserId={user?.id ?? ""}
+            proSellerIds={sealedProSellerIds}
           />
         </div>
       )}

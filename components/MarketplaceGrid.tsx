@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { CardImage } from "@/components/CardImage";
+import { ProSellerBadge } from "@/components/ProBadge";
 import { createClient } from "@/utils/supabase/client";
 
 const conditionLabel: Record<string, string> = {
@@ -104,6 +105,7 @@ export function MarketplaceGrid({
   wishedApiIds = [],
   followingUserIds = [],
   sellerFollowerCounts = {},
+  proSellerIds = [],
   initialFilter,
 }: {
   listings: MarketplaceListing[];
@@ -113,8 +115,10 @@ export function MarketplaceGrid({
   wishedApiIds?: string[];
   followingUserIds?: string[];
   sellerFollowerCounts?: Record<string, number>;
+  proSellerIds?: string[];
   initialFilter?: string;
 }) {
+  const proSellerSet = useMemo(() => new Set(proSellerIds), [proSellerIds]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>(
     VALID_FILTERS.has(initialFilter as FilterKey) ? (initialFilter as FilterKey) : "all"
@@ -426,6 +430,7 @@ export function MarketplaceGrid({
                         ) : (
                           <span className="flex items-center gap-1.5 flex-wrap">
                             <span>by <Link href={`/marketplace/user/${item.seller_username}`} className="text-foreground hover:text-gold transition-colors">@{item.seller_username}</Link></span>
+                            {proSellerSet.has(item.user_id) && <ProSellerBadge />}
                             {(sellerFollowerCounts[item.user_id] ?? 0) > 0 && (
                               <span className="text-foreground-muted opacity-60">
                                 · {sellerFollowerCounts[item.user_id]} follower{sellerFollowerCounts[item.user_id] !== 1 ? "s" : ""}

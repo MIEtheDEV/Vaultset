@@ -52,7 +52,7 @@ const features = [
   },
 ];
 
-const faqs = [
+const faqs: { q: string; a: string; link?: { href: string; label: string } }[] = [
   {
     q: "How do I track my Pokémon card collection?",
     a: "Create a free Vaultset account, then add cards by searching our Pokémon TCG database. Card details like set, number, rarity, and image auto-populate. You can track condition, finish, grading info, quantity, and what you paid.",
@@ -67,7 +67,8 @@ const faqs = [
   },
   {
     q: "Is Vaultset free?",
-    a: "Core features are free forever with no card limits: inventory management, current market prices, the full marketplace (buy, sell, trade, and counter-offers), collections, pack reveals, wishlist, and community features. A Pro plan unlocks advanced tools — portfolio history charts, the detailed P&L analytics report, price alerts, and bulk CSV import.",
+    a: "Yes — all the essentials are free, including unlimited inventory with current market values, the full marketplace (buy, sell, trade, and counter-offers), price alerts, pack reveals, bulk CSV import, collections, wishlist, and the whole community. A Pro plan unlocks advanced tools for serious collectors — portfolio price-history charts, the detailed P&L / ROI analytics report, advanced collection showcase, on-demand price refreshes, unlimited marketplace listings, a Pro Seller badge, and bulk CSV export.",
+    link: { href: "/pricing", label: "Compare Free & Pro plans" },
   },
   {
     q: "Does Vaultset support graded cards?",
@@ -340,6 +341,12 @@ export default async function Home() {
               </div>
             ))}
           </div>
+          <div className="text-center mt-12">
+            <Link href="/pricing" className="inline-flex items-center gap-1.5 text-sm font-semibold text-gold hover:text-gold-light transition-colors">
+              Compare Free &amp; Pro plans
+              <span aria-hidden>→</span>
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -456,7 +463,7 @@ export default async function Home() {
             <h2 className="text-4xl font-bold tracking-tight">Frequently asked questions</h2>
           </div>
           <div className="space-y-4">
-            {faqs.map(({ q, a }) => (
+            {faqs.map(({ q, a, link }) => (
               <details key={q} className="group rounded-2xl border border-border bg-surface overflow-hidden">
                 <summary className="flex items-center justify-between px-6 py-4 cursor-pointer list-none select-none hover:bg-surface-raised transition-colors">
                   <span className="font-medium text-foreground pr-4">{q}</span>
@@ -470,6 +477,14 @@ export default async function Home() {
                 </summary>
                 <div className="px-6 pb-5 text-sm text-foreground-muted leading-relaxed border-t border-border pt-4">
                   {a}
+                  {link && (
+                    <div className="mt-3">
+                      <Link href={link.href} className="inline-flex items-center gap-1.5 font-semibold text-gold hover:text-gold-light transition-colors">
+                        {link.label}
+                        <span aria-hidden>→</span>
+                      </Link>
+                    </div>
+                  )}
                 </div>
               </details>
             ))}
@@ -489,6 +504,9 @@ export default async function Home() {
           <div className="flex flex-wrap justify-center gap-4">
             <Link href="/register" className="rounded-full bg-gold px-8 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
               Create Free Account
+            </Link>
+            <Link href="/pricing" className="rounded-full border border-border px-8 py-3 font-semibold text-foreground hover:border-gold/40 hover:bg-surface-raised transition-colors">
+              View Pricing
             </Link>
             <Link href="/marketplace" className="rounded-full border border-border px-8 py-3 font-semibold text-foreground hover:border-gold/40 hover:bg-surface-raised transition-colors">
               Browse the Market

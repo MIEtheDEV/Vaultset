@@ -125,6 +125,9 @@ export async function POST() {
     const newAlerts = alertMatches.filter((m: any) => !alreadyNotified.has(m.listing_id as string));
 
     if (newAlerts.length > 0) {
+      // Inserting the notification fires the `push_dispatch_after_insert`
+      // trigger, which delivers web push (respecting the user's prefs). No
+      // direct push call here — the trigger is the single delivery chokepoint.
       await admin.from("notifications").insert(
         newAlerts.map((m: any) => ({
           user_id:  user.id,

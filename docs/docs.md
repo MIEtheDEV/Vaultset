@@ -399,6 +399,9 @@ Server Components use the SSR Supabase client (`utils/supabase/server.ts`). Clie
 ### Marketplace via Flags
 There is no separate listings table. Cards are published to the marketplace by toggling `for_sale` or `for_trade` on `collection_items`. Inventory and marketplace are always in sync.
 
+### Vacation Mode (per-seller listing pause)
+A seller can pause all their active listings without touching inventory. State lives on `profiles` (`vacation_mode`, `vacation_message`, `vacation_starts_at`, `vacation_ends_at`); `lib/vacation.ts` `isOnVacation()` computes the effective paused state from the manual toggle (free) or a scheduled window (Pro). Paused sellers are filtered out of the marketplace and storefront listings, and the listing detail page shows a banner and disables offers — the owner still sees their own listings. Managed from the "Marketplace Availability" card in account settings.
+
 ### Server Actions for Mutations
 Write operations that need auth context use Next.js Server Actions in co-located `actions.ts` files (e.g. `app/offers/actions.ts`, `app/profile/actions.ts`, `app/messages/actions.ts`).
 
@@ -415,6 +418,22 @@ Most notifications are created by `SECURITY DEFINER` Postgres triggers:
 - `auto_expire_on_offer_change` — fires on `offers` INSERT/UPDATE → sets stale pending offers to `expired`
 
 Price alert notifications are created by the market refresh API route (`/api/market-refresh`) after prices update, using the `check_wishlist_price_alerts(p_user_id)` RPC to find listings at or below each wishlist item's `target_price`.
+
+### Web Push (all notifications, single chokepoint)
+Browser push is delivered via the VAPID/web-push stack. Devices register the service worker (`public/sw.js`) and store a subscription in `push_subscriptions` through `POST /api/push/subscribe` (toggle in account settings via `components/PushToggle.tsx`). `lib/push.ts` `sendPushToUser()` fans a payload out to all of a user's endpoints with `web-push`, pruning expired ones (404/410).
+
+**Every** notification fires a push, regardless of who created it (app code *or* the SECURITY DEFINER triggers behind `new_offer`/`new_follower`). The mechanism is a single chokepoint: an AFTER INSERT trigger on `notifications` (`push_dispatch_after_insert`) calls `POST /api/push/dispatch` via `pg_net`. That endpoint authenticates with a shared secret (`x-push-secret` ↔ `PUSH_DISPATCH_SECRET`), checks the recipient's per-type preferences in `notification_preferences` (opt-out; missing row = all on), builds copy via `lib/notificationPush.ts` (`buildPushPayload` + `prefKeyForType`), and sends. Users manage per-type toggles (offers / price & wishlist alerts / followers / achievements) in `components/NotificationPreferences.tsx`.
+
+**Setup per environment:**
+- Env: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (generate with `npx web-push generate-vapid-keys`), and `PUSH_DISPATCH_SECRET`.
+- Tell the DB trigger where to POST (the migration leaves `push_dispatch_config` empty = feature off until set):
+  ```sql
+  insert into public.push_dispatch_config (id, dispatch_url, dispatch_secret)
+  values (1, 'https://vaultset.app/api/push/dispatch', '<PUSH_DISPATCH_SECRET>')
+  on conflict (id) do update
+    set dispatch_url = excluded.dispatch_url, dispatch_secret = excluded.dispatch_secret;
+  ```
+- Note: a hosted Supabase DB can't reach `localhost`, so the trigger only delivers against a publicly reachable `dispatch_url` (prod, or a dev tunnel). Delivery tiering (instant Pro vs digest free) is deferred to the Pro-enforcement step and belongs in the dispatch endpoint.
 
 ### Row-Level Security
 All tables enforce RLS. Users read/write only their own data. Marketplace listings and profiles are readable by all authenticated users. Conversations are readable only by their two participants. Notifications are readable only by their recipient.

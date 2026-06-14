@@ -9,8 +9,9 @@ export default function ThankYouPage() {
       {/* Nav */}
       <nav className="border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto max-w-4xl px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="text-lg font-bold tracking-widest text-gold hover:text-gold-light transition-colors">
-            VAULTSET
+          <Link href="/" className="flex items-center gap-2 group">
+            <img src="/img/icon.png" alt="Vaultset" width={28} height={28} />
+            <span className="text-lg font-bold tracking-widest text-gold group-hover:text-gold-light transition-colors">VAULTSET</span>
           </Link>
         </div>
       </nav>

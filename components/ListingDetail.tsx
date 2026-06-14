@@ -4,6 +4,8 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { CardImage } from "@/components/CardImage";
+import { ProSellerBadge } from "@/components/ProBadge";
+import { isProSubscriber } from "@/lib/proStatus";
 import { MessageButton } from "@/components/MessageButton";
 import { OfferModal } from "@/components/OfferModal";
 import { createClient } from "@/utils/supabase/client";
@@ -65,7 +67,7 @@ interface Card {
   card_number: string | null; year: number | null; image_url: string | null;
   game_data: Record<string, unknown> | null;
 }
-interface Seller { id: string; username: string; created_at: string; }
+interface Seller { id: string; username: string; created_at: string; is_pro?: boolean | null; pro_plan?: string | null; pro_expires_at?: string | null; }
 interface OtherListing {
   id: string; for_sale: boolean; for_trade: boolean; list_price: number | null;
   grader: string | null; grade: number | null; condition: string | null;
@@ -77,15 +79,20 @@ interface OtherListing {
 export function ListingDetail({
   listing, card, seller, otherListings, currentUserId, initialWatched,
   sellerFollowersOnly = false, currentUserFollowsSeller = false,
+  sellerOnVacation = false, vacationMessage = null, vacationReturnAt = null,
 }: {
   listing: Listing; card: Card; seller: Seller;
   otherListings: OtherListing[]; currentUserId: string; initialWatched: boolean;
   sellerFollowersOnly?: boolean; currentUserFollowsSeller?: boolean;
+  sellerOnVacation?: boolean; vacationMessage?: string | null; vacationReturnAt?: string | null;
 }) {
   const isAuthenticated = currentUserId !== "";
   const [watched, setWatched] = useState(initialWatched);
   const isOwn    = listing.user_id === currentUserId;
-  const onHold   = listing.on_hold;
+  // A paused (vacation) seller is treated like on-hold for offers, but only for
+  // other users — the owner still sees normal controls on their own listing.
+  const onVacation = sellerOnVacation && !isOwn;
+  const onHold   = listing.on_hold || onVacation;
   const isPromo  = !!(card.game_data?.is_promo);
   const gd       = card.game_data ?? {};
   const rarity   = gd.rarity   as string | undefined;
@@ -210,12 +217,15 @@ export function ListingDetail({
           {/* Seller */}
           <div className="rounded-2xl border border-border bg-surface p-4 flex items-center justify-between gap-4">
             <div>
-              <Link
-                href={`/profile/${seller.username}`}
-                className="text-sm font-semibold text-foreground hover:text-gold transition-colors"
-              >
-                @{seller.username}
-              </Link>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Link
+                  href={`/profile/${seller.username}`}
+                  className="text-sm font-semibold text-foreground hover:text-gold transition-colors"
+                >
+                  @{seller.username}
+                </Link>
+                {isProSubscriber(seller) && <ProSellerBadge />}
+              </div>
               <p className="text-xs text-foreground-muted">Joined {joinedDate}</p>
               <p className="text-xs text-foreground-muted mt-0.5">Listed {timeAgo(listing.created_at)}</p>
             </div>
@@ -236,7 +246,7 @@ export function ListingDetail({
           </div>
 
           {/* On Hold banner */}
-          {onHold && (
+          {listing.on_hold && (
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-3 flex items-start gap-3">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400 mt-0.5 flex-shrink-0">
                 <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
@@ -244,6 +254,25 @@ export function ListingDetail({
               <div>
                 <p className="text-sm font-medium text-amber-400">This listing is on hold</p>
                 <p className="text-xs text-foreground-muted mt-0.5">A deal is in progress. This card is no longer available for offers.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Vacation banner — seller has paused their listings */}
+          {onVacation && !listing.on_hold && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-3 flex items-start gap-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400 mt-0.5 flex-shrink-0">
+                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-amber-400">@{seller.username} is on vacation</p>
+                <p className="text-xs text-foreground-muted mt-0.5">
+                  {vacationMessage
+                    ? vacationMessage
+                    : vacationReturnAt
+                      ? `Offers are paused until ${new Date(vacationReturnAt).toLocaleDateString("en-US", { month: "long", day: "numeric" })}.`
+                      : "This seller has paused their listings. Check back soon."}
+                </p>
               </div>
             </div>
           )}
