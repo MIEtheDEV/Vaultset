@@ -184,7 +184,7 @@ export default async function DashboardPage() {
       )
     `).eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("market_refresh_log").select("refreshed_at").eq("user_id", user!.id).maybeSingle(),
-    supabase.from("profiles").select("is_supporter, is_pro, pro_plan, pro_expires_at").eq("id", user!.id).single(),
+    supabase.from("profiles").select("is_supporter, is_pro, pro_plan, pro_expires_at, pwa_installed_at").eq("id", user!.id).single(),
     supabase.rpc("get_wishlist_matches", { p_user_id: user!.id }),
     supabase.from("wishlist_items").select("id, card_name, set_name, card_number, image_url, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("product_purchases").select("id, name, product_type, for_sale, for_trade, list_price, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
@@ -217,6 +217,7 @@ export default async function DashboardPage() {
   ).slice(0, 10);
 
   const isSupporter = profileData?.is_supporter ?? false;
+  const pwaInstalled = Boolean((profileData as any)?.pwa_installed_at);
   const isProSub    = isProSubscriber(profileData as any);
 
   // Following feed: get who this user follows, then their recent listings
@@ -386,7 +387,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
 
-      <InstallPwaCallout />
+      <InstallPwaCallout serverInstalled={pwaInstalled} />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

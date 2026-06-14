@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { isStandalone, isIosSafari } from "@/lib/pwa";
+import { usePwaInstall } from "@/lib/usePwaInstall";
 
 const DISMISS_KEY = "vaultset_install_dismissed";
 
@@ -22,26 +22,30 @@ const BENEFITS = [
  * can be installed as a PWA, with the benefits and platform-specific steps.
  * Self-hides when already running installed (standalone) or once dismissed.
  */
-export function InstallPwaCallout({ className = "" }: { className?: string }) {
-  const [show, setShow] = useState(false);
-  const [ios, setIos]   = useState(false);
+export function InstallPwaCallout({
+  className = "",
+  serverInstalled = false,
+}: {
+  className?: string;
+  serverInstalled?: boolean;
+}) {
+  const { installed, isIos: ios } = usePwaInstall(serverInstalled);
+  const [dismissed, setDismissed] = useState(true); // hidden until we confirm not dismissed
 
   useEffect(() => {
-    // Deferred so state updates land in a callback, not synchronously in the effect.
+    // Deferred so the state update lands in a callback, not synchronously here.
     queueMicrotask(() => {
-      if (isStandalone()) return;                                   // already installed
-      if (localStorage.getItem(DISMISS_KEY) === "1") return;        // user dismissed
-      setIos(isIosSafari());
-      setShow(true);
+      try { setDismissed(localStorage.getItem(DISMISS_KEY) === "1"); }
+      catch { setDismissed(false); }
     });
   }, []);
 
   function dismiss() {
     try { localStorage.setItem(DISMISS_KEY, "1"); } catch { /* ignore */ }
-    setShow(false);
+    setDismissed(true);
   }
 
-  if (!show) return null;
+  if (installed || dismissed) return null;
 
   return (
     <div className={`relative rounded-2xl border border-gold/20 bg-gold/5 p-5 sm:p-6 ${className}`}>

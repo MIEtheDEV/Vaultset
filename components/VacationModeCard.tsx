@@ -44,6 +44,8 @@ interface Props {
   initialMessage: string;
   initialStartsAt: string | null;
   initialEndsAt: string | null;
+  /** Drop the outer card chrome + heading when embedded in a CollapsibleSection. */
+  bare?: boolean;
 }
 
 export function VacationModeCard({
@@ -52,6 +54,7 @@ export function VacationModeCard({
   initialMessage,
   initialStartsAt,
   initialEndsAt,
+  bare = false,
 }: Props) {
   const router = useRouter();
 
@@ -110,10 +113,10 @@ export function VacationModeCard({
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
+    <div className={bare ? "space-y-4" : "rounded-2xl border border-border bg-surface p-6 space-y-4"}>
       <div>
-        <h2 className="font-semibold text-foreground">Marketplace Availability</h2>
-        <p className="mt-1 text-sm text-foreground-muted">
+        {!bare && <h2 className="font-semibold text-foreground">Marketplace Availability</h2>}
+        <p className={`${bare ? "" : "mt-1 "}text-sm text-foreground-muted`}>
           Going away? Pause your listings so buyers don&apos;t make offers you can&apos;t fulfill.
           Your inventory is untouched — listings simply hide from the marketplace until you&apos;re back.
         </p>

@@ -20,6 +20,13 @@ export function PushToggle({ isPro = false }: { isPro?: boolean }) {
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState("");
   const [testState, setTestState] = useState<"idle" | "sending" | "sent" | "none" | "error">("idle");
+  // Push state is entirely browser-derived. Render "loading" until mounted so
+  // the server HTML and the first client render always match (no hydration
+  // mismatch); real status resolves in the effect below right after mount.
+  const [mounted, setMounted] = useState(false);
+
+  // Deferred so the state update lands in a callback, not synchronously here.
+  useEffect(() => { queueMicrotask(() => setMounted(true)); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +116,9 @@ export function PushToggle({ isPro = false }: { isPro?: boolean }) {
     }
   }
 
-  const on = status === "on";
+  // Until mounted, render the deterministic "loading" state on both server and client.
+  const s: Status = mounted ? status : "loading";
+  const on = s === "on";
 
   return (
     <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
@@ -123,11 +132,11 @@ export function PushToggle({ isPro = false }: { isPro?: boolean }) {
         </p>
       </div>
 
-      {status === "unsupported" ? (
+      {s === "unsupported" ? (
         <p className="rounded-lg border border-border bg-surface-raised px-4 py-2.5 text-sm text-foreground-muted">
           This browser doesn&apos;t support push notifications, or push isn&apos;t configured.
         </p>
-      ) : status === "denied" ? (
+      ) : s === "denied" ? (
         <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-400">
           Notifications are blocked in your browser settings. Allow them for this site to enable push.
         </p>
@@ -140,7 +149,7 @@ export function PushToggle({ isPro = false }: { isPro?: boolean }) {
             type="button"
             role="switch"
             aria-checked={on}
-            disabled={status === "loading" || status === "working"}
+            disabled={s === "loading" || s === "working"}
             onClick={on ? disable : enable}
             className={`relative flex h-6 w-11 shrink-0 items-center rounded-full border-2 transition-colors disabled:opacity-50 ${
               on ? "border-gold bg-gold" : "border-border bg-surface-raised"

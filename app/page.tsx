@@ -54,7 +54,7 @@ const features = [
   },
 ];
 
-const faqs: { q: string; a: string; link?: { href: string; label: string } }[] = [
+const faqs: { q: string; a: string; link?: { href: string; label: string }; install?: boolean }[] = [
   {
     q: "How do I track my Pokémon card collection?",
     a: "Create a free Vaultset account, then add cards by searching our Pokémon TCG database. Card details like set, number, rarity, and image auto-populate. You can track condition, finish, grading info, quantity, and what you paid.",
@@ -79,6 +79,7 @@ const faqs: { q: string; a: string; link?: { href: string; label: string } }[] =
   {
     q: "Is Vaultset available as an app?",
     a: "Vaultset isn't on the Apple App Store or Google Play, but you can install it as an app straight from your browser — it's a Progressive Web App (PWA), free and ready in seconds. On Android or desktop Chrome/Edge, tap \"Install app\" in the top bar (or your browser menu → Install). On iPhone or iPad, open Vaultset in Safari, tap the Share button, then \"Add to Home Screen.\" Once installed it launches full-screen from your home screen like a native app, loads fast, and can deliver push notifications for offers and price alerts — with no download or app-store account required.",
+    install: true,
   },
   {
     q: "What trading card games does Vaultset support?",
@@ -138,6 +139,17 @@ export default async function Home() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const username = user?.user_metadata?.username as string | undefined;
+
+  // Whether this user has already installed the PWA — suppresses install prompts.
+  let pwaInstalled = false;
+  if (user) {
+    const { data: installProfile } = await supabase
+      .from("profiles")
+      .select("pwa_installed_at")
+      .eq("id", user.id)
+      .single();
+    pwaInstalled = Boolean(installProfile?.pwa_installed_at);
+  }
 
   const [
     { data: totalCardsData },
@@ -227,7 +239,7 @@ export default async function Home() {
             <Link href="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
           </div>
           <div className="flex items-center gap-4">
-            <InstallAppButton />
+            <InstallAppButton serverInstalled={pwaInstalled} />
             {username ? (
               <UserNav username={username} showSettings={false} />
             ) : (
@@ -302,7 +314,7 @@ export default async function Home() {
 
       {/* Install as a PWA */}
       <div className="mx-auto max-w-7xl px-6">
-        <InstallPwaCallout className="my-12" />
+        <InstallPwaCallout className="my-12" serverInstalled={pwaInstalled} />
       </div>
 
       {/* How It Works */}
@@ -475,7 +487,7 @@ export default async function Home() {
             <h2 className="text-4xl font-bold tracking-tight">Frequently asked questions</h2>
           </div>
           <div className="space-y-4">
-            {faqs.map(({ q, a, link }) => (
+            {faqs.map(({ q, a, link, install }) => (
               <details key={q} className="group rounded-2xl border border-border bg-surface overflow-hidden">
                 <summary className="flex items-center justify-between px-6 py-4 cursor-pointer list-none select-none hover:bg-surface-raised transition-colors">
                   <span className="font-medium text-foreground pr-4">{q}</span>
@@ -489,6 +501,11 @@ export default async function Home() {
                 </summary>
                 <div className="px-6 pb-5 text-sm text-foreground-muted leading-relaxed border-t border-border pt-4">
                   {a}
+                  {install && (
+                    <div className="mt-4">
+                      <InstallAppButton variant="inline" serverInstalled={pwaInstalled} />
+                    </div>
+                  )}
                   {link && (
                     <div className="mt-3">
                       <Link href={link.href} className="inline-flex items-center gap-1.5 font-semibold text-gold hover:text-gold-light transition-colors">

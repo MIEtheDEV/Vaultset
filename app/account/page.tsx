@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
-import { AccountSettingsForm } from "@/components/AccountSettingsForm";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
+import { ProfileSettingsForm } from "@/components/ProfileSettingsForm";
+import { PasswordSettingsForm } from "@/components/PasswordSettingsForm";
+import { DangerZone } from "@/components/DangerZone";
 import { VacationModeCard } from "@/components/VacationModeCard";
 import { PushToggle } from "@/components/PushToggle";
+import { InstallAppCard } from "@/components/InstallAppCard";
 import { NotificationPreferences } from "@/components/NotificationPreferences";
 import { SupporterBadge } from "@/components/SupporterBadge";
 import { EditReviewButton } from "@/components/EditReviewButton";
@@ -27,7 +31,7 @@ export default async function AccountPage({
   const [{ data: profile }, { data: rawItems }, { data: existingReview }, { data: notifPrefs }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("is_supporter, is_pro, pro_expires_at, pro_auto_renews, bio, specialty, city, featured_item_id, avatar_url, avatar_color, followers_only_offers, vacation_mode, vacation_message, vacation_starts_at, vacation_ends_at")
+      .select("is_supporter, is_pro, pro_expires_at, pro_auto_renews, bio, specialty, city, featured_item_id, avatar_url, avatar_color, followers_only_offers, vacation_mode, vacation_message, vacation_starts_at, vacation_ends_at, pwa_installed_at")
       .eq("id", user.id)
       .single(),
     supabase
@@ -71,6 +75,7 @@ export default async function AccountPage({
   const vacationMessage       = (profile as any)?.vacation_message       as string | null ?? null;
   const vacationStartsAt      = (profile as any)?.vacation_starts_at     as string | null ?? null;
   const vacationEndsAt        = (profile as any)?.vacation_ends_at       as string | null ?? null;
+  const pwaInstalled          = Boolean((profile as any)?.pwa_installed_at);
 
   // Normalise the cards join — Supabase may return object or single-element array
   const collectionItems = (rawItems ?? []).map((item) => {
@@ -141,33 +146,58 @@ export default async function AccountPage({
         )}
       </div>
 
-      <AccountSettingsForm
-        initialUsername={username}
-        initialEmail={email}
-        pendingEmail={pendingEmail}
-        initialBio={bio}
-        initialSpecialty={specialty}
-        initialCity={city}
-        initialFeaturedItemId={featuredItemId}
-        initialAvatarUrl={avatarUrl}
-        initialAvatarColor={avatarColor}
-        userId={user.id}
-        collectionItems={collectionItems}
-        isAdmin={isAdmin}
-        initialFollowersOnlyOffers={followersOnlyOffers}
-      />
+      <InstallAppCard serverInstalled={pwaInstalled} />
 
-      <VacationModeCard
-        userId={user.id}
-        initialVacationMode={vacationMode}
-        initialMessage={vacationMessage ?? ""}
-        initialStartsAt={vacationStartsAt}
-        initialEndsAt={vacationEndsAt}
-      />
+      <CollapsibleSection
+        title="Profile"
+        description="Avatar, username, email, bio, and public profile details."
+        defaultOpen
+      >
+        <ProfileSettingsForm
+          initialUsername={username}
+          initialEmail={email}
+          pendingEmail={pendingEmail}
+          initialBio={bio}
+          initialSpecialty={specialty}
+          initialCity={city}
+          initialFeaturedItemId={featuredItemId}
+          initialAvatarUrl={avatarUrl}
+          initialAvatarColor={avatarColor}
+          userId={user.id}
+          collectionItems={collectionItems}
+          isAdmin={isAdmin}
+          initialFollowersOnlyOffers={followersOnlyOffers}
+        />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Marketplace Availability"
+        description="Pause your listings while you're away."
+      >
+        <VacationModeCard
+          bare
+          userId={user.id}
+          initialVacationMode={vacationMode}
+          initialMessage={vacationMessage ?? ""}
+          initialStartsAt={vacationStartsAt}
+          initialEndsAt={vacationEndsAt}
+        />
+      </CollapsibleSection>
 
       <PushToggle isPro={isPro} />
 
       <NotificationPreferences userId={user.id} initial={notificationPrefs} />
+
+      <CollapsibleSection
+        title="Password & Account"
+        description="Change your password or delete your account."
+      >
+        <div className="space-y-6">
+          <PasswordSettingsForm initialEmail={email} />
+          <div className="border-t border-border" />
+          <DangerZone />
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }

@@ -1,13 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { isStandalone, isIosSafari } from "@/lib/pwa";
-
-// Not in TS's DOM lib yet.
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-}
+import { useState } from "react";
+import { usePwaInstall } from "@/lib/usePwaInstall";
 
 const DownloadIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -17,60 +11,71 @@ const DownloadIcon = () => (
   </svg>
 );
 
-export function InstallAppButton() {
-  const promptRef = useRef<BeforeInstallPromptEvent | null>(null);
-  const [canPrompt, setCanPrompt] = useState(false);
-  const [iosHelp, setIosHelp]     = useState(false);
-  const [showIos, setShowIos]     = useState(false);
-  const [hidden, setHidden]       = useState(true); // hidden until we know it's useful
+interface InstallAppButtonProps {
+  /** "nav" (compact pill, self-hides when it can't help) or "inline" (always shown unless installed). */
+  variant?: "nav" | "inline";
+  /** Server-known install status to suppress the prompt across devices. */
+  serverInstalled?: boolean;
+}
 
-  useEffect(() => {
-    if (typeof window === "undefined" || isStandalone()) return; // already installed → nothing to do
-
-    function onBeforeInstall(e: Event) {
-      e.preventDefault(); // stash for our own button
-      promptRef.current = e as BeforeInstallPromptEvent;
-      setCanPrompt(true);
-      setHidden(false);
-    }
-    function onInstalled() {
-      promptRef.current = null;
-      setCanPrompt(false);
-      setHidden(true);
-    }
-
-    window.addEventListener("beforeinstallprompt", onBeforeInstall);
-    window.addEventListener("appinstalled", onInstalled);
-
-    // iOS can't fire beforeinstallprompt — offer manual instructions instead.
-    // Deferred so the state update lands in a callback, not synchronously here.
-    if (isIosSafari()) {
-      queueMicrotask(() => {
-        setShowIos(true);
-        setHidden(false);
-      });
-    }
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
-  }, []);
+export function InstallAppButton({ variant = "nav", serverInstalled = false }: InstallAppButtonProps) {
+  const { installed, isRunningInstalled, canPrompt, isIos, promptInstall } = usePwaInstall(serverInstalled);
+  const [showHelp, setShowHelp] = useState(false);
 
   async function handleClick() {
-    if (canPrompt && promptRef.current) {
-      const e = promptRef.current;
-      await e.prompt();
-      const { outcome } = await e.userChoice;
-      if (outcome === "accepted") setHidden(true);
-      promptRef.current = null;
-      setCanPrompt(false);
-    } else if (showIos) {
-      setIosHelp((v) => !v);
+    if (canPrompt) {
+      await promptInstall();
+    } else {
+      // iOS, or a browser that hasn't offered a prompt — show manual instructions.
+      setShowHelp((v) => !v);
     }
   }
 
-  if (hidden) return null;
+  // The nav pill is a marketing nag: hide it for anyone who's (historically)
+  // installed, and only show it when it can actually do something. The inline
+  // FAQ button is an explicit "how do I install" answer: keep it available
+  // unless we're already running inside the installed app, so it still offers a
+  // re-install path after an uninstall.
+  if (variant === "nav") {
+    const useful = canPrompt || isIos;
+    if (installed || !useful) return null;
+  } else if (isRunningInstalled) {
+    return null;
+  }
+
+  if (variant === "inline") {
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={handleClick}
+          className="inline-flex items-center gap-2 rounded-full border border-gold/40 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold hover:bg-gold/20 transition-colors"
+        >
+          <DownloadIcon />
+          Install the app
+        </button>
+
+        {showHelp && (
+          <div className="mt-3 rounded-xl border border-border bg-surface-raised p-3 text-xs text-foreground-muted leading-relaxed">
+            {isIos ? (
+              <>
+                <span className="font-medium text-foreground">On iPhone / iPad:</span> tap the{" "}
+                <span className="font-medium text-foreground">Share</span> button in Safari, then{" "}
+                <span className="font-medium text-foreground">Add to Home Screen</span>.
+              </>
+            ) : (
+              <>
+                <span className="font-medium text-foreground">To install:</span> open your browser menu
+                and choose <span className="font-medium text-foreground">Install</span> /{" "}
+                <span className="font-medium text-foreground">Add to Home Screen</span>. On some browsers
+                an install icon appears in the address bar.
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="relative">
@@ -84,7 +89,7 @@ export function InstallAppButton() {
         <span className="hidden sm:inline">Install app</span>
       </button>
 
-      {iosHelp && showIos && (
+      {showHelp && isIos && (
         <div className="fixed right-3 top-16 z-[60] w-[min(20rem,calc(100vw-1.5rem))] rounded-xl border border-border bg-surface p-3 text-xs text-foreground-muted shadow-lg">
           <p className="font-medium text-foreground mb-1">Install on iPhone / iPad</p>
           <p className="leading-relaxed">
