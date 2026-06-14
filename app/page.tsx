@@ -3,6 +3,8 @@ import { createClient } from "@/utils/supabase/server";
 import { UserNav } from "@/components/UserNav";
 import { HeroCardStack } from "@/components/HeroCardStack";
 import { RotatingHeadline } from "@/components/RotatingHeadline";
+import { InstallAppButton } from "@/components/InstallAppButton";
+import { InstallPwaCallout } from "@/components/InstallPwaCallout";
 
 const features = [
   {
@@ -73,6 +75,10 @@ const faqs: { q: string; a: string; link?: { href: string; label: string } }[] =
   {
     q: "Does Vaultset support graded cards?",
     a: "Yes. You can log PSA, BGS, CGC, and SGC grades with cert numbers. Graded cards show their grade on your profile and in marketplace listings.",
+  },
+  {
+    q: "Is Vaultset available as an app?",
+    a: "Vaultset isn't on the Apple App Store or Google Play, but you can install it as an app straight from your browser — it's a Progressive Web App (PWA), free and ready in seconds. On Android or desktop Chrome/Edge, tap \"Install app\" in the top bar (or your browser menu → Install). On iPhone or iPad, open Vaultset in Safari, tap the Share button, then \"Add to Home Screen.\" Once installed it launches full-screen from your home screen like a native app, loads fast, and can deliver push notifications for offers and price alerts — with no download or app-store account required.",
   },
   {
     q: "What trading card games does Vaultset support?",
@@ -221,6 +227,7 @@ export default async function Home() {
             <Link href="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
           </div>
           <div className="flex items-center gap-4">
+            <InstallAppButton />
             {username ? (
               <UserNav username={username} showSettings={false} />
             ) : (
@@ -292,6 +299,11 @@ export default async function Home() {
           ))}
         </div>
       </section>
+
+      {/* Install as a PWA */}
+      <div className="mx-auto max-w-7xl px-6">
+        <InstallPwaCallout className="my-12" />
+      </div>
 
       {/* How It Works */}
       <section id="how-it-works" className="py-28">

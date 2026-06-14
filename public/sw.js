@@ -1,5 +1,14 @@
-// Vaultset service worker — handles web-push delivery + click-through.
-// Registered by components/PushToggle.tsx.
+// Vaultset service worker — handles web-push delivery + click-through, and
+// exists so the app installs as a real Android WebAPK (home-screen icon) rather
+// than a bookmark shortcut. Registered app-wide by ServiceWorkerRegistrar.
+
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+
+// Minimal pass-through fetch handler. We don't cache anything (no offline
+// support yet) — its presence is what makes Chrome treat the site as an
+// installable app. Requests fall through to the network untouched.
+self.addEventListener("fetch", () => {});
 
 self.addEventListener("push", (event) => {
   let payload = {};

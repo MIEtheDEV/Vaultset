@@ -7,6 +7,7 @@ import { SupporterBadge } from "@/components/SupporterBadge";
 import { ProBadge } from "@/components/ProBadge";
 import { isProSubscriber } from "@/lib/proStatus";
 import { ReviewPrompt } from "@/components/ReviewPrompt";
+import { InstallPwaCallout } from "@/components/InstallPwaCallout";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { timeAgo } from "@/lib/timeAgo";
@@ -384,6 +385,8 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
+
+      <InstallPwaCallout />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

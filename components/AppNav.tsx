@@ -5,6 +5,7 @@ import { KofiButton } from "@/components/KofiButton";
 import { NavMessagesBadge } from "@/components/NavMessagesBadge";
 import { NavOffersBadge } from "@/components/NavOffersBadge";
 import { NavNotificationsBadge } from "@/components/NavNotificationsBadge";
+import { InstallAppButton } from "@/components/InstallAppButton";
 
 const navLinks = [
   { label: "Dashboard", href: "/dashboard" },
@@ -49,6 +50,7 @@ export function AppNav({ username }: { username: string }) {
         </div>
 
         <div className="flex items-center gap-1">
+          <InstallAppButton />
           <div className="relative">
             <Link
               href="/notifications"
