@@ -1,7 +1,7 @@
 import type { PushPayload } from "@/lib/push";
 
 /** Columns on `notification_preferences` that gate push per notification type. */
-export type PrefKey = "push_offers" | "push_followers" | "push_alerts" | "push_achievements";
+export type PrefKey = "push_offers" | "push_followers" | "push_alerts" | "push_achievements" | "push_messages";
 
 export type NotificationRow = {
   type: string;
@@ -16,6 +16,7 @@ export type NotificationRow = {
 export function prefKeyForType(type: string): PrefKey | null {
   switch (type) {
     case "new_offer":               return "push_offers";
+    case "new_message":             return "push_messages";
     case "new_follower":            return "push_followers";
     case "price_alert":             return "push_alerts";
     case "wishlist_listing_match":  return "push_alerts";
@@ -58,6 +59,18 @@ export function buildPushPayload(n: NotificationRow, actorUsername: string | nul
         body: `${actor} sent you a ${label}`,
         url: offerId ? `/offers/${offerId}` : "/offers",
         tag: offerId ? `new_offer:${offerId}` : "new_offer",
+      };
+    }
+
+    case "new_message": {
+      const convId = str("conversation_id");
+      const preview = str("preview");
+      return {
+        title: actorUsername ? `@${actorUsername}` : "New message",
+        body: preview && preview.length > 0 ? preview : "Sent you a message",
+        url: convId ? `/messages/${convId}` : "/messages",
+        // Collapse rapid messages from the same conversation into one notification.
+        tag: convId ? `message:${convId}` : "new_message",
       };
     }
 

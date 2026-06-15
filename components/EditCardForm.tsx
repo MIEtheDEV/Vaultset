@@ -37,9 +37,9 @@ function selectClass() {
 
 function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
   return (
-    <button type="button" onClick={onToggle} className="flex items-center gap-3">
-      <span className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-colors ${on ? "bg-gold border-gold" : "bg-surface-raised border-border"}`}>
-        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
+    <button type="button" role="switch" aria-checked={on} onClick={onToggle} className="flex items-center gap-3">
+      <span className={`relative flex h-6 w-11 shrink-0 items-center rounded-full border-2 transition-colors ${on ? "border-gold bg-gold" : "border-border bg-surface-raised"}`}>
+        <span className={`h-4 w-4 rounded-full bg-background shadow transition-transform ${on ? "translate-x-5" : "translate-x-0.5"}`} />
       </span>
       <span className="text-sm text-foreground-muted">{label}</span>
     </button>

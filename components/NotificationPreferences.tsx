@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 
 type Prefs = {
+  push_messages: boolean;
   push_offers: boolean;
   push_followers: boolean;
   push_alerts: boolean;
@@ -12,6 +13,7 @@ type Prefs = {
 };
 
 const ROWS: { key: keyof Prefs; label: string; description: string }[] = [
+  { key: "push_messages",     label: "Messages",               description: "New chat messages. Mute individual conversations from the thread." },
   { key: "push_offers",       label: "Offers",                 description: "New cash, trade, and bundle offers on your listings." },
   { key: "push_alerts",       label: "Price & wishlist alerts", description: "When a wishlist card is listed or drops to your target price." },
   { key: "push_followers",    label: "New followers",          description: "When another collector follows you." },

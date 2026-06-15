@@ -1,9 +1,12 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { MessageThread } from "@/components/MessageThread";
+import { ConversationMuteToggle } from "@/components/ConversationMuteToggle";
 
 export const metadata: Metadata = {
   title: "Messages",
@@ -44,7 +47,18 @@ export default async function ThreadPage({
     .neq("sender_id", user.id)
     .is("read_at", null);
 
-  const [partnerResult, messagesResult, listingResult] = await Promise.all([
+  // Keep the notification bell in sync: clear this conversation's new_message
+  // notifications now that the user is reading the thread. notifications has no
+  // user UPDATE policy, so this goes through the service-role client.
+  await createAdminClient()
+    .from("notifications")
+    .update({ read: true })
+    .eq("user_id", user.id)
+    .eq("type", "new_message")
+    .eq("data->>conversation_id", id)
+    .eq("read", false);
+
+  const [partnerResult, messagesResult, listingResult, muteResult] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, username, avatar_color")
@@ -64,10 +78,17 @@ export default async function ThreadPage({
           .eq("id", conv.listing_id)
           .maybeSingle()
       : { data: null },
+    supabase
+      .from("conversation_mutes")
+      .select("conversation_id")
+      .eq("user_id", user.id)
+      .eq("conversation_id", id)
+      .maybeSingle(),
   ]);
 
   const partnerProfile = partnerResult.data;
   const messages = messagesResult.data ?? [];
+  const isMuted = !!muteResult.data;
 
   const listingItem = listingResult.data;
   const listingCard = listingItem
@@ -108,12 +129,15 @@ export default async function ThreadPage({
         >
           @{partnerProfile?.username ?? "Unknown"}
         </Link>
-        <Link
-          href={`/profile/${partnerProfile?.username}`}
-          className="text-xs text-foreground-muted hover:text-gold transition-colors shrink-0"
-        >
-          View profile →
-        </Link>
+        <div className="flex items-center gap-3 shrink-0">
+          <ConversationMuteToggle conversationId={id} initialMuted={isMuted} />
+          <Link
+            href={`/profile/${partnerProfile?.username}`}
+            className="text-xs text-foreground-muted hover:text-gold transition-colors"
+          >
+            View profile →
+          </Link>
+        </div>
       </div>
 
       {/* Listing context card */}

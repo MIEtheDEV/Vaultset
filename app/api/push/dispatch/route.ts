@@ -49,6 +49,22 @@ export async function POST(req: Request) {
     }
   }
 
+  // Per-conversation mute gate (chat only). The global push_messages switch
+  // above is the master; this narrows it to specific conversations the user
+  // silenced. Presence of a conversation_mutes row = muted.
+  if (type === "new_message") {
+    const conversationId = typeof data?.conversation_id === "string" ? data.conversation_id : null;
+    if (conversationId) {
+      const { data: mute } = await admin
+        .from("conversation_mutes")
+        .select("conversation_id")
+        .eq("user_id", user_id)
+        .eq("conversation_id", conversationId)
+        .maybeSingle();
+      if (mute) return NextResponse.json({ skipped: "conversation_muted" });
+    }
+  }
+
   // Resolve the actor's username for payload copy when present.
   let actorUsername: string | null = null;
   if (actor_id) {

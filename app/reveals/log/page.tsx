@@ -146,13 +146,15 @@ function LogRevealForm() {
           </div>
           <button
             type="button"
+            role="switch"
+            aria-checked={visibility === "public"}
             onClick={() => setVisibility((v) => v === "public" ? "private" : "public")}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-colors ${
-              visibility === "public" ? "bg-gold border-gold" : "bg-surface border-border"
+            className={`relative flex h-6 w-11 shrink-0 items-center rounded-full border-2 transition-colors ${
+              visibility === "public" ? "border-gold bg-gold" : "border-border bg-surface-raised"
             }`}
           >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              visibility === "public" ? "translate-x-6" : "translate-x-1"
+            <span className={`h-4 w-4 rounded-full bg-background shadow transition-transform ${
+              visibility === "public" ? "translate-x-5" : "translate-x-0.5"
             }`} />
           </button>
         </div>

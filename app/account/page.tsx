@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
@@ -46,13 +47,14 @@ export default async function AccountPage({
       .maybeSingle(),
     supabase
       .from("notification_preferences")
-      .select("push_offers, push_followers, push_alerts, push_achievements")
+      .select("push_messages, push_offers, push_followers, push_alerts, push_achievements")
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
 
   // Opt-out model: no row means everything is on.
   const notificationPrefs = {
+    push_messages:     (notifPrefs as any)?.push_messages     ?? true,
     push_offers:       (notifPrefs as any)?.push_offers       ?? true,
     push_followers:    (notifPrefs as any)?.push_followers    ?? true,
     push_alerts:       (notifPrefs as any)?.push_alerts       ?? true,

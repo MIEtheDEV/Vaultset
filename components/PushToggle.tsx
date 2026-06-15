@@ -20,6 +20,7 @@ export function PushToggle({ isPro = false }: { isPro?: boolean }) {
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState("");
   const [testState, setTestState] = useState<"idle" | "sending" | "sent" | "none" | "error">("idle");
+  const [testError, setTestError] = useState("");
   // Push state is entirely browser-derived. Render "loading" until mounted so
   // the server HTML and the first client render always match (no hydration
   // mismatch); real status resolves in the effect below right after mount.
@@ -106,12 +107,14 @@ export function PushToggle({ isPro = false }: { isPro?: boolean }) {
 
   async function sendTest() {
     setTestState("sending");
+    setTestError("");
     try {
       const res = await fetch("/api/push/test", { method: "POST" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Failed to send test.");
+      if (!res.ok) throw new Error(json.error ?? "Couldn't send the test. Check push configuration.");
       setTestState(json.subscriptions ? "sent" : "none");
-    } catch {
+    } catch (e) {
+      setTestError(e instanceof Error ? e.message : "Couldn't send the test. Check push configuration.");
       setTestState("error");
     }
   }
@@ -181,7 +184,7 @@ export function PushToggle({ isPro = false }: { isPro?: boolean }) {
             <span className="text-xs text-amber-400">No subscribed devices found — try toggling push off and on.</span>
           )}
           {testState === "error" && (
-            <span className="text-xs text-red-400">Couldn&apos;t send the test. Check push configuration.</span>
+            <span className="text-xs text-red-400">{testError || "Couldn't send the test. Check push configuration."}</span>
           )}
         </div>
       )}

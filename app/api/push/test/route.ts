@@ -15,6 +15,22 @@ export async function POST() {
 
   const admin = createAdminClient();
 
+  // notifications.user_id is FK → profiles(id); a user with no profile row yet
+  // (e.g. an OAuth signup that never completed setup) would otherwise hit a raw
+  // 23503 foreign-key violation surfaced as an opaque 500. Guard explicitly.
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!profile) {
+    return NextResponse.json(
+      { error: "Your profile isn't set up yet. Finish choosing a username, then try again." },
+      { status: 409 },
+    );
+  }
+
   const { count } = await admin
     .from("push_subscriptions")
     .select("*", { count: "exact", head: true })

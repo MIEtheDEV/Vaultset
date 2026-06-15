@@ -202,6 +202,22 @@ export default async function NotificationsPage() {
                 </svg>
               );
               content = <span>Test notification — your push setup is working. 🎉</span>;
+            } else if (n.type === "new_message") {
+              const data = n.data as { conversation_id?: string; preview?: string };
+              icon = (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gold">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              );
+              content = (
+                <span>
+                  <Link href={data.conversation_id ? `/messages/${data.conversation_id}` : "/messages"} className="font-medium text-foreground hover:text-gold transition-colors">
+                    {actorUsername ? `@${actorUsername}` : "Someone"}
+                  </Link>
+                  {" "}sent you a message
+                  {data.preview ? <span className="text-foreground-muted">: “{data.preview}”</span> : null}
+                </span>
+              );
             } else {
               icon = (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-foreground-muted">
