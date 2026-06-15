@@ -25,6 +25,18 @@ export async function POST(request: NextRequest) {
       case "checkout.session.completed": {
         const session    = event.data.object as Stripe.Checkout.Session;
         const userId     = session.client_reference_id;
+
+        // Donations grant the Supporter flag only — never Pro. Checked first so
+        // a donation (mode: "payment" with a client_reference_id) is never
+        // mistaken for a one-time Pro purchase by the logic below.
+        if (session.metadata?.type === "donation") {
+          if (userId) {
+            const { error } = await admin.from("profiles").update({ is_supporter: true }).eq("id", userId);
+            if (error) throw new Error(`DB update failed: ${error.message}`);
+          }
+          break;
+        }
+
         const customerId = session.customer as string | null;
 
         if (userId && customerId) {

@@ -26,7 +26,7 @@ export default function TermsPage() {
       <main className="mx-auto max-w-4xl px-6 py-16 space-y-10">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Terms of Service</h1>
-          <p className="mt-2 text-sm text-foreground-muted">Last updated: May 2026</p>
+          <p className="mt-2 text-sm text-foreground-muted">Last updated: June 2026</p>
         </div>
 
         <div className="space-y-8 text-foreground-muted leading-relaxed">
@@ -72,7 +72,7 @@ export default function TermsPage() {
             <p>
               You retain ownership of the content you create on Vaultset, including your card
               listings and collection data. By posting content, you grant Vaultset a non-exclusive
-              license to display that content to other users as part of the platform's normal operation.
+              license to display that content to other users as part of the platform&apos;s normal operation.
             </p>
             <p>
               You are solely responsible for the accuracy of your listings. Vaultset does not
@@ -95,7 +95,34 @@ export default function TermsPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-foreground">6. Intellectual Property</h2>
+            <h2 className="text-lg font-semibold text-foreground">6. Subscriptions &amp; Payments</h2>
+            <p>
+              The core Vaultset platform is free to use. We also offer an optional paid
+              <span className="text-foreground font-medium"> Pro</span> membership that unlocks
+              additional features. Payments are processed by Stripe; Vaultset never sees or stores
+              your full payment card details.
+            </p>
+            <p>
+              Recurring Pro plans (monthly, quarterly, 6-month, and annual) automatically renew at
+              the end of each billing period at the then-current price until you cancel. You may
+              cancel at any time from your{" "}
+              <Link href="/account" className="text-gold hover:text-gold-light transition-colors">
+                Account Settings
+              </Link>{" "}
+              or the Stripe billing portal; your Pro access continues until the end of the period
+              you have already paid for. The One-Time plan is a single payment that grants one month
+              of Pro access with no subscription or auto-renewal.
+            </p>
+            <p>
+              Except where required by law, payments are non-refundable: cancelled subscriptions are
+              not refunded for the current billing period, and the One-Time plan is non-refundable.
+              We may change our prices or plan features from time to time; any change takes effect on
+              your next billing period and will never affect a period you have already paid for.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold text-foreground">7. Intellectual Property</h2>
             <p>
               Pokémon and all related names, characters, and imagery are trademarks of Nintendo,
               Game Freak, and Creatures Inc. Vaultset is not affiliated with, endorsed by, or
@@ -109,9 +136,9 @@ export default function TermsPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-foreground">7. Disclaimer of Warranties</h2>
+            <h2 className="text-lg font-semibold text-foreground">8. Disclaimer of Warranties</h2>
             <p>
-              Vaultset is provided "as is" without warranties of any kind. We do not guarantee
+              Vaultset is provided &quot;as is&quot; without warranties of any kind. We do not guarantee
               that the platform will be error-free, uninterrupted, or free of security vulnerabilities.
               Market pricing data and valuations displayed on the platform are for reference only
               and do not constitute financial advice.
@@ -119,7 +146,7 @@ export default function TermsPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-foreground">8. Limitation of Liability</h2>
+            <h2 className="text-lg font-semibold text-foreground">9. Limitation of Liability</h2>
             <p>
               To the maximum extent permitted by applicable law, Vaultset shall not be liable
               for any indirect, incidental, special, or consequential damages arising from your
@@ -129,7 +156,7 @@ export default function TermsPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-foreground">9. Termination</h2>
+            <h2 className="text-lg font-semibold text-foreground">10. Termination</h2>
             <p>
               We reserve the right to suspend or terminate accounts that violate these terms,
               engage in fraudulent activity, or otherwise harm the platform or its users.
@@ -138,7 +165,7 @@ export default function TermsPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-foreground">10. Contact</h2>
+            <h2 className="text-lg font-semibold text-foreground">11. Contact</h2>
             <p>
               Questions about these terms? Reach us through our{" "}
               <Link href="/contact" className="text-gold hover:text-gold-light transition-colors">

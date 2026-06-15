@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     customer: customerId,
     allow_promotion_codes: true,
     client_reference_id: user.id,
-    metadata: { supabase_user_id: user.id, plan },
+    metadata: { type: "pro", supabase_user_id: user.id, plan },
     success_url: `${SITE_URL}/account?subscription=success`,
     cancel_url:  `${SITE_URL}/account`,
   });

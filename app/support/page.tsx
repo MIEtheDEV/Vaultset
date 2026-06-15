@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { createClient } from "@/utils/supabase/server";
+import { DonateCardButton } from "@/components/DonateCardButton";
 
 export const metadata = {
   title: "Support Vaultset — Help Keep it Free",
@@ -7,7 +9,7 @@ export const metadata = {
 
 const KOFI_URL = "https://ko-fi.com/J5M22056SF";
 const PAYPAL_URL = "https://www.paypal.com/ncp/payment/MYREWM84YUCC2";
-const STRIPE_URL = "https://donate.stripe.com/test_7sY4gs4hH2sU0Mn8ir1Nu01";
+const STRIPE_URL = "https://buy.stripe.com/00w3cndIQdeB9d83Al5Rm03";
 
 const methods = [
   {
@@ -48,7 +50,11 @@ const methods = [
   },
 ];
 
-export default function SupportPage() {
+export default async function SupportPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const isLoggedIn = !!user;
+
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
 
@@ -70,9 +76,13 @@ export default function SupportPage() {
         <div className="max-w-xl">
           <h1 className="text-3xl font-bold text-foreground">Help keep Vaultset free</h1>
           <p className="mt-3 text-foreground-muted leading-relaxed">
-            Vaultset is free to use and will stay that way. If it&apos;s saved you time or helped
-            you manage your collection, a small contribution helps cover hosting, TCGPlayer API
-            access, and ongoing development.
+            Vaultset&apos;s core features are free, and always will be. If it&apos;s saved you time or
+            helped you manage your collection, a small contribution helps cover hosting, card data
+            access, and ongoing development. (Prefer extra features over donating? Vaultset{" "}
+            <Link href="/pricing" className="text-gold hover:text-gold-light transition-colors">
+              Pro
+            </Link>{" "}
+            is there too.)
           </p>
           <p className="mt-2 text-sm text-foreground-muted">
             No recurring commitment. Every amount helps.
@@ -92,21 +102,29 @@ export default function SupportPage() {
                   <h2 className="hidden sm:block font-semibold text-foreground">{name}</h2>
                   <p className="text-sm text-foreground-muted leading-relaxed sm:mt-1">{description}</p>
                 </div>
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 self-start sm:self-center rounded-full border border-gold/30 bg-gold/5 px-4 py-2 text-sm font-medium text-gold hover:bg-gold/10 hover:border-gold/50 transition-colors"
-                >
-                  {cta}
-                </a>
+                {name === "Card" && isLoggedIn ? (
+                  <DonateCardButton
+                    label={cta}
+                    className="rounded-full border border-gold/30 bg-gold/5 px-4 py-2 text-sm font-medium text-gold hover:bg-gold/10 hover:border-gold/50 transition-colors disabled:opacity-50"
+                  />
+                ) : (
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 self-start sm:self-center rounded-full border border-gold/30 bg-gold/5 px-4 py-2 text-sm font-medium text-gold hover:bg-gold/10 hover:border-gold/50 transition-colors"
+                  >
+                    {cta}
+                  </a>
+                )}
               </div>
             ))}
           </div>
 
           <p className="mt-8 text-xs text-foreground-muted">
-            Contributions to Vaultset are not tax-deductible. You will receive a Supporter badge
-            on your profile as a thank-you for Ko-fi donations.
+            Contributions to Vaultset are not tax-deductible. You&apos;ll receive a Supporter badge
+            on your profile as a thank-you for Ko-fi donations and for card donations made while
+            signed in.
           </p>
         </div>
       </main>

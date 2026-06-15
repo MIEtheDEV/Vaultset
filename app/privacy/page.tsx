@@ -26,7 +26,7 @@ export default function PrivacyPage() {
       <main className="mx-auto max-w-4xl px-6 py-16 space-y-10">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Privacy Policy</h1>
-          <p className="mt-2 text-sm text-foreground-muted">Last updated: May 2026</p>
+          <p className="mt-2 text-sm text-foreground-muted">Last updated: June 2026</p>
         </div>
 
         <div className="prose-custom space-y-8 text-foreground-muted leading-relaxed">
@@ -48,10 +48,12 @@ export default function PrivacyPage() {
               <li><span className="text-foreground font-medium">Account information</span> — your email address, username, and password (stored securely and hashed).</li>
               <li><span className="text-foreground font-medium">Collection data</span> — card records you add to your inventory, including condition, grade, pricing, and personal notes.</li>
               <li><span className="text-foreground font-medium">Usage data</span> — basic session and authentication data required to keep you logged in.</li>
+              <li><span className="text-foreground font-medium">Subscription data</span> — your billing status and a Stripe customer identifier if you upgrade to a paid plan. Your payment card details are handled by Stripe and are never stored by Vaultset (see Section 8).</li>
             </ul>
             <p>
-              We do not collect payment information, physical addresses, or any data beyond what is
-              necessary to operate the platform.
+              Payments for paid subscriptions are processed by Stripe; we never see or store your full
+              card details (see Section 8). We do not collect physical addresses or any data beyond what
+              is necessary to operate the platform.
             </p>
           </section>
 
@@ -80,7 +82,29 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-foreground">5. Data Storage & Security</h2>
+            <h2 className="text-lg font-semibold text-foreground">5. Cookies &amp; Analytics</h2>
+            <p>
+              We use a small number of{" "}
+              <span className="text-foreground font-medium">strictly necessary cookies</span> to keep you
+              signed in and to secure your session. These are set by Supabase, our authentication
+              provider, and are required for the platform to function — you cannot log in without them.
+            </p>
+            <p>
+              To understand how the platform is used, we rely on{" "}
+              <span className="text-foreground font-medium">privacy-friendly, cookieless analytics</span>{" "}
+              from Vercel (Web Analytics and Speed Insights). These tools measure aggregate traffic and
+              performance without using cookies, without storing a persistent identifier, and without
+              tracking you across other websites.
+            </p>
+            <p>
+              We do not use advertising, marketing, or cross-site tracking cookies. Because the only
+              cookies we set are essential to providing the service you request, no cookie consent
+              banner is required.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold text-foreground">6. Data Storage &amp; Security</h2>
             <p>
               Your data is stored securely using Supabase, a cloud database platform with
               row-level security enforced at the database level. Passwords are never stored in
@@ -90,7 +114,7 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-foreground">6. Data Retention & Deletion</h2>
+            <h2 className="text-lg font-semibold text-foreground">7. Data Retention &amp; Deletion</h2>
             <p>
               You may delete your account at any time through the Account Settings page. Upon
               deletion, your personal information and collection data are permanently removed.
@@ -100,17 +124,18 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-foreground">7. Third-Party Services</h2>
+            <h2 className="text-lg font-semibold text-foreground">8. Third-Party Services</h2>
             <p>Vaultset uses the following third-party services to operate:</p>
             <ul className="list-disc list-inside space-y-1 ml-2">
               <li><span className="text-foreground font-medium">Supabase</span> — database and authentication.</li>
+              <li><span className="text-foreground font-medium">Stripe</span> — payment processing for paid subscriptions and optional donations. When you subscribe or make a donation, your email address and a user identifier are shared with Stripe so it can process the payment and, for donations, credit your Supporter status. Your full payment card details are entered on Stripe&apos;s own secure checkout and are never seen or stored by Vaultset.</li>
+              <li><span className="text-foreground font-medium">Vercel</span> — hosting, deployment, and privacy-friendly, cookieless analytics (see Section 5).</li>
               <li><span className="text-foreground font-medium">Pokémon TCG API</span> — card data and imagery. No personal information is shared with this service.</li>
-              <li><span className="text-foreground font-medium">Vercel</span> — hosting and deployment.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-foreground">8. Contact</h2>
+            <h2 className="text-lg font-semibold text-foreground">9. Contact</h2>
             <p>
               If you have questions or concerns about your privacy, please reach out through our{" "}
               <Link href="/contact" className="text-gold hover:text-gold-light transition-colors">
