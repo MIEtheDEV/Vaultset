@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
+import { completeProfileSetup } from "./actions";
 
 function AuthSetupForm() {
   const router       = useRouter();
@@ -18,45 +18,13 @@ function AuthSetupForm() {
     setError("");
     setLoading(true);
 
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push("/login"); return; }
+    // The profile row may not exist yet (OAuth users have no row until now),
+    // so creation goes through a server action that writes with the service
+    // role — `profiles` grants no client INSERT policy. See actions.ts.
+    const result = await completeProfileSetup(username);
 
-    const trimmed = username.trim().toLowerCase();
-
-    const { data: existing } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("username", trimmed)
-      .maybeSingle();
-
-    if (existing) {
-      setError("This username is already taken.");
-      setLoading(false);
-      return;
-    }
-
-    const { error: updateError } = await supabase.auth.updateUser({
-      data: { username: trimmed, full_name: trimmed },
-    });
-
-    if (updateError) {
-      setError(updateError.message);
-      setLoading(false);
-      return;
-    }
-
-    // The profile row already exists (created by the handle_new_user trigger),
-    // so UPDATE it. An upsert would run as INSERT…ON CONFLICT and require an
-    // INSERT RLS policy that profiles intentionally doesn't grant — that's what
-    // surfaced "new row violates row-level security policy for table profiles".
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({ username: trimmed })
-      .eq("id", user.id);
-
-    if (profileError) {
-      setError(profileError.message);
+    if ("error" in result) {
+      setError(result.error);
       setLoading(false);
       return;
     }
