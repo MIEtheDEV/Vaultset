@@ -48,6 +48,20 @@ export function PushToggle({ isPro = false }: { isPro?: boolean }) {
       const reg = await navigator.serviceWorker.getRegistration();
       const sub = reg ? await reg.pushManager.getSubscription() : null;
       if (!cancelled) setStatus(sub ? "on" : "off");
+
+      // Self-heal: the toggle's "on" state comes from the browser's local
+      // subscription, but the server row can go missing independently — it's
+      // pruned after a 410, or the POST failed when first subscribing — leaving
+      // the device showing "subscribed" with no DB row, so pushes silently go
+      // nowhere. Re-assert the live subscription to the server on load
+      // (idempotent upsert on endpoint) so the DB always matches the browser.
+      if (sub) {
+        fetch("/api/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sub.toJSON()),
+        }).catch(() => {});
+      }
     })();
     return () => { cancelled = true; };
   }, []);
