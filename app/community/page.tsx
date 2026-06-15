@@ -5,6 +5,7 @@ import { timeAgo } from "@/lib/timeAgo";
 import { BadgeChip } from "@/components/BadgeChip";
 import { BADGE_MAP, type BadgeSlug } from "@/lib/badges";
 import { ProBadge } from "@/components/ProBadge";
+import { SupporterBadge } from "@/components/SupporterBadge";
 import { isProSubscriber } from "@/lib/proStatus";
 
 export const metadata: Metadata = {
@@ -18,7 +19,7 @@ export default async function CommunityPage() {
 
   const { data: allProfiles } = await supabase
     .from("profiles")
-    .select("id, username, created_at, city, is_pro, pro_plan, pro_expires_at")
+    .select("id, username, created_at, city, is_pro, pro_plan, pro_expires_at, is_supporter")
     .eq("banned", false)
     .order("username");
 
@@ -166,32 +167,35 @@ export default async function CommunityPage() {
       {topCollectors.length > 0 && (
         <div className="space-y-4">
           <h2 className="font-semibold text-foreground">Top Collectors</h2>
-          <div className="rounded-2xl border border-border bg-surface divide-y divide-border overflow-hidden">
+          <div className="space-y-2">
             {topCollectors.map((profile, index) => {
               const followers = followerCountMap.get(profile.id) ?? 0;
               const listings  = listingCountMap.get(profile.id) ?? 0;
               const badges    = getFeaturedBadges(profile.id);
+              const isPro     = isProSubscriber(profile as any);
+              const isSupporter = (profile as any).is_supporter ?? false;
               return (
                 <Link
                   key={profile.id}
                   href={`/profile/${profile.username}`}
-                  className="flex items-center gap-4 px-5 py-3 hover:bg-surface-raised transition-colors"
+                  className="flex items-center gap-4 rounded-xl border border-border bg-surface px-5 py-3 hover:bg-surface-raised transition-colors"
                 >
                   <span className={`w-6 text-center text-sm font-bold shrink-0 ${index === 0 ? "text-gold" : index === 1 ? "text-foreground-muted" : index === 2 ? "text-amber-600" : "text-foreground-muted"}`}>
                     {index + 1}
                   </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-foreground">@{profile.username}</span>
-                      {isProSubscriber(profile as any) && <ProBadge />}
-                      {badges.length > 0 && (
-                        <div className="flex items-center gap-0.5">
-                          {badges.map((badge) => (
-                            <BadgeChip key={badge.slug} badge={badge} earned size="mini" />
-                          ))}
-                        </div>
-                      )}
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium text-foreground min-w-0 truncate">@{profile.username}</span>
+                      {isPro && <span className="shrink-0"><ProBadge /></span>}
+                      {isSupporter && <span className="shrink-0"><SupporterBadge /></span>}
                     </div>
+                    {badges.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {badges.map((badge) => (
+                          <BadgeChip key={badge.slug} badge={badge} earned size="mini" />
+                        ))}
+                      </div>
+                    )}
                     <p className="text-xs text-foreground-muted">
                       {followers} follower{followers !== 1 ? "s" : ""}
                       {listings > 0 ? ` · ${listings} listing${listings !== 1 ? "s" : ""}` : ""}
@@ -270,30 +274,33 @@ export default async function CommunityPage() {
             <p className="text-sm text-foreground-muted">No collectors yet.</p>
           </div>
         ) : (
-          <div className="rounded-2xl border border-border bg-surface divide-y divide-border overflow-hidden">
+          <div className="space-y-2">
             {allProfiles.map((profile) => {
               const listingCount  = listingCountMap.get(profile.id) ?? 0;
               const followerCount = followerCountMap.get(profile.id) ?? 0;
               const badges        = getFeaturedBadges(profile.id);
+              const isPro         = isProSubscriber(profile as any);
+              const isSupporter   = (profile as any).is_supporter ?? false;
 
               return (
                 <Link
                   key={profile.id}
                   href={`/profile/${profile.username}`}
-                  className="flex items-center justify-between px-5 py-3 hover:bg-surface-raised transition-colors"
+                  className="flex items-center justify-between rounded-xl border border-border bg-surface px-5 py-3 hover:bg-surface-raised transition-colors"
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-foreground">@{profile.username}</span>
-                      {isProSubscriber(profile as any) && <ProBadge />}
-                      {badges.length > 0 && (
-                        <div className="flex items-center gap-0.5">
-                          {badges.map((badge) => (
-                            <BadgeChip key={badge.slug} badge={badge} earned size="mini" />
-                          ))}
-                        </div>
-                      )}
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium text-foreground min-w-0 truncate">@{profile.username}</span>
+                      {isPro && <span className="shrink-0"><ProBadge /></span>}
+                      {isSupporter && <span className="shrink-0"><SupporterBadge /></span>}
                     </div>
+                    {badges.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {badges.map((badge) => (
+                          <BadgeChip key={badge.slug} badge={badge} earned size="mini" />
+                        ))}
+                      </div>
+                    )}
                     <p className="text-xs text-foreground-muted flex items-center gap-2 flex-wrap">
                       <span>Joined {timeAgo(profile.created_at)}</span>
                       {(profile as any).city && (
