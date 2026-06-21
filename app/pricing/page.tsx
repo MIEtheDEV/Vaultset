@@ -22,7 +22,7 @@ const FEATURES: { label: string; free: React.ReactNode; pro: React.ReactNode }[]
   { label: "Card inventory",              free: "Unlimited",        pro: "Unlimited"  },
   { label: "Current market value",        free: CHECK,              pro: CHECK        },
   { label: "Buy, sell & trade",           free: CHECK,              pro: CHECK        },
-  { label: "Marketplace listings",        free: "Up to 100 active", pro: "Unlimited"  },
+  { label: "Marketplace listings",        free: "Unlimited",        pro: "Unlimited"  },
   { label: "Wishlist & price alerts",     free: CHECK,              pro: CHECK        },
   { label: "Pack reveals",                free: CHECK,              pro: CHECK        },
   { label: "Community & storefronts",     free: CHECK,              pro: CHECK        },

@@ -21,12 +21,16 @@ export default async function NotificationsPage() {
     .order("created_at", { ascending: false })
     .limit(50);
 
-  // Fetch actor usernames
+  // Fetch actor usernames + the current user's own username (for self-links)
   const actorIds = [...new Set((notifications ?? []).map((n) => n.actor_id).filter(Boolean))];
-  const { data: actorProfiles } = actorIds.length
-    ? await supabase.from("profiles").select("id, username").in("id", actorIds as string[])
-    : { data: [] as { id: string; username: string }[] };
+  const [{ data: actorProfiles }, { data: myProfile }] = await Promise.all([
+    actorIds.length
+      ? supabase.from("profiles").select("id, username").in("id", actorIds as string[])
+      : Promise.resolve({ data: [] as { id: string; username: string }[] }),
+    supabase.from("profiles").select("username").eq("id", user.id).maybeSingle(),
+  ]);
   const actorMap = new Map((actorProfiles ?? []).map((p) => [p.id, p.username]));
+  const myUsername = (myProfile as { username?: string } | null)?.username ?? null;
 
   // Mark all as read
   const unreadIds = (notifications ?? []).filter((n) => !n.read).map((n) => n.id);
@@ -54,6 +58,7 @@ export default async function NotificationsPage() {
 
             let icon: React.ReactNode;
             let content: React.ReactNode;
+            let href: string | null = null;
 
             if (n.type === "new_follower") {
               icon = (
@@ -64,11 +69,10 @@ export default async function NotificationsPage() {
                   <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                 </svg>
               );
+              href = actorUsername ? `/profile/${actorUsername}` : null;
               content = actorUsername ? (
                 <span>
-                  <Link href={`/profile/${actorUsername}`} className="font-medium text-foreground hover:text-gold transition-colors">
-                    @{actorUsername}
-                  </Link>
+                  <span className="font-medium text-foreground">@{actorUsername}</span>
                   {" "}started following you
                 </span>
               ) : (
@@ -87,21 +91,12 @@ export default async function NotificationsPage() {
                   <path d="M21 13v2a4 4 0 0 1-4 4H3" />
                 </svg>
               );
+              href = data.offer_id ? `/offers/${data.offer_id}` : "/offers";
               content = (
                 <span>
-                  {actorUsername ? (
-                    <Link href={`/profile/${actorUsername}`} className="font-medium text-foreground hover:text-gold transition-colors">
-                      @{actorUsername}
-                    </Link>
-                  ) : "Someone"}
+                  {actorUsername ? <span className="font-medium text-foreground">@{actorUsername}</span> : "Someone"}
                   {" "}sent you a{" "}
-                  {data.offer_id ? (
-                    <Link href={`/offers/${data.offer_id}`} className="font-medium text-foreground hover:text-gold transition-colors">
-                      {typeLabel}
-                    </Link>
-                  ) : (
-                    <span className="font-medium text-foreground">{typeLabel}</span>
-                  )}
+                  <span className="font-medium text-foreground">{typeLabel}</span>
                 </span>
               );
             } else if (n.type === "price_alert") {
@@ -112,20 +107,15 @@ export default async function NotificationsPage() {
                   <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                 </svg>
               );
+              href = data.listing_id ? `/marketplace/${data.listing_id}` : "/marketplace";
               content = (
                 <span>
                   Price alert:{" "}
-                  {data.listing_id ? (
-                    <Link href={`/marketplace/${data.listing_id}`} className="font-medium text-foreground hover:text-gold transition-colors">
-                      {data.card_name ?? "A wishlist card"}
-                    </Link>
-                  ) : (
-                    <span className="font-medium text-foreground">{data.card_name ?? "A wishlist card"}</span>
-                  )}
+                  <span className="font-medium text-foreground">{data.card_name ?? "A wishlist card"}</span>
                   {" "}is listed at{" "}
                   <span className="font-medium text-gold">${Number(data.list_price ?? 0).toFixed(2)}</span>
                   {data.seller_username && (
-                    <> by <Link href={`/profile/${data.seller_username}`} className="font-medium text-foreground hover:text-gold transition-colors">@{data.seller_username}</Link></>
+                    <> by <span className="font-medium text-foreground">@{data.seller_username}</span></>
                   )}
                 </span>
               );
@@ -136,23 +126,16 @@ export default async function NotificationsPage() {
                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                 </svg>
               );
+              href = data.listing_id ? `/marketplace/${data.listing_id}` : "/marketplace";
               content = (
                 <span>
                   {actorUsername ? (
                     <>
-                      <Link href={`/profile/${actorUsername}`} className="font-medium text-foreground hover:text-gold transition-colors">
-                        @{actorUsername}
-                      </Link>
+                      <span className="font-medium text-foreground">@{actorUsername}</span>
                       {" "}listed{" "}
                     </>
                   ) : "Someone listed "}
-                  {data.listing_id ? (
-                    <Link href={`/marketplace/${data.listing_id}`} className="font-medium text-foreground hover:text-gold transition-colors">
-                      {data.card_name ?? "a card"}
-                    </Link>
-                  ) : (
-                    <span className="font-medium text-foreground">{data.card_name ?? "a card"}</span>
-                  )}
+                  <span className="font-medium text-foreground">{data.card_name ?? "a card"}</span>
                   {" "}— a card on your wishlist
                 </span>
               );
@@ -164,15 +147,12 @@ export default async function NotificationsPage() {
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                 </svg>
               );
+              href = "/admin/reviews";
               content = (
                 <span>
-                  <Link href={`/profile/${data.reviewer_username}`} className="font-medium text-foreground hover:text-gold transition-colors">
-                    @{data.reviewer_username ?? "A collector"}
-                  </Link>
+                  <span className="font-medium text-foreground">@{data.reviewer_username ?? "A collector"}</span>
                   {" "}submitted a review —{" "}
-                  <Link href="/admin/reviews" className="font-medium text-gold hover:underline">
-                    Review queue →
-                  </Link>
+                  <span className="font-medium text-gold">Review queue →</span>
                 </span>
               );
             } else if (n.type === "badge_earned") {
@@ -184,6 +164,7 @@ export default async function NotificationsPage() {
                   <line x1="12" y1="15" x2="12" y2="22" />
                 </svg>
               );
+              href = myUsername ? `/profile/${myUsername}` : null;
               content = (
                 <span>
                   You earned the{" "}
@@ -201,6 +182,7 @@ export default async function NotificationsPage() {
                   <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                 </svg>
               );
+              href = "/account";
               content = <span>Test notification — your push setup is working. 🎉</span>;
             } else if (n.type === "new_message") {
               const data = n.data as { conversation_id?: string; preview?: string };
@@ -209,11 +191,10 @@ export default async function NotificationsPage() {
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
               );
+              href = data.conversation_id ? `/messages/${data.conversation_id}` : "/messages";
               content = (
                 <span>
-                  <Link href={data.conversation_id ? `/messages/${data.conversation_id}` : "/messages"} className="font-medium text-foreground hover:text-gold transition-colors">
-                    {actorUsername ? `@${actorUsername}` : "Someone"}
-                  </Link>
+                  <span className="font-medium text-foreground">{actorUsername ? `@${actorUsername}` : "Someone"}</span>
                   {" "}sent you a message
                   {data.preview ? <span className="text-foreground-muted">: “{data.preview}”</span> : null}
                 </span>
@@ -227,11 +208,10 @@ export default async function NotificationsPage() {
               content = <span className="text-foreground-muted">New notification</span>;
             }
 
-            return (
-              <div
-                key={n.id}
-                className={`flex items-start gap-3 px-5 py-4 transition-colors ${isUnread ? "bg-gold/5" : "hover:bg-surface-raised"}`}
-              >
+            const rowClass = `flex items-start gap-3 px-5 py-4 transition-colors ${isUnread ? "bg-gold/5 " : ""}${href ? "hover:bg-surface-raised cursor-pointer" : !isUnread ? "hover:bg-surface-raised" : ""}`;
+
+            const rowInner = (
+              <>
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-raised">
                   {icon}
                 </div>
@@ -242,6 +222,16 @@ export default async function NotificationsPage() {
                 {isUnread && (
                   <span className="mt-2 h-2 w-2 rounded-full bg-gold shrink-0" />
                 )}
+              </>
+            );
+
+            return href ? (
+              <Link key={n.id} href={href} className={rowClass}>
+                {rowInner}
+              </Link>
+            ) : (
+              <div key={n.id} className={rowClass}>
+                {rowInner}
               </div>
             );
           })}

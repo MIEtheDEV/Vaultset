@@ -70,7 +70,7 @@ A feature must stay **Free** when **Acquisition or Gating cost is High**.
 | Feature | Acq | Ret | WTP | Gating cost | Serve | Recommendation |
 |---|---|---|---|---|---|---|
 | Marketplace browse | **High** | High | Low | **High** | Low | 🟢 **Free** — crawlable, the demand side of the network. |
-| Create listings (sell/trade) | High | High | Med | **High** | Low | 🟡 **Freemium — 100 active free → unlimited Pro** *(decided)*. Cap raised from 10 so it only bites power-sellers. Pro also adds a **"Pro Seller" status badge** on listings/storefront (trust → GMV; see §7c). |
+| Create listings (sell/trade) | High | High | Med | **High** | Low | 🟢 **Free — unlimited** *(cap dropped 2026-06-21, see §5.6)*. Capping marketplace supply works against the transaction-fee engine, so listings are uncapped for all. Pro still adds a **"Pro Seller" status badge** on listings/storefront (trust → GMV; see §7c). |
 | Offer system (cash/trade/counter) | High | High | Med | **High** | Low | 🟢 **Free** — this *is* the transaction engine that earns the fee. |
 | Transaction history | Low | Med | Low | Med | Low | 🟢 **Free** — record of completed deals; trust feature. |
 | Trade matching | Med | **High** | Med | **High** | Low | 🟢 **Free** — surfaces deals → more GMV. |
@@ -111,7 +111,7 @@ A feature must stay **Free** when **Acquisition or Gating cost is High**.
 **Unlimited inventory storage + current market value on every card** · inventory CRUD + TCG search · total collection value · sealed product tracking · **bulk import** · bulk edit · duplicate detection · full marketplace (browse, offer, counter, complete) · transaction history · trade matching · storefronts · watchlist · public profiles · follows/feeds · community hub · messaging · badges · reviews · basic collections · **pack reveals (log + publish)** · wishlist · **price alerts** · auth · notifications · basic profile customization.
 
 ### 🟡 Freemium limits — generous free tier, Pro removes the ceiling
-- **Active marketplace listings:** **100 active** free → unlimited Pro
+- **Active marketplace listings:** ~~100 active free → unlimited Pro~~ **Cap dropped 2026-06-21 — unlimited for all.** See §5.6.
 - **Market price refresh:** free tier auto-updates **once daily via scheduled batch**; the **manual on-demand refresh is Pro** *(see §7b)*
 
 ### 🔵 Pro-gated — high-WTP personal utility, zero network cost
@@ -133,7 +133,9 @@ A feature must stay **Free** when **Acquisition or Gating cost is High**.
 
 The five flags below previously conflicted with the marketed plan (pricing page / TODO). All are now decided:
 
-1. **✅ Listing cap raised 10 → 100.** Capping listings suppresses marketplace *supply* (and the transaction-fee revenue that is the bigger engine). At 100 active, only true power-sellers feel it; new sellers never do. **Freemium: 100 free → unlimited Pro.**
+1. **✅ Listing cap raised 10 → 100** *(later dropped entirely — see §5.6)*. Capping listings suppresses marketplace *supply* (and the transaction-fee revenue that is the bigger engine). At 100 active, only true power-sellers feel it; new sellers never do.
+
+6. **✅ Listing cap dropped entirely (2026-06-21).** The 100-active cap was never enforced in code, and on reflection the same logic that raised it from 10 applies all the way down: marketplace supply feeds the transaction-fee engine (the bigger revenue lever), so any cap is self-sabotage. **Listings are now unlimited for everyone.** The two follow-on items it implied are also dropped: the **listing-cap quota gate** (nothing to build) and the **contextual upgrade prompts** (the existing `ProUpsell` teasers on the real Pro gates suffice). 2FA was likewise shelved (not pursuing TOTP now). The only remaining planned engineering item is **error monitoring**.
 
 2. **✅ Price alerts are free.** Resolves the prior free-vs-Pro contradiction in favor of free — alerts pull users back (retention) and convert into purchases (GMV); their network value exceeds their subscription value.
 
@@ -143,6 +145,19 @@ The five flags below previously conflicted with the marketed plan (pricing page 
 
 5. **✅ Import free, export paid.** Import is the spreadsheet-migration/activation moment and stays free. **Bulk CSV export** becomes the paid counterpart (🔵 Pro), with an optional one-time export unlock for non-subscribers — gating data-*out* costs no acquisition while carrying real power-user/dealer WTP.
 
+7. **✅ Do NOT gate offers/trades/sales; monetize them via a transaction fee with a Pro discount (decided 2026-06-21; build deferred — user returning to it later).** The question raised: marketplace transacting is where *users* make money, so gating it behind Pro looks like a strong selling point. **Rejected as an access gate, for three reasons:**
+   - **Two-sided-market death spiral.** A marketplace's value *is* its liquidity. Gate the ability to make offers and the buyer pool collapses; gate receiving them and the seller pool collapses. A thin market is worthless even to Pro subscribers — you'd be charging for access to the thing you just made not worth accessing. The feature a serious collector pays for is an *active* market; gating is how you make it inactive.
+   - **Cannibalizes the bigger engine.** Per §1, the **2–3% transaction fee on GMV** is the larger, uncapped, network-scaling revenue stream; the offer system is tagged 🟢 Free in §3c precisely because it *is* the engine that earns the fee. Gating participation trades that for a few subscriptions.
+   - **Kills acquisition.** The marketplace is the public, crawlable, SEO entry point. A paywall on participation guts the top-of-funnel.
+
+   **The chosen mechanism instead — monetize success, not the attempt:**
+   - **Keep offers/trades/sales free for everyone.** Liquidity and GMV stay high, so the fee compounds.
+   - **Build the Phase 3 transaction-fee hook (2–3%)** — already an open TODO item. Charge on *completed* deals.
+   - **Pro hook = reduced / 0% seller fees.** This is a *stronger* and better-aligned upsell than gating: the only users who feel a per-sale fee are high-volume power-sellers/dealers, who then have a concrete dollar ROI on $4.99/mo. "Sell fee-free with Pro" converts exactly the high-WTP cohort *without* throttling the network. Flips the model from "pay to participate" (shrinks the pie) to "pay to keep more of what you earn" (grows it).
+   - **Adjacent non-restrictive upsells** that don't touch liquidity: **promoted / featured listings** (pay to boost placement — additive), on top of the already-gated Pro Seller badge.
+
+   **Open implementation question (decide at build time):** *recording/displaying* a fee is cheap (a `fee` column on `offers` + calc at acceptance + a `hasProAccess()` discount branch + pre-deal surfacing), but *actually collecting* it requires payments flowing through the platform (**Stripe Connect**) — a materially bigger lift than off-platform payment. v1 may record/display only.
+
 ---
 
 ## 6. Grandfathering & rollout notes
@@ -151,7 +166,7 @@ The five flags below previously conflicted with the marketed plan (pricing page 
 - **Gate with upsell, not walls.** Each gated surface should show *what* the feature does + a contextual "Upgrade to Pro" nudge, never a blank/erroring page. The gate is a marketing surface.
 - **Enforcement has two mechanisms** (different effort):
   - **Boolean gates** (price history, ROI, advanced showcase, bulk export, manual refresh button, "Pro Seller" listing badge) — simple `isPro()` checks + hide/teaser entry points.
-  - **Quota gate** (listing cap of 100) — requires a count query + limit constant + "you've hit your cap" upsell. *(Inventory is no longer capped; market refresh is now a boolean gate on the manual button, not a quota — see §7a–b.)*
+  - ~~**Quota gate** (listing cap of 100)~~ **Dropped 2026-06-21 (§5.6) — there are no quota gates.** Inventory was never capped and listings are now uncapped too; market refresh is a boolean gate on the manual button, not a quota (§7a–b). All remaining Pro enforcement is boolean.
 - Use `lib/isPro.ts` for true entitlement checks (it already enforces expiry at read time). Subscriber-only *signification* uses `lib/proStatus.ts` `isProSubscriber()`.
 
 ---

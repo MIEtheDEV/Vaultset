@@ -9,8 +9,9 @@
 | Donation button | Now — ship immediately | Near-zero effort, builds community goodwill |
 | Marketplace transaction fee (2–3%) | When offer/transaction system ships | Scales with GMV, no subscription infrastructure needed |
 | Pro subscription (~$4.99/mo) | After Tier 2 features exist | Don't sell it before the features that justify it are built |
-| Freemium limits (inventory cap, listing cap) | Only if scale demands it | Don't restrict free users until infrastructure costs force it |
 | Singleton purchases (e.g. bulk import unlock) | Opportunistic, alongside Tier 4 | One-time unlock for one-time needs |
+
+> **Freemium quota caps dropped (2026-06-21).** Inventory stays uncapped (the documented "gate the insight, not the storage" thesis) and the never-enforced 100-active-listing cap is abandoned — free users get unlimited listings. Charge for insight/convenience, never for participation or marketplace supply.
 
 ---
 
@@ -39,7 +40,7 @@
 ### Phase 3
 
 - [x] **Stripe integration** — `stripe` 22.2 added. `utils/stripe.ts` client. Migration `20260611100000_add_stripe_fields.sql` adds `stripe_customer_id` + `is_pro` to profiles. API routes: `POST /api/stripe/checkout` (create checkout session), `POST /api/stripe/webhook` (sync subscription status), `POST /api/stripe/portal` (billing portal). `lib/isPro.ts` server helper for Phase 4 gates. Env vars needed: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SITE_URL`.
-- [ ] **Transaction fee hook** — When offer is accepted, record a 2–3% platform fee against the sale; enforce/collect once Stripe is in place. *Offers table currently has no `fee` column; payment is arranged off-platform.*
+- [ ] **Transaction fee hook** — When offer is accepted, record a 2–3% platform fee against the sale; enforce/collect once Stripe is in place. *Offers table currently has no `fee` column; payment is arranged off-platform.* **Doubles as a Pro lever: reduced / 0% seller fees for Pro instead of gating the marketplace itself** — see decision §5.7 in [`docs/monetization-gating-strategy.md`](docs/monetization-gating-strategy.md) (do NOT gate offers/trades/sales; monetize success, not access). *Collecting (vs. just recording) a fee needs Stripe Connect — bigger lift; v1 may record/display only.* **User returning to this later.**
 
 ### Phase 4
 
@@ -57,10 +58,10 @@
 
 - [x] **Pro plan enforcement** — Gates live via `isPro()` (server) / `hasProAccess()` (pure, expiry-aware, incl. one-time payers) with `ProUpsell` teasers (gate = marketing surface, never a wall). **Strict enforcement, no grandfathering** (per decision 2026-06-20). Gated: **price history chart** (dashboard) + **portfolio analytics/ROI** (`/dashboard/analytics`), **manual market refresh** (bulk button + per-card ↻ — free relies on passive shared-cache propagation, see note), **bulk CSV export** (`/inventory/export`), **foil/holo showcase borders** (`ShowcaseEditor`, basic showcase stays free), **scheduled vacation + auto-reply** (`VacationModeCard`, basic pause stays free). **Pro Seller badge** already gated via `isProSubscriber`. *Deferred:* **instant-vs-timely price-alert delivery** — needs a digest/delay queue (new infra, not just a gate); today all push is instant. *Do not gate (kept free):* inventory (uncapped), pack reveals, standard price alerts, basic listing pause.
   - *Note:* the doc's "free = daily auto refresh" is infeasible on the JustTCG 100/day tier; instead free users get **passive** price updates (any Pro user's refresh of a shared card propagates to all holders), and the **manual** refresh is the Pro lever.
-- [ ] **Freemium limits** — Enforce the one free-tier cap: 100 active listings (count query + limit constant + upsell). *Inventory is uncapped — gate the insight, not the storage. No cap enforcement exists today.*
-- [ ] **Upgrade prompts** — Contextual upsell nudges at each gated surface (e.g., "Upgrade to Pro for price history charts" / "for unlimited listings"). *Build after gates exist — the gate is what triggers the nudge.*
-- [ ] **2FA** — Optional TOTP for account security.
-- [ ] **Error monitoring** — No error tracking service (e.g. Sentry) is integrated. *Uncaught client and server errors are currently invisible.*
+- [ ] **Error monitoring** — No error tracking service (e.g. Sentry) is integrated. *Uncaught client and server errors are currently invisible.* **This is the only remaining planned item.**
+- [x] ~~**Freemium limits** (100-listing cap)~~ — **Dropped 2026-06-21.** Inventory stays uncapped and the listing cap is abandoned; capping marketplace supply works against the transaction-fee engine. Free listings are now unlimited.
+- [x] ~~**Upgrade prompts**~~ — **Dropped 2026-06-21.** The existing `ProUpsell` teasers at gated surfaces are sufficient; with no listing cap there is no quota nudge to build.
+- [x] ~~**2FA**~~ — **Dropped 2026-06-21.** Not pursuing optional TOTP at this time.
 
 ### Known Issues / Backlog
 
@@ -96,7 +97,7 @@
 |---|---|---|
 | Card inventory | Unlimited | Unlimited |
 | Current market value | Yes | Yes |
-| Active marketplace listings | Up to 100 | Unlimited |
+| Active marketplace listings | Unlimited | Unlimited |
 | Market price refresh | Auto (passive, shared cache) | On-demand (manual) |
 | Watchlist | Yes | Yes |
 | Dashboard & basic stats | Yes | Yes |

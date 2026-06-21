@@ -59,7 +59,15 @@ export async function createOffer(params: {
     .select("id")
     .single();
 
-  if (error || !data) throw new Error("Failed to create offer");
+  if (error || !data) {
+    console.error("createOffer insert failed:", JSON.stringify(error, null, 2));
+    // Surface the underlying DB reason in dev to aid debugging; keep it generic in prod.
+    throw new Error(
+      process.env.NODE_ENV !== "production" && error?.message
+        ? `Failed to create offer: ${error.message}`
+        : "Failed to create offer"
+    );
+  }
 
   const items = params.selectedItems ?? [];
   if (items.length > 0) {

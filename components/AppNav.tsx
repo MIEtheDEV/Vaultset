@@ -35,12 +35,6 @@ export function AppNav({ username }: { username: string }) {
             </Link>
           ))}
           <div className="relative">
-            <Link href="/messages" className="hover:text-foreground transition-colors">
-              Messages
-            </Link>
-            <NavMessagesBadge />
-          </div>
-          <div className="relative">
             <Link href="/offers" className="hover:text-foreground transition-colors">
               Offers
             </Link>
@@ -56,7 +50,7 @@ export function AppNav({ username }: { username: string }) {
           <div className="relative">
             <Link
               href="/notifications"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-foreground-muted hover:text-gold hover:bg-gold/5 transition-colors"
               aria-label="Notifications"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -65,6 +59,18 @@ export function AppNav({ username }: { username: string }) {
               </svg>
             </Link>
             <NavNotificationsBadge />
+          </div>
+          <div className="relative">
+            <Link
+              href="/messages"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-foreground-muted hover:text-gold hover:bg-gold/5 transition-colors"
+              aria-label="Messages"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            </Link>
+            <NavMessagesBadge />
           </div>
           <Link
             href="/support"

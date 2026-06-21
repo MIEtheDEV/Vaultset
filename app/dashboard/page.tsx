@@ -630,44 +630,49 @@ export default async function DashboardPage() {
               {recentItems.map((item) => {
                 const card = Array.isArray(item.cards) ? item.cards[0] : item.cards;
                 if (!card) return null;
+                const hasTags = Boolean(item.grader || item.condition || (card as any).game_data?.is_promo || item.quantity > 1);
                 return (
-                  <li key={item.id} className="flex items-center gap-4 px-6 py-3">
-                    {card.image_url ? (
-                      <img
-                        src={card.image_url}
-                        alt={card.name}
-                        className="h-12 w-8 rounded-md object-cover flex-shrink-0"
-                      />
-                    ) : (
-                      <div className={`relative h-12 w-8 rounded-md flex-shrink-0 overflow-hidden ${(card as any).game_data?.is_promo ? "border border-gold/40 bg-surface shadow-[0_0_8px_rgba(232,184,75,0.15)]" : "bg-surface-raised"}`}>
+                  <li key={item.id} className="flex flex-col gap-2 px-6 py-3">
+                    <div className="flex items-center gap-4">
+                      {card.image_url ? (
+                        <img
+                          src={card.image_url}
+                          alt={card.name}
+                          className="h-12 w-8 rounded-md object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className={`relative h-12 w-8 rounded-md flex-shrink-0 overflow-hidden ${(card as any).game_data?.is_promo ? "border border-gold/40 bg-surface shadow-[0_0_8px_rgba(232,184,75,0.15)]" : "bg-surface-raised"}`}>
+                          {(card as any).game_data?.is_promo && (
+                            <Image src="/img/promo.png" alt="Promo Card" fill sizes="32px" className="object-contain p-0.5" />
+                          )}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{card.name}</p>
+                        <p className="text-xs text-foreground-muted truncate">
+                          {card.set_name}{card.card_number ? ` · ${card.card_number}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    {hasTags && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {item.grader ? (
+                          <span className="rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-xs font-semibold text-gold">
+                            {item.grader} {item.grade}
+                          </span>
+                        ) : item.condition ? (
+                          <span className="rounded-full border border-border px-2 py-0.5 text-xs text-foreground-muted capitalize">
+                            {item.condition.replace(/_/g, " ")}
+                          </span>
+                        ) : null}
                         {(card as any).game_data?.is_promo && (
-                          <Image src="/img/promo.png" alt="Promo Card" fill sizes="32px" className="object-contain p-0.5" />
+                          <span className="rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-400">Promo</span>
+                        )}
+                        {item.quantity > 1 && (
+                          <span className="text-xs text-foreground-muted">×{item.quantity}</span>
                         )}
                       </div>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{card.name}</p>
-                      <p className="text-xs text-foreground-muted truncate">
-                        {card.set_name}{card.card_number ? ` · ${card.card_number}` : ""}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {item.grader ? (
-                        <span className="rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-xs font-semibold text-gold">
-                          {item.grader} {item.grade}
-                        </span>
-                      ) : item.condition ? (
-                        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-foreground-muted capitalize">
-                          {item.condition.replace(/_/g, " ")}
-                        </span>
-                      ) : null}
-                      {(card as any).game_data?.is_promo && (
-                        <span className="rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-400">Promo</span>
-                      )}
-                      {item.quantity > 1 && (
-                        <span className="text-xs text-foreground-muted">×{item.quantity}</span>
-                      )}
-                    </div>
                   </li>
                 );
               })}
@@ -839,22 +844,26 @@ export default async function DashboardPage() {
               const { bg, icon } = iconConfig[event.type];
               return (
                 <li key={event.id}>
-                  <Link href={event.href} className="flex items-center gap-4 px-6 py-3 hover:bg-surface-raised transition-colors">
-                    <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${bg}`}>
-                      {icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{event.label}</p>
-                      {event.sublabel && (
-                        <p className="text-xs text-foreground-muted truncate">{event.sublabel}</p>
-                      )}
-                    </div>
-                    {event.image_url && (
-                      <div className="relative h-10 w-7 rounded overflow-hidden flex-shrink-0 bg-surface-raised">
-                        <Image src={event.image_url} alt={event.label} fill sizes="28px" className="object-contain" />
+                  <Link href={event.href} className="flex flex-col gap-2 px-6 py-3 hover:bg-surface-raised transition-colors sm:flex-row sm:items-center sm:gap-4">
+                    <div className="flex items-center gap-4 min-w-0 sm:contents">
+                      <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${bg}`}>
+                        {icon}
                       </div>
-                    )}
-                    <span className="text-xs text-foreground-muted flex-shrink-0 pl-2">{timeAgo(event.created_at)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{event.label}</p>
+                        {event.sublabel && (
+                          <p className="text-xs text-foreground-muted truncate">{event.sublabel}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 sm:contents">
+                      {event.image_url && (
+                        <div className="relative h-10 w-7 rounded overflow-hidden flex-shrink-0 bg-surface-raised">
+                          <Image src={event.image_url} alt={event.label} fill sizes="28px" className="object-contain" />
+                        </div>
+                      )}
+                      <span className="text-xs text-foreground-muted flex-shrink-0 sm:pl-2">{timeAgo(event.created_at)}</span>
+                    </div>
                   </Link>
                 </li>
               );

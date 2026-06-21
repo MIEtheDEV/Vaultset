@@ -11,7 +11,6 @@ const navLinks = [
   { label: "Inventory", href: "/inventory" },
   { label: "Marketplace", href: "/marketplace" },
   { label: "Community", href: "/community" },
-  { label: "Messages", href: "/messages" },
   { label: "Offers",   href: "/offers" },
 ];
 
@@ -48,7 +47,7 @@ export function MobileMenu({ username }: { username: string }) {
         onClick={() => setOpen((prev) => !prev)}
         aria-label="Toggle navigation menu"
         aria-expanded={open}
-        className="p-2 rounded-md text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground-muted hover:text-gold hover:bg-gold/5 transition-colors"
       >
         {open ? (
           <svg

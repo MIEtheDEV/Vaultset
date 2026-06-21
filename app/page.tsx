@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { UserNav } from "@/components/UserNav";
@@ -7,7 +8,7 @@ import { InstallAppButton } from "@/components/InstallAppButton";
 import { InstallPwaCallout } from "@/components/InstallPwaCallout";
 import { HomeMobileNav } from "@/components/HomeMobileNav";
 
-const features = [
+const features: { title: string; description: string; icon: ReactNode; install?: boolean }[] = [
   {
     title: "Smart Inventory",
     description: "Search the Pokémon TCG database to auto-populate card details. Track condition, quantity, finish, and set — raw or graded (PSA, BGS, CGC, SGC).",
@@ -44,6 +45,12 @@ const features = [
     icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>),
   },
   {
+    title: "Push Notifications",
+    description: "Get real-time alerts for offers, messages, price drops, and wishlist matches — even when Vaultset is closed. Install the app to turn them on.",
+    icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2.5" /><line x1="10" y1="18" x2="14" y2="18" /><circle cx="18" cy="5" r="2.5" fill="currentColor" stroke="none" /></svg>),
+    install: true,
+  },
+  {
     title: "Collector Community",
     description: "Follow other collectors, browse their storefronts, and see what they're listing. A real community built around the hobby.",
     icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>),
@@ -70,7 +77,7 @@ const faqs: { q: string; a: string; link?: { href: string; label: string }; inst
   },
   {
     q: "Is Vaultset free?",
-    a: "Yes — all the essentials are free, including unlimited inventory with current market values, the full marketplace (buy, sell, trade, and counter-offers), price alerts, pack reveals, bulk CSV import, collections, wishlist, and the whole community. A Pro plan unlocks advanced tools for serious collectors — portfolio price-history charts, the detailed P&L / ROI analytics report, advanced collection showcase, on-demand price refreshes, unlimited marketplace listings, a Pro Seller badge, and bulk CSV export.",
+    a: "Yes — all the essentials are free, including unlimited inventory with current market values, the full marketplace with unlimited listings (buy, sell, trade, and counter-offers), price alerts, pack reveals, bulk CSV import, collections, wishlist, and the whole community. A Pro plan unlocks advanced tools for serious collectors — portfolio price-history charts, the detailed P&L / ROI analytics report, advanced collection showcase with foil &amp; holo card borders, on-demand price refreshes, scheduled vacation mode, a Pro Seller badge, and bulk CSV export.",
     link: { href: "/pricing", label: "Compare Free & Pro plans" },
   },
   {
@@ -357,13 +364,18 @@ export default async function Home() {
             </p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {features.map(({ icon, title, description }) => (
+            {features.map(({ icon, title, description, install }) => (
               <div key={title} className="group rounded-2xl border border-border bg-surface p-6 hover:border-gold/30 hover:bg-surface-raised transition-all duration-200">
                 <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 text-gold group-hover:bg-gold/15 transition-colors mb-4">
                   {icon}
                 </div>
                 <h3 className="font-semibold text-foreground mb-2">{title}</h3>
                 <p className="text-sm text-foreground-muted leading-relaxed">{description}</p>
+                {install && (
+                  <div className="mt-4">
+                    <InstallAppButton variant="inline" serverInstalled={pwaInstalled} />
+                  </div>
+                )}
               </div>
             ))}
           </div>

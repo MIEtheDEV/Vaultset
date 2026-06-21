@@ -415,9 +415,10 @@ Participants are sorted lexicographically before insert and a Postgres CHECK con
 Most notifications are created by `SECURITY DEFINER` Postgres triggers:
 - `follows_notification_trigger` — fires on `follows` INSERT → creates `new_follower` notification
 - `offers_notification_trigger` — fires on `offers` INSERT → creates `new_offer` notification for recipient
-- `auto_expire_on_offer_change` — fires on `offers` INSERT/UPDATE → sets stale pending offers to `expired`
+- `auto_expire_on_offer_change` — statement-level, fires on `offers` INSERT/UPDATE → sweeps stale pending offers (older than the 7-day window) to `expired` via `vaultset_expire_stale_offers()`. Guarded by `pg_trigger_depth()` so its own `UPDATE offers` doesn't recurse into itself (migration `20260621140000`; the `offer_status` enum must include `expired`/`countered`/`completed` — migration `20260621130000`)
+- `wishlist_listing_match_trigger` — fires on `collection_items` INSERT/UPDATE of `for_sale`/`for_trade`/`on_hold` → when an item *becomes* available on the marketplace, creates a `wishlist_listing_match` notification for every collector who has that card (`cards.game_data->>'pokemon_api_id'`) on their wishlist, excluding the seller and anyone already notified about that listing (migration `20260621120000`)
 
-Price alert notifications are created by the market refresh API route (`/api/market-refresh`) after prices update, using the `check_wishlist_price_alerts(p_user_id)` RPC to find listings at or below each wishlist item's `target_price`.
+Price alert notifications are created by the market refresh API route (`/api/market-refresh`) after prices update, using the `check_wishlist_price_alerts(p_user_id)` RPC to find listings at or below each wishlist item's `target_price`. This is price-conditioned (needs a `target_price`); the `wishlist_listing_match` trigger above is the unconditional "your wishlist card was just listed" signal.
 
 ### Web Push (all notifications, single chokepoint)
 Browser push is delivered via the VAPID/web-push stack. Devices register the service worker (`public/sw.js`) and store a subscription in `push_subscriptions` through `POST /api/push/subscribe` (toggle in account settings via `components/PushToggle.tsx`). `lib/push.ts` `sendPushToUser()` fans a payload out to all of a user's endpoints with `web-push`, pruning expired ones (404/410).
@@ -440,6 +441,8 @@ All tables enforce RLS. Users read/write only their own data. Marketplace listin
 
 ### Admin Client for Privileged Writes
 Operations that span multiple users (offer acceptance, cancellation, inventory transfer) use the service-role client from `utils/supabase/admin.ts` to bypass RLS safely within server actions.
+
+> **Security review:** Known vulnerabilities and hardening recommendations (admin authorization, RLS column-level writes, offer-item ownership) are tracked in [`security-audit.md`](./security-audit.md).
 
 ### Card Search
 Search merges two catalogs via `/api/pokemon-cards`:
