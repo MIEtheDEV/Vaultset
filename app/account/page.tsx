@@ -8,6 +8,7 @@ import { PasswordSettingsForm } from "@/components/PasswordSettingsForm";
 import { DangerZone } from "@/components/DangerZone";
 import { VacationModeCard } from "@/components/VacationModeCard";
 import { PushToggle } from "@/components/PushToggle";
+import { hasProAccess } from "@/lib/proStatus";
 import { InstallAppCard } from "@/components/InstallAppCard";
 import { NotificationPreferences } from "@/components/NotificationPreferences";
 import { SupporterBadge } from "@/components/SupporterBadge";
@@ -65,6 +66,7 @@ export default async function AccountPage({
   const isPro           = (profile as any)?.is_pro           as boolean ?? false;
   const proExpiresAt    = (profile as any)?.pro_expires_at   as string | null ?? null;
   const proAutoRenews   = (profile as any)?.pro_auto_renews  as boolean ?? false;
+  const canPro          = hasProAccess(profile as any); // entitlement (expiry-aware)
   const isAdmin         = username === process.env.ADMIN_USERNAME;
   const bio             = (profile as any)?.bio              as string ?? "";
   const specialty       = (profile as any)?.specialty        as string ?? "";
@@ -179,6 +181,7 @@ export default async function AccountPage({
         <VacationModeCard
           bare
           userId={user.id}
+          canSchedule={canPro}
           initialVacationMode={vacationMode}
           initialMessage={vacationMessage ?? ""}
           initialStartsAt={vacationStartsAt}

@@ -5,6 +5,7 @@ import { HeroCardStack } from "@/components/HeroCardStack";
 import { RotatingHeadline } from "@/components/RotatingHeadline";
 import { InstallAppButton } from "@/components/InstallAppButton";
 import { InstallPwaCallout } from "@/components/InstallPwaCallout";
+import { HomeMobileNav } from "@/components/HomeMobileNav";
 
 const features = [
   {
@@ -231,7 +232,7 @@ export default async function Home() {
             <img src="/img/icon.png" alt="Vaultset" width={28} height={28} />
             <span className="hidden md:block text-xl font-bold tracking-widest text-gold group-hover:text-gold-light transition-colors">VAULTSET</span>
           </div>
-          <div className="hidden md:flex items-center gap-8 text-sm text-foreground-muted">
+          <div className="hidden min-[1200px]:flex items-center gap-8 text-sm text-foreground-muted">
             <Link href="#how-it-works" className="hover:text-foreground transition-colors">How it works</Link>
             <Link href="#features" className="hover:text-foreground transition-colors">Features</Link>
             <Link href="/marketplace" className="hover:text-foreground transition-colors">Marketplace</Link>
@@ -241,7 +242,7 @@ export default async function Home() {
           <div className="flex items-center gap-4">
             <InstallAppButton serverInstalled={pwaInstalled} />
             {username ? (
-              <UserNav username={username} showSettings={false} />
+              <UserNav username={username} showSettings={false} signOutInMenu usernameHref="/dashboard" />
             ) : (
               <>
                 <Link href="/login" className="text-sm text-foreground-muted hover:text-foreground transition-colors">
@@ -252,6 +253,7 @@ export default async function Home() {
                 </Link>
               </>
             )}
+            <HomeMobileNav loggedIn={!!username} />
           </div>
         </div>
       </nav>

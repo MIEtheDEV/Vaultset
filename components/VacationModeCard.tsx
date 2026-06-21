@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { checkText } from "@/lib/moderation";
@@ -46,6 +47,8 @@ interface Props {
   initialEndsAt: string | null;
   /** Drop the outer card chrome + heading when embedded in a CollapsibleSection. */
   bare?: boolean;
+  /** Scheduled window + auto-reply are Pro; basic pause stays free. */
+  canSchedule?: boolean;
 }
 
 export function VacationModeCard({
@@ -55,6 +58,7 @@ export function VacationModeCard({
   initialStartsAt,
   initialEndsAt,
   bare = false,
+  canSchedule = false,
 }: Props) {
   const router = useRouter();
 
@@ -79,25 +83,27 @@ export function VacationModeCard({
     setError("");
     setSuccess("");
 
-    if (endsIso && startsIso && new Date(endsIso) <= new Date(startsIso)) {
+    if (canSchedule && endsIso && startsIso && new Date(endsIso) <= new Date(startsIso)) {
       setError("The return date must be after the start date.");
       return;
     }
     const trimmed = message.trim();
-    if (trimmed) {
+    if (canSchedule && trimmed) {
       const violation = checkText(trimmed);
       if (violation) { setError(`Away message: ${violation}`); return; }
     }
 
     setLoading(true);
     const supabase = createClient();
+    // Scheduled window + auto-reply are Pro — free users only persist the basic
+    // pause toggle; their scheduled fields are cleared.
     const { error: saveError } = await supabase
       .from("profiles")
       .update({
         vacation_mode:      vacationMode,
-        vacation_message:   trimmed || null,
-        vacation_starts_at: startsIso,
-        vacation_ends_at:   endsIso,
+        vacation_message:   canSchedule ? (trimmed || null) : null,
+        vacation_starts_at: canSchedule ? startsIso : null,
+        vacation_ends_at:   canSchedule ? endsIso   : null,
       })
       .eq("id", userId);
 
@@ -165,41 +171,52 @@ export function VacationModeCard({
           Set dates and your listings pause and relist automatically — no need to remember to toggle.
         </p>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="min-w-0">
-            <label className={labelClass()}>Pause from</label>
-            <input
-              type="datetime-local"
-              value={startsAt}
-              onChange={(e) => setStartsAt(e.target.value)}
-              className={`${inputClass()} min-w-0 max-w-full`}
-            />
-          </div>
-          <div className="min-w-0">
-            <label className={labelClass()}>Relist on</label>
-            <input
-              type="datetime-local"
-              value={endsAt}
-              onChange={(e) => setEndsAt(e.target.value)}
-              className={`${inputClass()} min-w-0 max-w-full`}
-            />
-          </div>
-        </div>
+        {canSchedule ? (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="min-w-0">
+                <label className={labelClass()}>Pause from</label>
+                <input
+                  type="datetime-local"
+                  value={startsAt}
+                  onChange={(e) => setStartsAt(e.target.value)}
+                  className={`${inputClass()} min-w-0 max-w-full`}
+                />
+              </div>
+              <div className="min-w-0">
+                <label className={labelClass()}>Relist on</label>
+                <input
+                  type="datetime-local"
+                  value={endsAt}
+                  onChange={(e) => setEndsAt(e.target.value)}
+                  className={`${inputClass()} min-w-0 max-w-full`}
+                />
+              </div>
+            </div>
 
-        <div>
-          <label className={labelClass()}>Away message (auto-reply)</label>
-          <textarea
-            maxLength={200}
-            rows={2}
-            placeholder="e.g. Away until June 20th — offers welcome when I'm back!"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            className={`${inputClass()} resize-none`}
-          />
-          <p className="mt-1.5 text-xs text-foreground-muted">
-            {message.length}/200 — shown to buyers on your paused listings and storefront.
-          </p>
-        </div>
+            <div>
+              <label className={labelClass()}>Away message (auto-reply)</label>
+              <textarea
+                maxLength={200}
+                rows={2}
+                placeholder="e.g. Away until June 20th — offers welcome when I'm back!"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                className={`${inputClass()} resize-none`}
+              />
+              <p className="mt-1.5 text-xs text-foreground-muted">
+                {message.length}/200 — shown to buyers on your paused listings and storefront.
+              </p>
+            </div>
+          </>
+        ) : (
+          <Link
+            href="/pricing"
+            className="inline-flex items-center gap-2 rounded-xl border border-gold/30 bg-gold/5 px-4 py-3 text-sm text-gold hover:bg-gold/10 transition-colors"
+          >
+            Upgrade to Pro to schedule vacations &amp; set an auto-reply →
+          </Link>
+        )}
       </div>
 
       {error && (

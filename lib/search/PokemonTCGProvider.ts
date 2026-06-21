@@ -40,24 +40,26 @@ export class PokemonTCGProvider extends CardSearchProvider {
     const setClause    = set    ? ` set.name:${set}*` : "";
     const numberClause = number ? ` number:${number}` : "";
 
-    if (promoRequested) {
-      const promoQ   = `${nameClause} set.name:*Promo*${numberClause}`;
-      const generalQ = `${nameClause}${setClause}${numberClause}`;
+    // Always pull promos alongside the general results. pokemontcg.io sorts
+    // newest-first, so without this, older promo printings sink to the bottom of
+    // a name search and effectively disappear from the UI.
+    const promoQ   = `${nameClause} set.name:*Promo*${numberClause}`;
+    const generalQ = `${nameClause}${setClause}${numberClause}`;
 
-      const [promoCards, generalCards] = await Promise.all([
-        this.fetchCards(promoQ, 30),
-        this.fetchCards(generalQ, 60),
-      ]);
+    const [promoCards, generalCards] = await Promise.all([
+      this.fetchCards(promoQ, 30),
+      this.fetchCards(generalQ, 60),
+    ]);
 
-      const promoIds = new Set(promoCards.map((c) => c.id));
-      return [
-        ...promoCards,
-        ...generalCards.filter((c) => !promoIds.has(c.id)),
-      ];
-    }
+    const promoIds = new Set(promoCards.map((c) => c.id));
+    const general  = generalCards.filter((c) => !promoIds.has(c.id));
 
-    const q = `${nameClause}${setClause}${numberClause}`;
-    return this.fetchCards(q, 60);
+    // Explicit promo intent → lead entirely with promos. Otherwise still surface
+    // a few promos at the top so they're visible, without flooding common-card
+    // searches (the rest trail after the regular results).
+    if (promoRequested) return [...promoCards, ...general];
+    const LEAD = 5;
+    return [...promoCards.slice(0, LEAD), ...general, ...promoCards.slice(LEAD)];
   }
 
   getMarketPrice(
@@ -67,9 +69,34 @@ export class PokemonTCGProvider extends CardSearchProvider {
     condition: string | null = null,
     grader: string | null = null,
     grade: number | null = null,
+    conditionPrices: Record<string, Record<string, number>> | null = null,
+    gradedPrices: Record<string, Record<string, number>> | null = null,
   ): number | null {
-    if (!tcgplayer?.prices) return null;
     const key = this.resolveFinishKey(finish, edition);
+
+    // Graded cards: prefer the real slab median for this exact grader+grade
+    // (e.g. eBay PSA 10 median). Falls through to the grade multiplier when the
+    // grade is absent (half grades, thin sample data, or non-pokemontcg.io card).
+    if (grader && grade != null && gradedPrices) {
+      const exact = gradedPrices[grader.toLowerCase()]?.[String(grade)];
+      if (exact != null) return exact;
+    }
+
+    // Raw cards: prefer the source's real per-condition price (e.g. JustTCG's
+    // actual LP/MP/HP/DMG value) over the NM×multiplier heuristic. Graded cards
+    // skip this and use the multiplier path below.
+    if (!grader && conditionPrices) {
+      const condKey = condition === "mint" ? "near_mint" : condition;
+      if (condKey) {
+        for (const k of [key, "holofoil", "normal"]) {
+          const price = conditionPrices[k]?.[condKey];
+          if (price != null) return price;
+        }
+      }
+    }
+
+    // Fallback: NM market price × condition/grade multiplier.
+    if (!tcgplayer?.prices) return null;
     for (const k of [key, "holofoil", "normal"]) {
       const price = tcgplayer.prices[k]?.market;
       if (price != null) {

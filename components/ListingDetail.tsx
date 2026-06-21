@@ -8,6 +8,7 @@ import { ProSellerBadge } from "@/components/ProBadge";
 import { isProSubscriber } from "@/lib/proStatus";
 import { MessageButton } from "@/components/MessageButton";
 import { OfferModal } from "@/components/OfferModal";
+import { MarketValueChip } from "@/components/MarketValueChip";
 import { createClient } from "@/utils/supabase/client";
 import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
 import { timeAgo } from "@/lib/timeAgo";
@@ -212,6 +213,19 @@ export function ListingDetail({
             {listing.quantity > 1 && (
               <p className="text-xs text-foreground-muted pt-1">{listing.quantity} available</p>
             )}
+            {gd.pokemon_api_id ? (
+              <MarketValueChip
+                apiId={gd.pokemon_api_id as string}
+                name={card.name}
+                setName={card.set_name}
+                number={card.card_number}
+                finish={listing.finish}
+                edition={edition ?? null}
+                condition={listing.condition}
+                grader={listing.grader}
+                grade={listing.grade}
+              />
+            ) : null}
           </div>
 
           {/* Seller */}

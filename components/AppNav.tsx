@@ -24,7 +24,7 @@ export function AppNav({ username }: { username: string }) {
           </span>
         </Link>
 
-        <div className="hidden md:flex items-center gap-6 text-sm text-foreground-muted">
+        <div className="hidden min-[1200px]:flex items-center gap-6 text-sm text-foreground-muted">
           {navLinks.map(({ label, href }) => (
             <Link
               key={href}
@@ -49,7 +49,10 @@ export function AppNav({ username }: { username: string }) {
         </div>
 
         <div className="flex items-center gap-1">
-          <InstallAppButton />
+          {/* Desktop only — on mobile the install button lives in the hamburger menu. */}
+          <div className="hidden min-[1200px]:block">
+            <InstallAppButton />
+          </div>
           <div className="relative">
             <Link
               href="/notifications"
@@ -73,7 +76,7 @@ export function AppNav({ username }: { username: string }) {
             </svg>
             <span className="sr-only">Support Vaultset</span>
           </Link>
-          <UserNav username={username} />
+          <UserNav username={username} signOutInMenu />
           <MobileMenu username={username} />
         </div>
       </div>

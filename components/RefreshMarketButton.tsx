@@ -75,7 +75,7 @@ export function RefreshMarketButton({ lastRefreshedAt }: Props) {
         {loading ? "Refreshing…" : "Refresh Market Data"}
       </button>
 
-      <p className="text-xs text-foreground-muted">
+      <p className="min-h-4 text-xs text-foreground-muted">
         {hasError         && <span className="text-red-400">Refresh failed — try again</span>}
         {rateLimitedUntil && <span>Available in {hoursUntil(rateLimitedUntil)}</span>}
         {updatedCount != null && !hasError && !rateLimitedUntil && (

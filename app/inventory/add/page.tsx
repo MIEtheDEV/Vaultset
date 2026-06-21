@@ -43,6 +43,31 @@ const ALL_FINISHES = [
   { value: "gold_etched",       label: "Gold Etched" },
 ];
 
+// Maps a TCGplayer price-point key → our finish value. Used to preselect a
+// promo's finish from its actual printing data (a promo's finish can't be
+// derived from a rarity symbol, but the price data tells us which printings
+// exist).
+const TCG_PRICE_KEY_TO_FINISH: Record<string, string> = {
+  normal:             "non_holo",
+  holofoil:           "holofoil",
+  reverseHolofoil:    "reverse_holofoil",
+  "1stEditionNormal": "non_holo",
+  "1stEditionHolofoil": "holofoil",
+};
+
+// Returns the single finish a promo's pricing data implies, or "" when there
+// are zero or multiple distinct printings (ambiguous → let the user choose).
+function promoFinishFromPrices(prices?: Record<string, unknown> | null): string {
+  const finishes = [
+    ...new Set(
+      Object.keys(prices ?? {})
+        .map((k) => TCG_PRICE_KEY_TO_FINISH[k])
+        .filter(Boolean),
+    ),
+  ];
+  return finishes.length === 1 ? finishes[0] : "";
+}
+
 // Variant options available when promo override is active.
 // Promo cards can have any visual design regardless of rarity symbol.
 const PROMO_VARIANTS = [
@@ -94,6 +119,7 @@ export default function AddCardPage() {
   const [imageUrl, setImageUrl]     = useState("");
 
   const [pokemonApiId, setPokemonApiId] = useState("");
+  const [tcgplayerId, setTcgplayerId]   = useState("");
   const [rarity, setRarity]   = useState("");
   const [variant, setVariant] = useState("");
   const [finish, setFinish]   = useState("");
@@ -202,7 +228,14 @@ export default function AddCardPage() {
     tcgplayer?: TcgPlayerData | null;
   }) {
     setDuplicateWarning(false);
-    setPokemonApiId(card.id);
+    // JustTCG-sourced results carry a "tcg:<productId>" id (no pokemon_api_id).
+    if (card.id.startsWith("tcg:")) {
+      setPokemonApiId("");
+      setTcgplayerId(card.id.slice(4));
+    } else {
+      setPokemonApiId(card.id);
+      setTcgplayerId("");
+    }
     setTcgplayerData(card.tcgplayer ?? null);
     setName(card.name);
     setCardSet(card.set.name);
@@ -216,7 +249,9 @@ export default function AddCardPage() {
     if (detectedPromo) {
       setRarity("promo");
       setVariant("");
-      setFinish("");
+      // Preselect the finish when the card's pricing data implies a single
+      // printing; leave blank (user picks) when it's ambiguous.
+      setFinish(promoFinishFromPrices(card.tcgplayer?.prices));
     } else {
       const mappedRarity = card.rarity ? searchProvider.mapRarity(card.rarity.toLowerCase()) : "";
       setRarity(mappedRarity);
@@ -277,6 +312,7 @@ export default function AddCardPage() {
 
     const game_data: Record<string, unknown> = {};
     if (pokemonApiId) game_data.pokemon_api_id = pokemonApiId;
+    if (tcgplayerId)  game_data.tcgplayer_id   = tcgplayerId;
     if (variant)      game_data.variant        = variant;
     if (edition)      game_data.edition        = edition;
     if (rarity)       game_data.rarity         = rarity;

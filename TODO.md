@@ -55,7 +55,8 @@
 
 **Gating & limits — only after the build-out above:**
 
-- [ ] **Pro plan enforcement** — Gate the Pro features behind an `isPro()` check; grandfather existing users free. *Already built — gating only:* price history charts, portfolio analytics/ROI report, collection showcase (base→advanced split), manual/on-demand refresh button, base price alerts. *Built in the build-out above:* bulk export + presets, foil/holo borders, scheduled vacation mode, instant alert delivery, Pro Seller listing badge. *Do not gate:* inventory (uncapped), pack reveals, standard price alerts, basic listing pause.
+- [x] **Pro plan enforcement** — Gates live via `isPro()` (server) / `hasProAccess()` (pure, expiry-aware, incl. one-time payers) with `ProUpsell` teasers (gate = marketing surface, never a wall). **Strict enforcement, no grandfathering** (per decision 2026-06-20). Gated: **price history chart** (dashboard) + **portfolio analytics/ROI** (`/dashboard/analytics`), **manual market refresh** (bulk button + per-card ↻ — free relies on passive shared-cache propagation, see note), **bulk CSV export** (`/inventory/export`), **foil/holo showcase borders** (`ShowcaseEditor`, basic showcase stays free), **scheduled vacation + auto-reply** (`VacationModeCard`, basic pause stays free). **Pro Seller badge** already gated via `isProSubscriber`. *Deferred:* **instant-vs-timely price-alert delivery** — needs a digest/delay queue (new infra, not just a gate); today all push is instant. *Do not gate (kept free):* inventory (uncapped), pack reveals, standard price alerts, basic listing pause.
+  - *Note:* the doc's "free = daily auto refresh" is infeasible on the JustTCG 100/day tier; instead free users get **passive** price updates (any Pro user's refresh of a shared card propagates to all holders), and the **manual** refresh is the Pro lever.
 - [ ] **Freemium limits** — Enforce the one free-tier cap: 100 active listings (count query + limit constant + upsell). *Inventory is uncapped — gate the insight, not the storage. No cap enforcement exists today.*
 - [ ] **Upgrade prompts** — Contextual upsell nudges at each gated surface (e.g., "Upgrade to Pro for price history charts" / "for unlimited listings"). *Build after gates exist — the gate is what triggers the nudge.*
 - [ ] **2FA** — Optional TOTP for account security.
@@ -63,7 +64,7 @@
 
 ### Known Issues / Backlog
 
-- [ ] **Manual card entry fallback** — Some promo cards (e.g. Riolu XY Black Star Promo from the Mega Evolutions ETB) are absent from pokemontcg.io entirely. Need a manual entry form for cards the API doesn't have.
+- [x] **Manual card entry fallback** — Resolved. JustTCG is now a secondary search source (`lib/search/justTcgSearch.ts`) covering most promos pokemontcg.io lacks — e.g. the Riolu from the Mega Evolution ETB (`ME: Mega Evolution Promo` #010) is now findable by name + collector number. Hand-entered cards also get a `manual:<cardId>` pricing identity that still resolves via JustTCG by name/number when a source has it.
 
 ### Phase 5
 
@@ -74,6 +75,7 @@
 
 ## Completed
 
+- [x] **Near-realtime pricing system** — Cache-first multi-tier engine (`lib/pricing/`): shared `card_prices` cache (6h) + JustTCG (real-time raw + per-condition prices, gap-filler search) → pokemontcg.io bedrock, with a per-provider daily budget guard (`price_api_usage`) and cross-user value propagation (`propagateMarketValues` — market value only, never list price). Real per-condition raw pricing (`condition_prices`) and **graded slab medians** (PSA/BGS/CGC/ACE/SGC/TAG via cardmarket-api-tcg, `card_graded_prices`, 24h cache, 100/day budget) replace the flat condition/grade multipliers wherever real data exists. Source/freshness chip on listings; per-card + bulk "refresh to market" and "match listings to market" on inventory. Identity keys: `pokemon_api_id` / `tcg:<id>` / `manual:<id>`. Migrations: `card_prices`, `price_api_usage`, `condition_prices`, `card_graded_prices`. Env: `JUSTTCG_API_KEY`, `TCGGO_RAPID_API_KEY`, `POKEMON_TCG_API_KEY`.
 - [x] **Homepage overhaul** — Rotating headline, How It Works section, comparison table, FAQ with `FAQPage` JSON-LD schema, collector reviews system (submission, admin approval queue, star bar, `/reviews` landing page), review prompt on dashboard at 10+ cards, admin notifications on review submit/edit.
 - [x] **Donation button** — Ko-fi + PayPal + Stripe payment links on `/support`; Supporter badge displayed on profiles for Ko-fi donors. PayPal and Stripe verified working in production; Venmo accessible via PayPal checkout, Cash App via Stripe checkout.
 - [x] **Offer system** — Buyers send cash/trade/bundle offers; sellers accept/reject/counter; full lifecycle (pending → accepted → completed) with 7-day auto-expiry, inventory holds, both-party receipt confirmation, and offer history
@@ -95,7 +97,7 @@
 | Card inventory | Unlimited | Unlimited |
 | Current market value | Yes | Yes |
 | Active marketplace listings | Up to 100 | Unlimited |
-| Market price refresh | Daily (auto) | On-demand (manual) |
+| Market price refresh | Auto (passive, shared cache) | On-demand (manual) |
 | Watchlist | Yes | Yes |
 | Dashboard & basic stats | Yes | Yes |
 | Community & storefronts | Yes | Yes |

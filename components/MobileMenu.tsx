@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import { InstallAppButton } from "@/components/InstallAppButton";
 
 const navLinks = [
   { label: "Dashboard", href: "/dashboard" },
@@ -42,7 +43,7 @@ export function MobileMenu({ username }: { username: string }) {
   }
 
   return (
-    <div ref={ref} className="relative md:hidden">
+    <div ref={ref} className="relative min-[1200px]:hidden">
       <button
         onClick={() => setOpen((prev) => !prev)}
         aria-label="Toggle navigation menu"
@@ -123,17 +124,20 @@ export function MobileMenu({ username }: { username: string }) {
               Pack Reveals
             </Link>
             <Link
-              href="/account"
-              className="px-3 py-2 rounded-md text-sm text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"
-            >
-              Settings
-            </Link>
-            <Link
               href="/support"
               className="px-3 py-2 rounded-md text-sm text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"
             >
               Support Vaultset
             </Link>
+            <Link
+              href="/account"
+              className="px-3 py-2 rounded-md text-sm text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"
+            >
+              Settings
+            </Link>
+            <div className="px-3 py-2">
+              <InstallAppButton variant="inline" />
+            </div>
             <button
               onClick={signOut}
               className="px-3 py-2 rounded-md text-sm text-left text-foreground-muted hover:text-foreground hover:bg-surface-raised transition-colors"

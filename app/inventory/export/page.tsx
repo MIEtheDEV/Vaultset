@@ -4,6 +4,8 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
 import { InventoryExport, type ExportRow } from "@/components/InventoryExport";
+import { ProUpsell } from "@/components/ProUpsell";
+import { isPro } from "@/lib/isPro";
 
 export const metadata: Metadata = {
   title: "Export Inventory",
@@ -11,6 +13,22 @@ export const metadata: Metadata = {
 };
 
 const raritySystem = new PokemonRaritySystem();
+
+const ExportHeader = () => (
+  <div className="flex items-center gap-4">
+    <Link href="/inventory" className="text-foreground-muted hover:text-foreground transition-colors">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+      </svg>
+    </Link>
+    <div>
+      <h1 className="text-2xl font-bold text-foreground">Export Inventory</h1>
+      <p className="mt-0.5 text-sm text-foreground-muted">
+        Download your collection as a CSV — full record, or a tax or insurance format.
+      </p>
+    </div>
+  </div>
+);
 
 const CONDITION_LABEL: Record<string, string> = {
   mint: "Mint", near_mint: "Near Mint", lightly_played: "Lightly Played",
@@ -32,6 +50,19 @@ export default async function InventoryExportPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  // Bulk export is a Pro feature.
+  if (!(await isPro(user.id))) {
+    return (
+      <div className="space-y-6">
+        <ExportHeader />
+        <ProUpsell
+          title="Bulk CSV export"
+          description="Export your full collection as CSV — including ready-made tax cost-basis and insurance-inventory presets — with Pro."
+        />
+      </div>
+    );
+  }
 
   const username = user.user_metadata?.username as string;
 
@@ -75,19 +106,7 @@ export default async function InventoryExportPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/inventory" className="text-foreground-muted hover:text-foreground transition-colors">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-          </svg>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Export Inventory</h1>
-          <p className="mt-0.5 text-sm text-foreground-muted">
-            Download your collection as a CSV — full record, or a tax or insurance format.
-          </p>
-        </div>
-      </div>
+      <ExportHeader />
 
       <InventoryExport rows={rows} username={username} />
     </div>

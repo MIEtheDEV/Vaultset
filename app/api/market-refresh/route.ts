@@ -3,11 +3,14 @@ import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { PokemonTCGProvider } from "@/lib/search/PokemonTCGProvider";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
+import { PriceFetchEngine } from "@/lib/pricing/PriceFetchEngine";
+import { propagateMarketValues } from "@/lib/pricing/propagateMarketValues";
+import { ensureGradedPrices } from "@/lib/pricing/gradedPrices";
+import { priceApiId } from "@/lib/pricing/cardIdentity";
+import type { CardRef } from "@/lib/pricing/PriceProvider";
 
 const OWNER_EMAIL   = "bmiethe90@gmail.com";
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
-const API_BASE      = "https://api.pokemontcg.io/v2";
-const BATCH_SIZE    = 50;
 
 export async function POST() {
   const supabase = await createClient();
@@ -35,56 +38,94 @@ export async function POST() {
 
   const { data: items } = await supabase
     .from("collection_items")
-    .select("id, finish, cards ( game_data )")
+    .select("id, finish, condition, grader, grade, market_price, for_sale, cards ( id, name, set_name, set_code, card_number, game_data )")
     .eq("user_id", user.id);
 
-  type Entry = { itemId: string; finish: string | null; edition: string | null };
+  type Entry = {
+    itemId: string;
+    finish: string | null;
+    edition: string | null;
+    condition: string | null;
+    grader: string | null;
+    grade: number | null;
+  };
   const byApiId = new Map<string, Entry[]>();
+  const refs    = new Map<string, CardRef>();
+  // Per-card flags used to prioritise the limited daily JustTCG budget:
+  //   needsValue — at least one item has NO market value yet
+  //   listed     — at least one item is currently for sale
+  const needsValue = new Set<string>();
+  const listed     = new Set<string>();
 
   for (const item of items ?? []) {
     const card = Array.isArray(item.cards) ? item.cards[0] : item.cards;
     const gd   = ((card as any)?.game_data ?? {}) as Record<string, unknown>;
-    const apiId = gd.pokemon_api_id as string | undefined;
+    const apiId = priceApiId(gd, (card as any)?.id);
     if (!apiId) continue;
 
+    if (!refs.has(apiId)) {
+      refs.set(apiId, {
+        apiId,
+        tcgplayerId: (gd.tcgplayer_id as string) ?? null,
+        name:    (card as any)?.name        ?? undefined,
+        setName: (card as any)?.set_name    ?? undefined,
+        setCode: (card as any)?.set_code    ?? undefined,
+        number:  (card as any)?.card_number ?? undefined,
+      });
+    }
+
+    if ((item as any).market_price == null) needsValue.add(apiId);
+    if ((item as any).for_sale)             listed.add(apiId);
+
     const entry: Entry = {
-      itemId:  item.id,
-      finish:  (item as any).finish  ?? null,
-      edition: (gd.edition as string) ?? null,
+      itemId:    item.id,
+      finish:    (item as any).finish ?? null,
+      edition:   (gd.edition as string) ?? null,
+      condition: (item as any).condition ?? null,
+      grader:    (item as any).grader ?? null,
+      grade:     (item as any).grade ?? null,
     };
     if (!byApiId.has(apiId)) byApiId.set(apiId, []);
     byApiId.get(apiId)!.push(entry);
   }
 
-  const provider = new PokemonTCGProvider();
-  const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY
-    ? { "X-Api-Key": process.env.POKEMON_TCG_API_KEY }
-    : {};
+  // Priority for spending the limited daily JustTCG budget (lower = sooner).
+  // Listings come first (those drive sales); within each group, cards with no
+  // value yet outrank cards that already have one.
+  //   0: listed   & no value
+  //   1: listed   & has value
+  //   2: unlisted & no value
+  //   3: unlisted & has value
+  const priority = (apiId: string): number =>
+    (listed.has(apiId) ? 0 : 2) + (needsValue.has(apiId) ? 0 : 1);
 
-  // Fetch prices from pokemontcg.io in parallel batches
-  const ids     = [...byApiId.keys()];
-  const batches: string[][] = [];
-  for (let i = 0; i < ids.length; i += BATCH_SIZE) batches.push(ids.slice(i, i + BATCH_SIZE));
-
-  const priceMap = new Map<string, TcgPlayerData | null>();
-
-  await Promise.allSettled(
-    batches.map(async (batch) => {
-      const q      = batch.map((id) => `id:${id}`).join(" OR ");
-      const params = new URLSearchParams({ q, select: "id,tcgplayer", pageSize: String(batch.length) });
-      const res    = await fetch(`${API_BASE}/cards?${params}`, { headers });
-      if (!res.ok) return;
-      const json: { data: { id: string; tcgplayer?: TcgPlayerData }[] } = await res.json();
-      for (const card of json.data ?? []) priceMap.set(card.id, card.tcgplayer ?? null);
-    }),
+  const orderedRefs = [...refs.values()].sort(
+    (a, b) => priority(a.apiId) - priority(b.apiId),
   );
 
-  // Build per-item updates
+  // Resolve prices through the cache-first cascading engine (writes use admin).
+  // allowResolve lets JustTCG fill in values pokemontcg.io lacks (e.g. newer
+  // cards), capped by the daily request budget — leftovers fall back to bedrock.
+  const engine = new PriceFetchEngine(admin);
+  const priced = await engine.getPrices(orderedRefs, { allowResolve: true });
+
+  const provider = new PokemonTCGProvider();
+
+  // Build per-item updates, applying finish/edition/condition/grade multipliers.
   const updates: { id: string; market_price: number }[] = [];
   for (const [apiId, entries] of byApiId) {
-    const tcgplayer = priceMap.get(apiId);
+    const resolved = priced.get(apiId);
+    if (!resolved) continue;
+    const tcgplayer = { prices: resolved.prices } as TcgPlayerData;
+    // Fetch graded slab prices only when a graded item references this card
+    // (24h-cached + budget-guarded inside ensureGradedPrices).
+    const needsGraded = entries.some((e) => e.grader && e.grade != null);
+    const gradedPrices = needsGraded ? await ensureGradedPrices(admin, apiId) : null;
     for (const entry of entries) {
-      const price = provider.getMarketPrice(tcgplayer, entry.finish, entry.edition);
+      const price = provider.getMarketPrice(
+        tcgplayer, entry.finish, entry.edition, entry.condition, entry.grader, entry.grade,
+        resolved.conditionPrices, gradedPrices,
+      );
       if (price != null) updates.push({ id: entry.itemId, market_price: price });
     }
   }
@@ -99,6 +140,12 @@ export async function POST() {
     ),
   );
   const updated = results.filter((r) => !r.error).length;
+
+  // Fan freshly-fetched prices out to ALL holders of the same cards (market
+  // value only — never list_price). Cache hits are skipped to avoid needless
+  // fan-out. This is why one user's refresh updates everyone's market value.
+  const freshIds = [...priced.values()].filter((p) => !p.fromCache).map((p) => p.cardApiId);
+  await propagateMarketValues(admin, freshIds);
 
   await admin
     .from("market_refresh_log")

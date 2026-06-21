@@ -442,7 +442,19 @@ All tables enforce RLS. Users read/write only their own data. Marketplace listin
 Operations that span multiple users (offer acceptance, cancellation, inventory transfer) use the service-role client from `utils/supabase/admin.ts` to bypass RLS safely within server actions.
 
 ### Card Search
-`PokemonTCGProvider.search()` builds a Lucene query against the pokemontcg.io API. Multi-word card names are split into per-token `name:word*` clauses (ANDed) to support partial prefix matching across all tokens (e.g. `name:Hop's* name:Z*` finds "Hop's Zacian ex"). Known gap: cards absent from pokemontcg.io (some XY-era promos) cannot be found via search.
+Search merges two catalogs via `/api/pokemon-cards`:
+- **pokemontcg.io (primary)** — `PokemonTCGProvider.search()` builds a Lucene query; multi-word names split into per-token `name:word*` clauses (ANDed) for partial prefix matching (e.g. `name:Hop's* name:Z*` finds "Hop's Zacian ex"). Promos are always pulled alongside general results (a few led to the top) so they aren't buried by newest-first ordering.
+- **JustTCG (`lib/search/justTcgSearch.ts`, gap-filler)** — covers promos and brand-new cards pokemontcg.io lacks. Results carry `tcg:<productId>` ids and TCGplayer-CDN images, deduped against the primary by name+number. JustTCG's name search caps at ~20 relevance-ranked results, so obscure promos are reachable only with a collector **number** (forwarded as a server-side filter). To protect the shared JustTCG quota, JustTCG is queried only when a number is supplied or pokemontcg.io returns few results.
+
+### Pricing
+A cache-first, multi-tier engine (`lib/pricing/`) keeps market values current within API free-tier limits (full tier/identity detail in `CLAUDE.md`):
+- **Shared cache** `card_prices` (6h freshness) fronts every external call, so one user's refresh benefits all holders. `propagateMarketValues()` fans a freshly-fetched value out to every holder's `collection_items.market_price` — **market value only, never `list_price`** (each user keeps listing-price autonomy).
+- **Tiers (cascade):** JustTCG (real-time, batch by tcgplayer_id + resolve-by-name/number) → pokemontcg.io bedrock (always available). `price_api_usage` enforces per-provider daily budgets; circuit-breaks on 429/401/403.
+- **Identity:** `pokemon_api_id` → else `tcg:<productId>` (JustTCG-only cards) → else `manual:<cardRowId>` (hand-entered), via `priceApiId()`.
+- **Raw condition pricing:** real per-condition prices from JustTCG (`card_prices.condition_prices`); falls back to NM market × a condition multiplier.
+- **Graded pricing:** real eBay slab medians (PSA/BGS/CGC/ACE/SGC/TAG, sample ≥ 2) from cardmarket-api-tcg keyed by tcgid, cached in `card_graded_prices` (24h, 100/day budget); falls back to the grade multiplier.
+- **Entry points:** `/api/market-refresh` (bulk, manual, 24h-limited), `/api/card-price` (lazy single-card on detail view), and the per-card `refreshItemMarketValue` action. A `MarketValueChip` shows the source + freshness.
+- **Env:** `JUSTTCG_API_KEY`, `TCGGO_RAPID_API_KEY`, `POKEMON_TCG_API_KEY` (all optional; an unconfigured source is skipped).
 
 ---
 

@@ -10,6 +10,7 @@ const raritySystem = new PokemonRaritySystem();
 import { CardImage } from "@/components/CardImage";
 import { RemoveCardButton } from "@/components/RemoveCardButton";
 import { ListAtMarketButton } from "@/components/ListAtMarketButton";
+import { RefreshValueButton } from "@/components/RefreshValueButton";
 
 const conditionLabel: Record<string, string> = {
   mint: "Mint",
@@ -96,7 +97,7 @@ function resolveCard(item: InventoryItem) {
   return Array.isArray(item.cards) ? item.cards[0] : item.cards;
 }
 
-export function InventoryGrid({ items, proposedItemIds = [] }: { items: InventoryItem[]; proposedItemIds?: string[] }) {
+export function InventoryGrid({ items, proposedItemIds = [], canRefresh = false }: { items: InventoryItem[]; proposedItemIds?: string[]; canRefresh?: boolean }) {
   const [search, setSearch]         = useState("");
   const [filter, setFilter]         = useState<FilterKey>("all");
   const [sort, setSort]             = useState<SortKey>("newest");
@@ -422,13 +423,14 @@ export function InventoryGrid({ items, proposedItemIds = [] }: { items: Inventor
                   </div>
 
                   <div className="flex items-center justify-between">
-                    {item.market_price != null ? (
-                      <span className="text-xs text-foreground-muted">
-                        Mkt <span className="font-medium text-foreground">${item.market_price.toFixed(2)}</span>
-                      </span>
-                    ) : (
-                      <span />
-                    )}
+                    <span className="flex items-center gap-1.5 text-xs text-foreground-muted">
+                      {item.market_price != null ? (
+                        <>Mkt <span className="font-medium text-foreground">${item.market_price.toFixed(2)}</span></>
+                      ) : (
+                        <span className="italic">No value</span>
+                      )}
+                      {!selectMode && canRefresh && <RefreshValueButton itemId={item.id} />}
+                    </span>
                     {item.for_sale && item.list_price != null && (
                       <span className="text-sm font-semibold text-gold">
                         ${item.list_price.toFixed(2)}

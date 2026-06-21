@@ -5,7 +5,8 @@ import Link from "next/link";
 import { RefreshMarketButton } from "@/components/RefreshMarketButton";
 import { SupporterBadge } from "@/components/SupporterBadge";
 import { ProBadge } from "@/components/ProBadge";
-import { isProSubscriber } from "@/lib/proStatus";
+import { isProSubscriber, hasProAccess } from "@/lib/proStatus";
+import { ProUpsell } from "@/components/ProUpsell";
 import { ReviewPrompt } from "@/components/ReviewPrompt";
 import { InstallPwaCallout } from "@/components/InstallPwaCallout";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -184,7 +185,7 @@ export default async function DashboardPage() {
       )
     `).eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("market_refresh_log").select("refreshed_at").eq("user_id", user!.id).maybeSingle(),
-    supabase.from("profiles").select("is_supporter, is_pro, pro_plan, pro_expires_at, pwa_installed_at").eq("id", user!.id).single(),
+    supabase.from("profiles").select("is_supporter, is_pro, pro_plan, pro_expires_at, pro_auto_renews, pwa_installed_at").eq("id", user!.id).single(),
     supabase.rpc("get_wishlist_matches", { p_user_id: user!.id }),
     supabase.from("wishlist_items").select("id, card_name, set_name, card_number, image_url, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("product_purchases").select("id, name, product_type, for_sale, for_trade, list_price, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
@@ -219,6 +220,7 @@ export default async function DashboardPage() {
   const isSupporter = profileData?.is_supporter ?? false;
   const pwaInstalled = Boolean((profileData as any)?.pwa_installed_at);
   const isProSub    = isProSubscriber(profileData as any);
+  const canPro      = hasProAccess(profileData as any); // entitlement (incl. one-time payers)
 
   // Following feed: get who this user follows, then their recent listings
   const { data: myFollowsData } = await supabase
@@ -426,7 +428,13 @@ export default async function DashboardPage() {
               Generate Report
             </Link>
           </div>
-          <RefreshMarketButton lastRefreshedAt={refreshLog?.refreshed_at ?? null} />
+          {canPro ? (
+            <RefreshMarketButton lastRefreshedAt={refreshLog?.refreshed_at ?? null} />
+          ) : (
+            <Link href="/pricing" className="text-xs text-foreground-muted hover:text-gold transition-colors">
+              Prices update automatically · <span className="text-gold">Upgrade for on-demand refresh →</span>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -448,8 +456,15 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {/* Portfolio value chart */}
-      <PortfolioChart data={portfolioHistory} />
+      {/* Portfolio value chart — Pro feature */}
+      {canPro ? (
+        <PortfolioChart data={portfolioHistory} />
+      ) : (
+        <ProUpsell
+          title="Price history charts"
+          description="Track your portfolio's value over time with Pro — daily snapshots across 7D / 30D / 90D / All."
+        />
+      )}
 
       {/* Quick actions */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -603,7 +618,7 @@ export default async function DashboardPage() {
       <div className="grid lg:grid-cols-3 gap-6">
 
         {/* Collection summary */}
-        <div className="lg:col-span-2 rounded-2xl border border-border bg-surface">
+        <div className="min-w-0 lg:col-span-2 rounded-2xl border border-border bg-surface">
           <div className="flex items-center justify-between border-b border-border px-6 py-4">
             <h2 className="font-semibold text-foreground">Recently Added</h2>
             <Link href="/inventory" className="text-xs text-foreground-muted hover:text-gold transition-colors">

@@ -2,17 +2,46 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { PortfolioAnalyticsClient } from "@/components/PortfolioAnalyticsClient";
+import { ProUpsell } from "@/components/ProUpsell";
+import { isPro } from "@/lib/isPro";
 
 export const metadata: Metadata = {
   title: "Portfolio Analytics",
   robots: { index: false },
 };
 
+const AnalyticsHeader = () => (
+  <div className="flex items-center gap-4">
+    <Link href="/dashboard" className="text-foreground-muted hover:text-foreground transition-colors">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m15 18-6-6 6-6" />
+      </svg>
+    </Link>
+    <div>
+      <h1 className="text-2xl font-bold text-foreground">Portfolio Analytics</h1>
+      <p className="text-sm text-foreground-muted mt-0.5">ROI tracking and collection performance</p>
+    </div>
+  </div>
+);
+
 export default async function PortfolioAnalyticsPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Pro feature — show an upsell instead of the report for free users.
+  if (!user || !(await isPro(user.id))) {
+    return (
+      <div className="space-y-8">
+        <AnalyticsHeader />
+        <ProUpsell
+          title="Portfolio analytics & ROI"
+          description="See cost basis, ROI, gainers/losers, and value-over-time across your whole collection with Pro."
+        />
+      </div>
+    );
+  }
 
   const [{ data: collectionData }, { data: priceHistoryRaw }] = await Promise.all([
     supabase
@@ -85,31 +114,7 @@ export default async function PortfolioAnalyticsPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-4">
-        <Link
-          href="/dashboard"
-          className="text-foreground-muted hover:text-foreground transition-colors"
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="m15 18-6-6 6-6" />
-          </svg>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Portfolio Analytics</h1>
-          <p className="text-sm text-foreground-muted mt-0.5">
-            ROI tracking and collection performance
-          </p>
-        </div>
-      </div>
+      <AnalyticsHeader />
 
       <PortfolioAnalyticsClient
         portfolioHistory={portfolioHistory}

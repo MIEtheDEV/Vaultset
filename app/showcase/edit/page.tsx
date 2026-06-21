@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { ShowcaseEditor, type ShowcaseItem } from "@/components/ShowcaseEditor";
+import { hasProAccess } from "@/lib/proStatus";
 
 export const metadata: Metadata = {
   title: "Edit Showcase",
@@ -37,12 +38,13 @@ export default async function ShowcaseEditPage() {
 
     supabase
       .from("profiles")
-      .select("showcase_border")
+      .select("showcase_border, is_pro, pro_plan, pro_expires_at, pro_auto_renews")
       .eq("id", user.id)
       .single(),
   ]);
 
   const initialBorder = ((profileRow as any)?.showcase_border as string | null) ?? "none";
+  const canPro = hasProAccess(profileRow as any);
 
   const showcasedIds = new Set((showcaseItems ?? []).map((s) => s.collection_item_id));
 
@@ -94,7 +96,7 @@ export default async function ShowcaseEditPage() {
           </Link>
         </div>
       ) : (
-        <ShowcaseEditor userId={user.id} initialItems={items} initialBorder={initialBorder} />
+        <ShowcaseEditor userId={user.id} initialItems={items} initialBorder={initialBorder} canPro={canPro} />
       )}
     </div>
   );

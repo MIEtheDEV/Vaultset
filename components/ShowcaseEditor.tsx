@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 
 export type ShowcaseItem = {
@@ -28,10 +29,13 @@ export function ShowcaseEditor({
   userId,
   initialItems,
   initialBorder = "none",
+  canPro = false,
 }: {
   userId: string;
   initialItems: ShowcaseItem[];
   initialBorder?: string;
+  /** Animated showcase borders are an advanced (Pro) feature; basic showcase is free. */
+  canPro?: boolean;
 }) {
   const supabase = createClient();
   const [items, setItems]   = useState<ShowcaseItem[]>(initialItems);
@@ -41,7 +45,7 @@ export function ShowcaseEditor({
   const [savingBorder, setSavingBorder] = useState(false);
 
   async function saveBorder(value: string) {
-    if (savingBorder || value === border) return;
+    if (!canPro || savingBorder || value === border) return;
     setSavingBorder(true);
     setBorder(value);
     await supabase.from("profiles").update({ showcase_border: value }).eq("id", userId);
@@ -98,7 +102,7 @@ export function ShowcaseEditor({
           <span className="inline-flex items-center rounded-full border border-gold/40 bg-gold/15 px-2 py-0.5 text-[10px] font-semibold text-gold">Pro</span>
         </div>
         <p className="text-xs text-foreground-muted">An animated border applied to your showcased cards on your public profile.</p>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {BORDER_OPTIONS.map((opt) => {
             const selected = border === opt.value;
             return (
@@ -106,8 +110,9 @@ export function ShowcaseEditor({
                 key={opt.value}
                 type="button"
                 onClick={() => saveBorder(opt.value)}
-                disabled={savingBorder}
-                className={`flex flex-col items-center gap-1.5 rounded-xl border p-2 transition-colors disabled:opacity-60 ${
+                disabled={savingBorder || !canPro}
+                title={!canPro ? "Upgrade to Pro to use showcase borders" : undefined}
+                className={`flex flex-col items-center gap-1.5 rounded-xl border p-2 transition-colors disabled:cursor-not-allowed ${!canPro ? "opacity-50" : "disabled:opacity-60"} ${
                   selected ? "border-gold bg-gold/5" : "border-border hover:border-gold/40"
                 }`}
               >
@@ -116,6 +121,11 @@ export function ShowcaseEditor({
               </button>
             );
           })}
+          {!canPro && (
+            <Link href="/pricing" className="text-xs text-gold hover:text-gold-light transition-colors">
+              Upgrade to Pro →
+            </Link>
+          )}
         </div>
       </div>
 

@@ -15,6 +15,15 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "**.pokemontcg.io",
       },
+      // JustTCG-sourced cards use TCGplayer's image CDN.
+      {
+        protocol: "https",
+        hostname: "tcgplayer-cdn.tcgplayer.com",
+      },
+      {
+        protocol: "https",
+        hostname: "product-images.tcgplayer.com",
+      },
     ],
   },
 };

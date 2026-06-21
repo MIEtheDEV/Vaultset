@@ -4,6 +4,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { InventoryGrid } from "@/components/InventoryGrid";
 import { MarkReceivedButton } from "@/components/MarkReceivedButton";
+import { RefreshMarketButton } from "@/components/RefreshMarketButton";
+import { MatchAllListingsButton } from "@/components/MatchAllListingsButton";
+import { hasProAccess } from "@/lib/proStatus";
 
 export const metadata: Metadata = {
   title: "Inventory",
@@ -70,6 +73,19 @@ export default async function InventoryPage() {
 
   const proposedItemIds = (proposedRows ?? []).map((r) => r.collection_item_id);
 
+  const { data: refreshLog } = await supabase
+    .from("market_refresh_log")
+    .select("refreshed_at")
+    .eq("user_id", user!.id)
+    .maybeSingle();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_pro, pro_plan, pro_expires_at, pro_auto_renews")
+    .eq("id", user!.id)
+    .single();
+  const canPro = hasProAccess(profile as any); // manual market refresh is Pro
+
   return (
     <div className="space-y-8">
 
@@ -127,6 +143,28 @@ export default async function InventoryPage() {
         </div>
       </div>
 
+      {/* Pricing actions: market value (estimate) vs. listing price are kept separate */}
+      {regularItems.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-foreground">Pricing</p>
+            <p className="mt-0.5 text-xs text-foreground-muted">
+              Refresh tracked market values, then optionally match your for-sale listings to them.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            {canPro ? (
+              <RefreshMarketButton lastRefreshedAt={refreshLog?.refreshed_at ?? null} />
+            ) : (
+              <Link href="/pricing" className="text-xs text-foreground-muted hover:text-gold transition-colors">
+                Prices update automatically · <span className="text-gold">Upgrade for on-demand refresh →</span>
+              </Link>
+            )}
+            <MatchAllListingsButton />
+          </div>
+        </div>
+      )}
+
       {/* Pending Arrivals */}
       {pendingItems.length > 0 && (
         <div className="space-y-4">
@@ -176,7 +214,7 @@ export default async function InventoryPage() {
         </div>
       )}
 
-      <InventoryGrid items={regularItems} proposedItemIds={proposedItemIds} />
+      <InventoryGrid items={regularItems} proposedItemIds={proposedItemIds} canRefresh={canPro} />
     </div>
   );
 }
