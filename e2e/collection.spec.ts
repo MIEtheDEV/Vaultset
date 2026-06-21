@@ -19,6 +19,11 @@ test.describe("Collection Management", () => {
   });
 
   test("card search returns results from the TCG API", async ({ page }) => {
+    // Hits the live pokemontcg.io/JustTCG APIs (no mock). Skipped in CI, where
+    // shared-runner IPs get rate-limited/blocked and results flake; the sibling
+    // test below mocks the API for deterministic coverage of the selection flow.
+    test.skip(!!process.env.CI, "Depends on live TCG API; flaky from CI IPs.");
+
     await page.goto("/inventory/add");
     await expect(page.getByRole("heading", { name: "Add Card" })).toBeVisible();
 
