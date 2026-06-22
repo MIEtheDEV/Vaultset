@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { stripe } from "@/utils/stripe";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -25,17 +26,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
   }
 
-  const { data: profile } = await supabase
+  // Billing columns are read/written via the service-role client so that
+  // stripe_customer_id never needs to be readable or writable by the
+  // authenticated client — that keeps it out of the world-readable profile
+  // surface (M-8) and lets the privileged-column guard (C-1) reject any
+  // user-initiated change, closing the billing-account-takeover chain.
+  const admin = createAdminClient();
+  const { data: profile } = await admin
     .from("profiles")
     .select("stripe_customer_id, is_pro")
     .eq("id", user.id)
-    .single();
+    .single<{ stripe_customer_id: string | null; is_pro: boolean | null }>();
 
-  if ((profile as any)?.is_pro) {
+  if (profile?.is_pro) {
     return NextResponse.json({ error: "Already subscribed" }, { status: 400 });
   }
 
-  let customerId = (profile as any)?.stripe_customer_id as string | null;
+  let customerId = profile?.stripe_customer_id ?? null;
 
   if (!customerId) {
     const customer = await stripe.customers.create({
@@ -43,7 +50,7 @@ export async function POST(request: NextRequest) {
       metadata: { supabase_user_id: user.id },
     });
     customerId = customer.id;
-    await supabase.from("profiles").update({ stripe_customer_id: customerId }).eq("id", user.id);
+    await admin.from("profiles").update({ stripe_customer_id: customerId }).eq("id", user.id);
   }
 
   const isOneTime = ONE_TIME_PLANS.has(plan);

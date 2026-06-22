@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { stripe } from "@/utils/stripe";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -9,13 +10,17 @@ export async function POST() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: profile } = await supabase
+  // Read the billing id via the service-role client (see checkout/route.ts):
+  // stripe_customer_id is never exposed to or settable by the user, so the
+  // portal can only ever target the customer the server bound to this account.
+  const admin = createAdminClient();
+  const { data: profile } = await admin
     .from("profiles")
     .select("stripe_customer_id")
     .eq("id", user.id)
-    .single();
+    .single<{ stripe_customer_id: string | null }>();
 
-  const customerId = (profile as any)?.stripe_customer_id as string | null;
+  const customerId = profile?.stripe_customer_id ?? null;
   if (!customerId) {
     return NextResponse.json({ error: "No billing account found" }, { status: 404 });
   }

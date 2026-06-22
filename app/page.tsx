@@ -168,7 +168,7 @@ export default async function Home() {
   ] = await Promise.all([
     supabase.rpc("get_platform_card_count"),
     supabase.from("cards").select("game").not("game", "is", null),
-    supabase.from("profiles").select("*", { count: "exact", head: true }),
+    supabase.from("profiles").select("id", { count: "exact", head: true }),
     supabase.rpc("get_platform_market_value"),
     supabase.from("reviews").select("id, rating, body, display_name, pinned").eq("approved", true).order("pinned", { ascending: false }).order("created_at", { ascending: false }),
   ]);

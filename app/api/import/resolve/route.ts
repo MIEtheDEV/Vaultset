@@ -1,7 +1,20 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 const BASE = "https://api.pokemontcg.io/v2";
+
+// Bound the work a single request can trigger: each unique set name and each
+// unresolved row can cost one outbound pokemontcg.io call, so cap the input to
+// stop an authenticated user amplifying one request into thousands of fetches.
+const MAX_ROWS = 200;
+const MAX_FIELD_LEN = 120;
+
+// Escape characters that have meaning in pokemontcg.io's Lucene-style `q` param
+// so user input can't break out of the quoted clause (query injection).
+function escapeLucene(value: string): string {
+  return value.replace(/["\\]/g, "\\$&").slice(0, MAX_FIELD_LEN);
+}
 
 type InputRow = { name: string; set_name: string; card_number?: string };
 
@@ -62,7 +75,7 @@ function toResolved(card: Record<string, any>): ResolvedCard {
 async function fetchSetCards(setName: string): Promise<Record<string, any>[]> {
   try {
     const params = new URLSearchParams({
-      q:        `set.name:"${setName}"`,
+      q:        `set.name:"${escapeLucene(setName)}"`,
       pageSize: "250",
       select:   "id,name,number,rarity,images,set",
     });
@@ -80,7 +93,7 @@ async function fetchSetCards(setName: string): Promise<Record<string, any>[]> {
 async function fetchByName(name: string): Promise<Record<string, any> | null> {
   try {
     const params = new URLSearchParams({
-      q:        `name:"${name}"`,
+      q:        `name:"${escapeLucene(name)}"`,
       pageSize: "1",
       select:   "id,name,number,rarity,images,set",
       orderBy:  "-set.releaseDate",
@@ -104,6 +117,11 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const rows: InputRow[] = Array.isArray(body.rows) ? body.rows : [];
   if (rows.length === 0) return NextResponse.json({ results: [] });
+  if (rows.length > MAX_ROWS)
+    return NextResponse.json(
+      { error: `Too many rows. Import at most ${MAX_ROWS} at a time.` },
+      { status: 413 },
+    );
 
   // Batch: one request per unique set name instead of one per card
   const uniqueSets = [...new Set(rows.map((r) => r.set_name).filter(Boolean))];

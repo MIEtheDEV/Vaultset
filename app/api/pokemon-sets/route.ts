@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
 
 export async function GET() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const headers: Record<string, string> = {};
   if (process.env.POKEMON_TCG_API_KEY) {
     headers["X-Api-Key"] = process.env.POKEMON_TCG_API_KEY;
@@ -18,7 +23,8 @@ export async function GET() {
   });
 
   if (!res.ok) {
-    return NextResponse.json({ error: "Failed to fetch sets" }, { status: res.status });
+    // Don't leak the upstream status (e.g. pokemontcg.io 429/403) to the client.
+    return NextResponse.json({ error: "Failed to fetch sets" }, { status: 502 });
   }
 
   const data = await res.json();

@@ -91,7 +91,7 @@ export default async function ProfilePage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, username, created_at, is_supporter, is_pro, pro_plan, pro_expires_at, bio, specialty, city, featured_item_id, avatar_url, avatar_color, showcase_border")
+    .select("id, username, created_at, is_admin, is_supporter, is_pro, pro_plan, pro_expires_at, bio, specialty, city, featured_item_id, avatar_url, avatar_color, showcase_border")
     .eq("username", username)
     .eq("banned", false)
     .single();
@@ -99,7 +99,7 @@ export default async function ProfilePage({
   if (!profile) redirect("/community");
 
   const isOwnProfile   = user?.id === profile.id;
-  const isAdmin        = profile.username === process.env.ADMIN_USERNAME;
+  const isAdmin        = (profile as any).is_admin === true;
   const bio            = (profile as any).bio              as string | null;
   const specialty      = (profile as any).specialty        as string | null;
   const city           = (profile as any).city             as string | null;

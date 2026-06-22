@@ -1,17 +1,9 @@
 "use server";
 
-import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-
-async function assertAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-  if (user.user_metadata?.username !== process.env.ADMIN_USERNAME) throw new Error("Forbidden");
-  return user;
-}
+import { assertAdmin } from "@/lib/auth/admin";
 
 async function getAdminProfileId(): Promise<string> {
   const admin = createAdminClient();
@@ -45,6 +37,37 @@ async function getOrCreateThread(adminProfileId: string, targetUserId: string): 
 
   if (error || !created) throw new Error("Failed to create thread.");
   return created.id as string;
+}
+
+/**
+ * Loads the authoritative target/offense/username for a report straight from
+ * the DB. Admin actions must derive these from the report row rather than trust
+ * client-supplied parameters — otherwise an admin call could act on an
+ * arbitrary user (or inject arbitrary text into system messages) under cover of
+ * an unrelated report.
+ */
+async function loadReportTarget(
+  reportId: string,
+): Promise<{ reportedUserId: string; reason: string; reportedUsername: string }> {
+  const admin = createAdminClient();
+  const { data: report } = await admin
+    .from("reports")
+    .select("reported_user_id, reason")
+    .eq("id", reportId)
+    .single();
+  if (!report?.reported_user_id) throw new Error("Report not found.");
+
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("username")
+    .eq("id", report.reported_user_id)
+    .single();
+
+  return {
+    reportedUserId:   report.reported_user_id as string,
+    reason:           (report.reason as string) ?? "",
+    reportedUsername: (profile?.username as string) ?? "user",
+  };
 }
 
 function softBanDuration(
@@ -121,15 +144,12 @@ export async function openAdminThread(targetUserId: string) {
 
 // ── Notify ───────────────────────────────────────────────────────────────────
 
-export async function notifyUser(
-  reportId: string,
-  reportedUserId: string,
-  reason: string,
-  reportedUsername: string,
-) {
+export async function notifyUser(reportId: string) {
   const adminUser      = await assertAdmin();
   const adminProfileId = await getAdminProfileId();
   const admin          = createAdminClient();
+
+  const { reportedUserId, reason, reportedUsername } = await loadReportTarget(reportId);
 
   const convId = await getOrCreateThread(adminProfileId, reportedUserId);
 
@@ -164,15 +184,12 @@ export async function notifyUser(
 
 // ── Warn ─────────────────────────────────────────────────────────────────────
 
-export async function warnUser(
-  reportId: string,
-  reportedUserId: string,
-  offenseType: string,
-  reportedUsername: string,
-) {
+export async function warnUser(reportId: string) {
   const adminUser      = await assertAdmin();
   const adminProfileId = await getAdminProfileId();
   const admin          = createAdminClient();
+
+  const { reportedUserId, reason: offenseType, reportedUsername } = await loadReportTarget(reportId);
 
   // Read current counts server-side (don't trust client)
   const [{ count: typeCount }, { data: profileRow }] = await Promise.all([
@@ -258,13 +275,11 @@ export async function warnUser(
 
 // ── Ban from report (after 3 per-type warnings) ──────────────────────────────
 
-export async function banUserFromReport(
-  reportId: string,
-  reportedUserId: string,
-  offenseType: string,
-) {
+export async function banUserFromReport(reportId: string) {
   const adminUser = await assertAdmin();
   const admin     = createAdminClient();
+
+  const { reportedUserId, reason: offenseType } = await loadReportTarget(reportId);
 
   await Promise.all([
     admin.auth.admin.updateUserById(reportedUserId, { ban_duration: "87600h" }),

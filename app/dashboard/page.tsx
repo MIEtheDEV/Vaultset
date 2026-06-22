@@ -10,6 +10,7 @@ import { ProUpsell } from "@/components/ProUpsell";
 import { ReviewPrompt } from "@/components/ReviewPrompt";
 import { InstallPwaCallout } from "@/components/InstallPwaCallout";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { isUserAdmin } from "@/lib/auth/admin";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { timeAgo } from "@/lib/timeAgo";
 import { BADGE_MAP, computeEarnedSlugs, awardBadges, type BadgeSlug } from "@/lib/badges";
@@ -113,7 +114,7 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser();
   const username = user?.user_metadata?.username as string;
 
-  const isAdmin = username === process.env.ADMIN_USERNAME;
+  const isAdmin = user ? await isUserAdmin(user.id) : false;
 
   const quickActions = [
     { label: "Add Card",      href: "/inventory/add",       comingSoon: false, icon: (

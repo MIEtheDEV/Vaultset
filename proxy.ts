@@ -29,7 +29,9 @@ export async function proxy(request: NextRequest) {
   // Protected pages call getUser() themselves for full server-side verification.
   const { data: { session } } = await supabase.auth.getSession();
 
-  const protectedPaths = ["/dashboard", "/inventory", "/account", "/messages", "/wishlist", "/offers", "/transactions", "/reveals"];
+  // /admin is included here for an early edge redirect; AdminLayout remains the
+  // authoritative gate (it verifies getUser() + profiles.is_admin).
+  const protectedPaths = ["/dashboard", "/inventory", "/account", "/messages", "/wishlist", "/offers", "/transactions", "/reveals", "/admin"];
   if (!session && protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p))) {
     return NextResponse.redirect(new URL("/login", request.url));
   }

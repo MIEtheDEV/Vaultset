@@ -33,7 +33,7 @@ export default async function AccountPage({
   const [{ data: profile }, { data: rawItems }, { data: existingReview }, { data: notifPrefs }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("is_supporter, is_pro, pro_expires_at, pro_auto_renews, bio, specialty, city, featured_item_id, avatar_url, avatar_color, followers_only_offers, vacation_mode, vacation_message, vacation_starts_at, vacation_ends_at, pwa_installed_at")
+      .select("is_admin, is_supporter, is_pro, pro_expires_at, pro_auto_renews, bio, specialty, city, featured_item_id, avatar_url, avatar_color, followers_only_offers, vacation_mode, vacation_message, vacation_starts_at, vacation_ends_at, pwa_installed_at")
       .eq("id", user.id)
       .single(),
     supabase
@@ -67,7 +67,7 @@ export default async function AccountPage({
   const proExpiresAt    = (profile as any)?.pro_expires_at   as string | null ?? null;
   const proAutoRenews   = (profile as any)?.pro_auto_renews  as boolean ?? false;
   const canPro          = hasProAccess(profile as any); // entitlement (expiry-aware)
-  const isAdmin         = username === process.env.ADMIN_USERNAME;
+  const isAdmin         = (profile as any)?.is_admin === true;
   const bio             = (profile as any)?.bio              as string ?? "";
   const specialty       = (profile as any)?.specialty        as string ?? "";
   const city            = (profile as any)?.city             as string ?? "";

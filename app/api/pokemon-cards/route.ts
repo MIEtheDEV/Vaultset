@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
 import { getSearchProvider } from "@/lib/search";
 import { searchJustTcg } from "@/lib/search/justTcgSearch";
 
@@ -9,6 +10,13 @@ const dedupKey = (name: string, number: string) =>
   `${norm(name)}|${norm((number ?? "").split("/")[0])}`;
 
 export async function GET(request: Request) {
+  // Card search spends the JustTCG/pokemontcg.io budget, so require an
+  // authenticated user — this endpoint is only reached from logged-in flows
+  // (inventory add, collection creator).
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { searchParams } = new URL(request.url);
   const raw    = searchParams.get("q")?.trim() ?? "";
   const set    = searchParams.get("set")?.trim()    || undefined;

@@ -29,7 +29,10 @@ export async function resolveLoginEmail(
       return { error: "Login failed. Please try again." };
     }
 
-    if (!email) return { error: "No account found with that username." };
+    // Return the same generic message Supabase emits for a wrong password, so
+    // this resolver can't be used as an oracle to enumerate which usernames
+    // exist. (Per-IP rate limiting should also be applied at the edge/WAF.)
+    if (!email) return { error: "Invalid login credentials" };
 
     return { email: email as string };
   } catch (err) {

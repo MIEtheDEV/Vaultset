@@ -97,11 +97,7 @@ export function AdminReportActions({
 
         <button
           disabled={pending}
-          onClick={() =>
-            startTransition(() =>
-              notifyUser(reportId, reportedUserId, reason, reportedUsername)
-            )
-          }
+          onClick={() => startTransition(() => notifyUser(reportId))}
           className="rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-400 hover:bg-violet-500/20 transition-colors disabled:opacity-50"
         >
           Notify
@@ -116,7 +112,7 @@ export function AdminReportActions({
                   `@${reportedUsername} has 3+ ${reason} warnings. This will permanently ban their account. Continue?`
                 )
               ) {
-                startTransition(() => banUserFromReport(reportId, reportedUserId, reason));
+                startTransition(() => banUserFromReport(reportId));
               }
             }}
             className="rounded-full border border-red-500/50 bg-red-500/15 px-3 py-1 text-xs font-semibold text-red-400 hover:bg-red-500/25 transition-colors disabled:opacity-50"
@@ -127,9 +123,7 @@ export function AdminReportActions({
           <button
             disabled={pending}
             onClick={() =>
-              startTransition(() =>
-                warnUser(reportId, reportedUserId, reason, reportedUsername)
-              )
+              startTransition(() => warnUser(reportId))
             }
             className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${warnStyle.className}`}
           >

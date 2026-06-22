@@ -9,7 +9,6 @@ import { ensureGradedPrices } from "@/lib/pricing/gradedPrices";
 import { priceApiId } from "@/lib/pricing/cardIdentity";
 import type { CardRef } from "@/lib/pricing/PriceProvider";
 
-const OWNER_EMAIL   = "bmiethe90@gmail.com";
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
 
 export async function POST() {
@@ -17,7 +16,9 @@ export async function POST() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const isOwner = user.email === OWNER_EMAIL;
+  // OWNER_EMAIL (env) only bypasses the 24h rate limit; unset → everyone is limited.
+  const ownerEmail = process.env.OWNER_EMAIL;
+  const isOwner = !!ownerEmail && user.email === ownerEmail;
   const admin   = createAdminClient();
 
   if (!isOwner) {

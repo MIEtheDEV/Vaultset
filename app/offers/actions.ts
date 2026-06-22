@@ -29,6 +29,23 @@ export async function createOffer(params: {
   if (!user) throw new Error("Not authenticated");
   if (user.id === params.recipientId) throw new Error("Cannot offer to yourself");
 
+  // Verify the listing exists and is actually owned by the named recipient.
+  // listing_id references a collection_items row; without this an attacker could
+  // address an offer to an arbitrary recipientId who doesn't own the listing,
+  // spamming notifications and creating inconsistent offer rows.
+  {
+    const admin = createAdminClient();
+    const { data: listing } = await admin
+      .from("collection_items")
+      .select("user_id")
+      .eq("id", params.listingId)
+      .single();
+    if (!listing) throw new Error("Listing not found.");
+    if (listing.user_id !== params.recipientId) {
+      throw new Error("Listing does not belong to the specified recipient.");
+    }
+  }
+
   // Rate limit: max 3 non-expired pending offers per sender/listing pair
   const expiryThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { count } = await supabase
@@ -72,6 +89,29 @@ export async function createOffer(params: {
   const items = params.selectedItems ?? [];
   if (items.length > 0) {
     const admin = createAdminClient();
+
+    // Validate ownership before inserting: a sender may only stake their OWN
+    // items as `offered`, and may only request items owned by the recipient.
+    // Without this, a crafted offer could reference a third party's item id and
+    // tamper with their inventory at accept-time (security-audit.md, Medium #3).
+    const itemIds = [...new Set(items.map((i) => i.itemId))];
+    const { data: ownedRows, error: ownerErr } = await admin
+      .from("collection_items")
+      .select("id, user_id")
+      .in("id", itemIds);
+
+    if (ownerErr) throw new Error("Failed to validate offer items");
+
+    const ownerById = new Map((ownedRows ?? []).map((r) => [r.id as string, r.user_id as string]));
+
+    for (const item of items) {
+      const owner = ownerById.get(item.itemId);
+      const expectedOwner = item.role === "offered" ? user.id : params.recipientId;
+      if (owner !== expectedOwner) {
+        throw new Error("One or more selected items are not available for this offer.");
+      }
+    }
+
     const { error: itemsError } = await admin.from("offer_items").insert(
       items.map((item) => ({
         offer_id:           data.id,

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { AppNav } from "@/components/AppNav";
 import { AdminNav } from "@/components/AdminNav";
+import { isUserAdmin } from "@/lib/auth/admin";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -9,7 +10,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!user) redirect("/login");
 
   const username = user.user_metadata?.username as string;
-  if (username !== process.env.ADMIN_USERNAME) redirect("/dashboard");
+  if (!(await isUserAdmin(user.id))) redirect("/dashboard");
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">

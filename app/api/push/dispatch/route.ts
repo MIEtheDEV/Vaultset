@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { sendPushToUser } from "@/lib/push";
 import { buildPushPayload, prefKeyForType } from "@/lib/notificationPush";
+
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
+}
 
 /**
  * Internal endpoint hit by the `push_dispatch_after_insert` DB trigger (via
@@ -12,7 +19,8 @@ import { buildPushPayload, prefKeyForType } from "@/lib/notificationPush";
  */
 export async function POST(req: Request) {
   const secret = process.env.PUSH_DISPATCH_SECRET;
-  if (!secret || req.headers.get("x-push-secret") !== secret) {
+  const provided = req.headers.get("x-push-secret") ?? "";
+  if (!secret || !safeEqual(provided, secret)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

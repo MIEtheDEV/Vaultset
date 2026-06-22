@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { isUserAdmin } from "@/lib/auth/admin";
 
 const VALID_REASONS = new Set([
   "Inappropriate profile content",
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "You cannot report yourself." }, { status: 400 });
 
   const admin = createAdminClient();
-  const isAdmin = user.user_metadata?.username === process.env.ADMIN_USERNAME;
+  const isAdmin = await isUserAdmin(user.id);
 
   if (!isAdmin) {
     // Rate-limit: one report per reporter/target pair per day

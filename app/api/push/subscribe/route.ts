@@ -1,6 +1,30 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+// Known browser push services. The stored endpoint later becomes an outbound
+// fetch target during dispatch, so restrict it to real push hosts (SSRF guard)
+// rather than persisting any URL a client supplies.
+const ALLOWED_PUSH_HOSTS = [
+  ".push.apple.com",
+  "fcm.googleapis.com",
+  "updates.push.services.mozilla.com", // also covers autopush subdomains below
+  ".notify.windows.com",
+  ".push.services.mozilla.com",
+];
+
+function isAllowedPushEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== "https:") return false;
+    const host = url.hostname.toLowerCase();
+    return ALLOWED_PUSH_HOSTS.some((h) =>
+      h.startsWith(".") ? host.endsWith(h) : host === h,
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Store (or refresh) a browser push subscription for the current user. */
 export async function POST(req: Request) {
   const supabase = await createClient();
@@ -20,6 +44,9 @@ export async function POST(req: Request) {
   if (!endpoint || !p256dh || !auth) {
     return NextResponse.json({ error: "Malformed subscription." }, { status: 400 });
   }
+  if (!isAllowedPushEndpoint(endpoint)) {
+    return NextResponse.json({ error: "Unrecognized push endpoint." }, { status: 400 });
+  }
 
   // endpoint is unique — upsert so re-subscribing the same device is idempotent
   // and re-binds the endpoint to the current user.
@@ -27,6 +54,9 @@ export async function POST(req: Request) {
     .from("push_subscriptions")
     .upsert({ user_id: user.id, endpoint, p256dh, auth }, { onConflict: "endpoint" });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[push/subscribe] upsert error:", error.message);
+    return NextResponse.json({ error: "Could not save subscription." }, { status: 500 });
+  }
   return NextResponse.json({ success: true });
 }
