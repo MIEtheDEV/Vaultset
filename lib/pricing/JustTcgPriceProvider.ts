@@ -82,7 +82,9 @@ export class JustTcgPriceProvider extends PriceProvider {
     const res = await fetch(`${API_BASE}/cards`, {
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify({ items: cards.map((c) => ({ tcgplayerId: c.tcgplayerId })) }),
+      // JustTCG's batch endpoint expects a BARE ARRAY of lookup objects, not a
+      // { items: [...] } envelope — the latter returns 400 INVALID_REQUEST.
+      body: JSON.stringify(cards.map((c) => ({ tcgplayerId: c.tcgplayerId }))),
     });
     this.throwIfBlocked(res.status);
     if (!res.ok) return;
