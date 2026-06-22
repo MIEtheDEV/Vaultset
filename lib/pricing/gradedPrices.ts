@@ -98,7 +98,10 @@ export async function ensureGradedPrices(
       { headers: { "x-rapidapi-host": HOST, "x-rapidapi-key": key } },
     );
     await bumpBudget(admin);
-    if (!res.ok) return (row?.graded as GradedPrices) ?? null;
+    if (!res.ok) {
+      console.warn(`[pricing] graded (cardmarket-api-tcg): unexpected HTTP ${res.status} for ${cardApiId} — serving cached graded prices`);
+      return (row?.graded as GradedPrices) ?? null;
+    }
 
     const json = await res.json();
     const card = Array.isArray(json?.data) ? json.data[0] : json?.data;

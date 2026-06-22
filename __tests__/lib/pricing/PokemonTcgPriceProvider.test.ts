@@ -41,6 +41,23 @@ describe("PokemonTcgPriceProvider native-id filtering", () => {
     expect(out.get("sv4-1")?.prices.normal.market).toBe(5);
   });
 
+  it("surfaces an unexpected non-OK (e.g. 400) instead of swallowing it", async () => {
+    global.fetch = jest.fn(async () => ({ ok: false, status: 400, json: async () => ({}) })) as unknown as typeof fetch;
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const provider = new PokemonTcgPriceProvider();
+
+    const out = await provider.fetchBatch([{ apiId: "sv4-1" }], ctx);
+
+    expect(out.size).toBe(0);                                  // no results
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("HTTP 400")); // but logged loudly
+  });
+
+  it("throws on circuit-break statuses so the engine drops the provider", async () => {
+    global.fetch = jest.fn(async () => ({ ok: false, status: 429, json: async () => ({}) })) as unknown as typeof fetch;
+    const provider = new PokemonTcgPriceProvider();
+    await expect(provider.fetchBatch([{ apiId: "sv4-1" }], ctx)).rejects.toThrow(/429/);
+  });
+
   it("makes no request when every card is non-native (nothing to look up)", async () => {
     const fetchSpy = jest.fn();
     global.fetch = fetchSpy as unknown as typeof fetch;

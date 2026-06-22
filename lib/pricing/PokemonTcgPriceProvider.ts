@@ -1,5 +1,5 @@
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
-import { CardRef, FetchContext, PricePayload, PriceProvider, PriceProviderError } from "./PriceProvider";
+import { CardRef, FetchContext, PricePayload, PriceProvider } from "./PriceProvider";
 
 const API_BASE = "https://api.pokemontcg.io/v2";
 
@@ -46,13 +46,7 @@ export class PokemonTcgPriceProvider extends PriceProvider {
     });
 
     const res = await fetch(`${API_BASE}/cards?${params}`, { headers: this.headers() });
-    if (!res.ok) {
-      if (process.env.PRICE_DEBUG) console.log(`[PRICE] pokemontcg.io status=${res.status} (asked ${lookup.length})`);
-      if (res.status === 429 || res.status === 401 || res.status === 403) {
-        throw new PriceProviderError(res.status, `pokemontcg.io ${res.status}`);
-      }
-      return result; // transient/other error: contribute nothing
-    }
+    if (!this.ensureOk(res, `batch of ${lookup.length}`)) return result;
 
     const json: { data?: { id: string; tcgplayer?: TcgPlayerData | null }[] } = await res.json();
     let withPrices = 0;
