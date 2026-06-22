@@ -114,6 +114,17 @@ already answer this. Two moves turn plumbing into a headline:
 > advertise a moat we can't consistently deliver — perceived price unreliability is a top
 > churn trigger.
 
+> **Coverage check result — 2026-06-22 (n=27, whole DB; early-stage, directional only).**
+> 85% priced, but **real-time only 30% · bedrock 56% · missing 15%**, **per-condition 0%**,
+> **fresh-<6h 0% (everything >24h stale)**, no graded items in sample.
+> **Verdict: blanket headline is not safe — lead with capability, not a claim** ("net-of-fees,
+> per-grade pricing where available"). The bigger finding is structural, not statistical: with
+> on-demand refresh now Pro-gated (Step 1) and a thin/zero Pro base, nothing keeps the cache
+> warm, so real-time coverage decays toward bedrock. **The accuracy moat needs a refresh source
+> that doesn't depend on Pro users manually refreshing** — see §6 step 2 note. Re-measure after
+> a deliberate refresh to separate "pipeline idle" from "data genuinely unavailable" (esp. the
+> 0% per-condition among the 8 justtcg rows — JustTCG should supply `condition_prices`).
+
 ---
 
 ## 5. The gap — scanning is the freemium meter waiting to happen
