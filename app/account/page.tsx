@@ -189,7 +189,7 @@ export default async function AccountPage({
         />
       </CollapsibleSection>
 
-      <PushToggle isPro={isPro} />
+      <PushToggle />
 
       <NotificationPreferences userId={user.id} initial={notificationPrefs} />
 

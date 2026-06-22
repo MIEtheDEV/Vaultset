@@ -16,7 +16,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 
 type Status = "loading" | "unsupported" | "off" | "on" | "denied" | "working" | "error";
 
-export function PushToggle({ isPro = false }: { isPro?: boolean }) {
+export function PushToggle() {
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState("");
   const [testState, setTestState] = useState<"idle" | "sending" | "sent" | "none" | "error">("idle");
@@ -143,9 +143,6 @@ export function PushToggle({ isPro = false }: { isPro?: boolean }) {
         <h2 className="font-semibold text-foreground">Push Notifications</h2>
         <p className="mt-1 text-sm text-foreground-muted">
           Get price alerts and offers pushed to this device — even when Vaultset isn&apos;t open.
-          {isPro
-            ? " As a Pro member, your alerts are delivered instantly."
-            : " Price alerts are free for everyone; Pro members get instant priority delivery."}
         </p>
       </div>
 

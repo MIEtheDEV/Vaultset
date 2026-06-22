@@ -30,7 +30,6 @@ const FEATURES: { label: string; free: React.ReactNode; pro: React.ReactNode }[]
   { label: "Bulk CSV import",             free: CHECK,              pro: CHECK        },
   { label: "Listing pause",               free: "Basic",            pro: "Scheduled" },
   { label: "Market price refresh",        free: "Daily",            pro: "On-demand" },
-  { label: "Instant alert delivery",      free: DASH,               pro: CHECK        },
   { label: "Price history charts",        free: DASH,               pro: CHECK        },
   { label: "Portfolio analytics (ROI)",   free: DASH,               pro: CHECK        },
   { label: "Collection showcase",         free: "Basic",            pro: "Advanced"  },

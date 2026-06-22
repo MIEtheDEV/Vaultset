@@ -8,34 +8,24 @@ import { propagateMarketValues } from "@/lib/pricing/propagateMarketValues";
 import { ensureGradedPrices } from "@/lib/pricing/gradedPrices";
 import { priceApiId } from "@/lib/pricing/cardIdentity";
 import type { CardRef } from "@/lib/pricing/PriceProvider";
-
-const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
+import { isPro } from "@/lib/isPro";
 
 export async function POST() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // OWNER_EMAIL (env) only bypasses the 24h rate limit; unset → everyone is limited.
   const ownerEmail = process.env.OWNER_EMAIL;
   const isOwner = !!ownerEmail && user.email === ownerEmail;
   const admin   = createAdminClient();
 
-  if (!isOwner) {
-    const { data: log } = await admin
-      .from("market_refresh_log")
-      .select("refreshed_at")
-      .eq("user_id", user.id)
-      .single();
-
-    if (log) {
-      const elapsed = Date.now() - new Date(log.refreshed_at).getTime();
-      if (elapsed < RATE_LIMIT_MS) {
-        const nextAllowedAt = new Date(new Date(log.refreshed_at).getTime() + RATE_LIMIT_MS).toISOString();
-        return NextResponse.json({ error: "Rate limited", nextAllowedAt }, { status: 429 });
-      }
-    }
+  // On-demand bulk refresh is a Pro feature. Free users get cross-user cache
+  // propagation + ~24h bedrock pricing; they cannot trigger a manual refresh.
+  if (!isOwner && !(await isPro(user.id))) {
+    return NextResponse.json({ error: "On-demand refresh is a Pro feature." }, { status: 403 });
   }
+  // Pro is intentionally uncapped: the cache-first engine (6h) makes repeat
+  // calls cheap, and price_api_usage caps provider spend per day.
 
   const { data: items } = await supabase
     .from("collection_items")
