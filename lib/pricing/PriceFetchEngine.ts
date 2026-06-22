@@ -74,6 +74,7 @@ export class PriceFetchEngine {
       }
       stale.push({ ...ref, tcgplayerId: ref.tcgplayerId ?? row?.tcgplayerId ?? null });
     }
+    if (process.env.PRICE_DEBUG) console.log(`[PRICE] in=${ids.length} cacheHits=${ids.length - stale.length} stale=${stale.length}`);
     if (stale.length === 0) return results;
 
     // 2. Cascade through providers.
@@ -136,9 +137,14 @@ export class PriceFetchEngine {
         }
       }
 
+      if (process.env.PRICE_DEBUG) {
+        const got = remaining.length - stillStale.length;
+        console.log(`[PRICE] provider=${provider.source} resolved=${got} dead=${providerDead} remaining->${stillStale.length}`);
+      }
       remaining = stillStale;
     }
 
+    if (process.env.PRICE_DEBUG) console.log(`[PRICE] writes=${writes.length} (sources: ${writes.map((w) => w.source).join(",") || "none"})`);
     await this.writeCache(writes);
     await this.persistUsage(usageToday);
     return results;

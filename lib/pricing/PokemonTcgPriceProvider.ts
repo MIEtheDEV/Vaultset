@@ -27,19 +27,27 @@ export class PokemonTcgPriceProvider extends PriceProvider {
 
   async fetchBatch(cards: CardRef[], ctx: FetchContext): Promise<Map<string, PricePayload>> {
     const result = new Map<string, PricePayload>();
-    if (cards.length === 0) return result;
+
+    // pokemontcg.io is keyed by its native card id (e.g. "sv4-1"). JustTCG-sourced
+    // (`tcg:<id>`) and hand-entered (`manual:<id>`) keys are NOT valid here, and
+    // their colon is a Lucene field separator — so `id:tcg:123` is a syntax error
+    // that 400s the WHOLE `OR` batch, starving every native card alongside it.
+    // Look up only native ids; non-native ones simply have no bedrock price.
+    const lookup = cards.filter((c) => !c.apiId.includes(":"));
+    if (lookup.length === 0) return result;
 
     await ctx.recordRequest();
 
-    const q = cards.map((c) => `id:${c.apiId}`).join(" OR ");
+    const q = lookup.map((c) => `id:${c.apiId}`).join(" OR ");
     const params = new URLSearchParams({
       q,
       select: "id,tcgplayer",
-      pageSize: String(cards.length),
+      pageSize: String(lookup.length),
     });
 
     const res = await fetch(`${API_BASE}/cards?${params}`, { headers: this.headers() });
     if (!res.ok) {
+      if (process.env.PRICE_DEBUG) console.log(`[PRICE] pokemontcg.io status=${res.status} (asked ${lookup.length})`);
       if (res.status === 429 || res.status === 401 || res.status === 403) {
         throw new PriceProviderError(res.status, `pokemontcg.io ${res.status}`);
       }
@@ -47,13 +55,16 @@ export class PokemonTcgPriceProvider extends PriceProvider {
     }
 
     const json: { data?: { id: string; tcgplayer?: TcgPlayerData | null }[] } = await res.json();
+    let withPrices = 0;
     for (const card of json.data ?? []) {
       if (!card.tcgplayer?.prices) continue;
+      withPrices++;
       result.set(card.id, {
         prices: card.tcgplayer.prices,
         tcgplayerUrl: card.tcgplayer.url ?? null,
       });
     }
+    if (process.env.PRICE_DEBUG) console.log(`[PRICE] pokemontcg.io status=200 asked=${lookup.length} returned=${(json.data ?? []).length} withPrices=${withPrices}`);
     return result;
   }
 }
