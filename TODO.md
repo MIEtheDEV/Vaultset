@@ -27,7 +27,7 @@
 - [x] **Email change verification** — Pending email banner in account settings shows when `user.new_email` is set, with a resend confirmation button.
 - [x] **Rate limit feedback** — Offer rate limit now shows a distinct amber banner with a link to `/offers` instead of a generic red error.
 - [x] **Duplicate card merging** — Duplicate warning now fetches and displays existing copies (condition, grade, quantity) with direct links to each inventory item.
-- [x] **Database schema tracking** — schema is tracked as a single committed snapshot (`supabase/schema_6-21.sql`), regenerated via `supabase db dump`. DB changes are applied in the Supabase SQL Editor, then the snapshot is refreshed. (Per-file migrations were retired.) See `CLAUDE.md`.
+- [x] **Database schema tracking** — schema is tracked as a single committed snapshot (`supabase/schema_6-22.sql`), regenerated via `supabase db dump`. DB changes are applied in the Supabase SQL Editor, then the snapshot is refreshed. (Per-file migrations were retired.) See `CLAUDE.md`.
 
 ### Phase 2
 

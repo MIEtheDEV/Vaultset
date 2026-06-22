@@ -443,22 +443,39 @@ CREATE OR REPLACE FUNCTION "public"."guard_profile_protected_columns"() RETURNS 
     SET "search_path" TO 'public'
     AS $$
 begin
-  -- Only the user-facing PostgREST roles are restricted. The service role
-  -- (current_user = 'service_role') and the owner/migration role ('postgres')
-  -- bypass this guard so backend flows can still manage these columns.
+  -- Only the user-facing PostgREST roles are restricted. The service role and
+  -- the owner/migration role bypass this guard so backend flows still work.
   if current_user not in ('authenticated', 'anon') then
     return new;
   end if;
 
-  if new.is_admin           is distinct from old.is_admin           then raise exception 'profiles.is_admin cannot be modified by this role'; end if;
-  if new.is_pro             is distinct from old.is_pro             then raise exception 'profiles.is_pro cannot be modified by this role'; end if;
-  if new.is_supporter       is distinct from old.is_supporter       then raise exception 'profiles.is_supporter cannot be modified by this role'; end if;
-  if new.pro_expires_at     is distinct from old.pro_expires_at     then raise exception 'profiles.pro_expires_at cannot be modified by this role'; end if;
-  if new.pro_auto_renews    is distinct from old.pro_auto_renews    then raise exception 'profiles.pro_auto_renews cannot be modified by this role'; end if;
-  if new.pro_plan           is distinct from old.pro_plan           then raise exception 'profiles.pro_plan cannot be modified by this role'; end if;
-  if new.stripe_customer_id is distinct from old.stripe_customer_id then raise exception 'profiles.stripe_customer_id cannot be modified by this role'; end if;
-  if new.banned             is distinct from old.banned             then raise exception 'profiles.banned cannot be modified by this role'; end if;
+  if new.is_admin            is distinct from old.is_admin            then raise exception 'profiles.is_admin cannot be modified by this role'; end if;
+  if new.is_pro              is distinct from old.is_pro              then raise exception 'profiles.is_pro cannot be modified by this role'; end if;
+  if new.is_supporter        is distinct from old.is_supporter        then raise exception 'profiles.is_supporter cannot be modified by this role'; end if;
+  if new.pro_expires_at      is distinct from old.pro_expires_at      then raise exception 'profiles.pro_expires_at cannot be modified by this role'; end if;
+  if new.pro_auto_renews     is distinct from old.pro_auto_renews     then raise exception 'profiles.pro_auto_renews cannot be modified by this role'; end if;
+  if new.pro_plan            is distinct from old.pro_plan            then raise exception 'profiles.pro_plan cannot be modified by this role'; end if;
+  if new.stripe_customer_id  is distinct from old.stripe_customer_id  then raise exception 'profiles.stripe_customer_id cannot be modified by this role'; end if;
+  if new.banned              is distinct from old.banned              then raise exception 'profiles.banned cannot be modified by this role'; end if;
   if new.cumulative_warnings is distinct from old.cumulative_warnings then raise exception 'profiles.cumulative_warnings cannot be modified by this role'; end if;
+
+  -- Pro-gated cosmetic / scheduling fields. Setting a foil/gold showcase border
+  -- or any scheduled-vacation field (window + auto-reply) requires active Pro
+  -- entitlement. Clearing them (to 'none'/null) is always allowed so lapsed
+  -- users can turn them off. The basic vacation_mode toggle stays free.
+  if (
+       (new.showcase_border   is distinct from old.showcase_border   and coalesce(new.showcase_border, 'none') <> 'none')
+    or (new.vacation_message   is distinct from old.vacation_message   and new.vacation_message   is not null)
+    or (new.vacation_starts_at is distinct from old.vacation_starts_at and new.vacation_starts_at is not null)
+    or (new.vacation_ends_at   is distinct from old.vacation_ends_at   and new.vacation_ends_at   is not null)
+  ) then
+    if not (
+      old.is_pro is true
+      and (old.pro_auto_renews is true or old.pro_expires_at is null or old.pro_expires_at > now())
+    ) then
+      raise exception 'Pro entitlement required to set showcase borders or scheduled vacation';
+    end if;
+  end if;
 
   return new;
 end;

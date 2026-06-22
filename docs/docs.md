@@ -664,4 +664,4 @@ Donations are not tax-deductible.
 - A cron job to update `set_cards` when new sets release
 - Ownership matched by `set_name + card_number` as the primary key (not `pokemon_api_id`) for resilience
 
-**Schema state:** The forward changes were reverted and are **not** present in the current snapshot (`supabase/schema_6-21.sql`) — `required_finish`, the widened unique constraint, and the extended type check would all need to be re-added when this is picked back up.
+**Schema state:** The forward changes were reverted and are **not** present in the current snapshot (`supabase/schema_6-22.sql`) — `required_finish`, the widened unique constraint, and the extended type check would all need to be re-added when this is picked back up.
