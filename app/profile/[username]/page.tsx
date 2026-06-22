@@ -20,6 +20,7 @@ import { FollowButton } from "@/components/FollowButton";
 import { timeAgo } from "@/lib/timeAgo";
 import { parseBio } from "@/lib/parseBio";
 import { likeEscape } from "@/lib/username";
+import { isUserAdmin } from "@/lib/auth/admin";
 
 // ── Metadata ───────────────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ export default async function ProfilePage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, username, created_at, is_admin, is_supporter, is_pro, pro_plan, pro_expires_at, bio, specialty, city, featured_item_id, avatar_url, avatar_color, showcase_border")
+    .select("id, username, created_at, is_supporter, is_pro, pro_plan, pro_expires_at, bio, specialty, city, featured_item_id, avatar_url, avatar_color, showcase_border")
     .ilike("username", likeEscape(username))
     .eq("banned", false)
     .single();
@@ -100,7 +101,9 @@ export default async function ProfilePage({
   if (!profile) redirect("/community");
 
   const isOwnProfile   = user?.id === profile.id;
-  const isAdmin        = (profile as any).is_admin === true;
+  // is_admin isn't exposed to the public/authenticated role (column-level grants);
+  // read it authoritatively via the service-role helper instead of the SELECT.
+  const isAdmin        = await isUserAdmin(profile.id);
   const bio            = (profile as any).bio              as string | null;
   const specialty      = (profile as any).specialty        as string | null;
   const city           = (profile as any).city             as string | null;
