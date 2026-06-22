@@ -748,6 +748,14 @@ export default async function ProfilePage({
               Edit profile
             </Link>
           )}
+          {isOwnProfile && (
+            <Link
+              href="/showcase/edit"
+              className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+            >
+              {showcaseItems.length > 0 ? "Edit showcase" : "Create showcase"}
+            </Link>
+          )}
         </div>
       </div>
 
