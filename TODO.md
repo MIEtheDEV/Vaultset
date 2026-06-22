@@ -2,6 +2,8 @@
 
 ## Monetization Strategy
 
+> **Full strategic appraisal** (positioning, competitive read, paywall-leak risk register, pricing recommendations, devil's advocate) lives in [`docs/marketing-strategy.md`](docs/marketing-strategy.md). The table below is the tactical revenue-stream view.
+
 **Current overhead: ~$0 (free tiers). Revenue priority reflects this.**
 
 | Stream | When | Notes |
