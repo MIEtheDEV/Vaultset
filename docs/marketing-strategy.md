@@ -167,10 +167,16 @@ the incumbents on the accuracy collectors complain about.
 
 ## 8. Open decisions
 
-1. **Scope of the leak fix** — turn C1–C4 into a concrete engineering work order, or keep
-   strategic? *(Decided: work order created; `fix/paywall-enforcement` underway.)*
-2. **The "instant alerts" claim** — build real priority delivery, or remove the claim from
-   the UI? One is roadmap, one is a one-line copy fix.
+1. ~~**Scope of the leak fix**~~ — ✅ **Done & merged.** C1–C4 enforced server-side +
+   regression tests in `main` (PRs #1/#2). Step 1 of the recommended sequence is complete.
+2. ~~**The "instant alerts" claim**~~ — ✅ **Resolved by removal.** The unbuilt priority-delivery
+   claim was pulled from `PushToggle` (the one-line copy fix), not sold. Real priority
+   delivery remains a deferred roadmap item if we want it later.
 3. **The one-time 30-day SKU** — keep and disclose, or retire in favor of annual-primary?
-4. **Coverage check** — measure real-price vs. bedrock coverage on a sample collection so
-   we know whether the accuracy headline is safe to make.
+   *(Still open — pricing-page decision.)*
+4. **Coverage check** — ▶ **Ready to run.** Query at
+   [`../supabase/pricing_coverage_check.sql`](../supabase/pricing_coverage_check.sql) measures
+   real-time/graded vs. stale-bedrock coverage on the live collection data. **Decision rule:**
+   the "most accurate pricing" headline (Step 2) is safe only if the bedrock-or-missing share
+   is low enough that a typical collection mostly shows real-time/graded prices — otherwise
+   lead with the *capability* ("net-of-fees, per-grade where available"), not a blanket claim.
