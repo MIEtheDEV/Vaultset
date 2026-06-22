@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/server";
 import { FollowButton } from "@/components/FollowButton";
 import { timeAgo } from "@/lib/timeAgo";
 import { AVATAR_COLORS, resolveAvatarColor, isHexColor } from "@/lib/avatarColors";
+import { likeEscape } from "@/lib/username";
 
 export async function generateMetadata({
   params,
@@ -31,7 +32,7 @@ export default async function FollowingPage({
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, username")
-    .eq("username", username)
+    .ilike("username", likeEscape(username))
     .single();
 
   if (!profile) redirect("/community");

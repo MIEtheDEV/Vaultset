@@ -6,6 +6,7 @@ import { CardStudio } from "@/components/CardStudio";
 import type { ProfileCardData } from "@/components/ProfileCardVisual";
 import type { CardTheme } from "@/components/ProfileCardVisual";
 import { timeAgo } from "@/lib/timeAgo";
+import { likeEscape } from "@/lib/username";
 
 export async function generateMetadata({
   params,
@@ -41,7 +42,7 @@ export default async function ProfileCardPage({
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, username, created_at, is_supporter, bio, specialty, featured_item_id, avatar_url, avatar_color")
-    .eq("username", username)
+    .ilike("username", likeEscape(username))
     .single();
 
   if (!profile) redirect("/community");

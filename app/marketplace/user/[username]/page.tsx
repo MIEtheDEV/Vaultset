@@ -8,6 +8,7 @@ import { ProBadge, ProTitle } from "@/components/ProBadge";
 import { isProSubscriber } from "@/lib/proStatus";
 import { isOnVacation, vacationReturnDate } from "@/lib/vacation";
 import { timeAgo } from "@/lib/timeAgo";
+import { likeEscape } from "@/lib/username";
 
 export async function generateMetadata({
   params,
@@ -20,7 +21,7 @@ export async function generateMetadata({
   const { data: seller } = await supabase
     .from("profiles")
     .select("username")
-    .eq("username", username)
+    .ilike("username", likeEscape(username))
     .single();
 
   if (!seller) return { title: "Seller Not Found", robots: { index: false } };
@@ -46,7 +47,7 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
   const { data: seller } = await supabase
     .from("profiles")
     .select("id, username, created_at, is_supporter, is_pro, pro_plan, pro_expires_at, vacation_mode, vacation_message, vacation_starts_at, vacation_ends_at")
-    .eq("username", username)
+    .ilike("username", likeEscape(username))
     .single();
 
   if (!seller) redirect("/marketplace");

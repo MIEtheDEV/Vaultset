@@ -19,6 +19,7 @@ import { MessageButton } from "@/components/MessageButton";
 import { FollowButton } from "@/components/FollowButton";
 import { timeAgo } from "@/lib/timeAgo";
 import { parseBio } from "@/lib/parseBio";
+import { likeEscape } from "@/lib/username";
 
 // ── Metadata ───────────────────────────────────────────────────────────────────
 
@@ -34,13 +35,13 @@ export async function generateMetadata({
     supabase
       .from("profiles")
       .select("username, bio, specialty, city")
-      .eq("username", username)
+      .ilike("username", likeEscape(username))
       .single(),
     supabase
       .from("collection_items")
       .select("*", { count: "exact", head: true })
       .eq("user_id",
-        (await supabase.from("profiles").select("id").eq("username", username).single()).data?.id ?? ""
+        (await supabase.from("profiles").select("id").ilike("username", likeEscape(username)).single()).data?.id ?? ""
       ),
   ]);
 
@@ -92,7 +93,7 @@ export default async function ProfilePage({
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, username, created_at, is_admin, is_supporter, is_pro, pro_plan, pro_expires_at, bio, specialty, city, featured_item_id, avatar_url, avatar_color, showcase_border")
-    .eq("username", username)
+    .ilike("username", likeEscape(username))
     .eq("banned", false)
     .single();
 
