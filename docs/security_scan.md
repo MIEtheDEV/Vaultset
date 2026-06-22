@@ -42,7 +42,8 @@ Code fixes for all actionable application-layer findings have been applied and v
 ### C-1 — Privilege escalation: users can self-promote to admin via the `profiles` UPDATE policy
 **Source:** Query B2 (live DB), 2026-06-21 — confirmed exploitable.
 The `profiles` UPDATE policy is `USING (auth.uid() = id)` / `WITH CHECK (auth.uid() = id)`. It restricts *which row* a user may edit but not *which columns*, so a logged-in user can issue `PATCH /rest/v1/profiles?id=eq.<self>` with `{"is_admin": true}` and the update passes RLS. Because `lib/auth/admin.ts` trusts `profiles.is_admin`, this grants full admin (and lets a user self-set `is_pro`/`is_supporter` or clear their own `banned`/`cumulative_warnings`). This is the realized form of the H-2 risk.
-**Remediation:** Run `docs/security_fixes.sql` **section C** (the `guard_profile_privileged_columns` trigger) — now REQUIRED. It rejects changes to privileged columns unless made by the service role. **(SQL provided; run pending.)**
+**Remediation:** Run `docs/security_fixes.sql` **section C** (the `guard_profile_privileged_columns` trigger). It rejects changes to privileged columns unless made by the service role. **(Applied.)**
+**Correction (2026-06-22, from live schema dump):** A pre-existing trigger `guard_profile_protected_columns` (likely added by the earlier `add security audit` pass) was already guarding these same columns at the DB level — not visible in the `pg_policies` inspection that informed this finding. So C-1 was likely **already mitigated in practice**; the live admin-self-promotion exploit would have been blocked. Our `guard_profile_privileged_columns` is now redundant-but-harmless (both triggers fire). Severity downgraded to **High** on this basis. Optional cleanup: drop one of the two duplicate triggers.
 
 ---
 
