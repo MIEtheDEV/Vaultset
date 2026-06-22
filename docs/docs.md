@@ -415,8 +415,8 @@ Participants are sorted lexicographically before insert and a Postgres CHECK con
 Most notifications are created by `SECURITY DEFINER` Postgres triggers:
 - `follows_notification_trigger` — fires on `follows` INSERT → creates `new_follower` notification
 - `offers_notification_trigger` — fires on `offers` INSERT → creates `new_offer` notification for recipient
-- `auto_expire_on_offer_change` — statement-level, fires on `offers` INSERT/UPDATE → sweeps stale pending offers (older than the 7-day window) to `expired` via `vaultset_expire_stale_offers()`. Guarded by `pg_trigger_depth()` so its own `UPDATE offers` doesn't recurse into itself (migration `20260621140000`; the `offer_status` enum must include `expired`/`countered`/`completed` — migration `20260621130000`)
-- `wishlist_listing_match_trigger` — fires on `collection_items` INSERT/UPDATE of `for_sale`/`for_trade`/`on_hold` → when an item *becomes* available on the marketplace, creates a `wishlist_listing_match` notification for every collector who has that card (`cards.game_data->>'pokemon_api_id'`) on their wishlist, excluding the seller and anyone already notified about that listing (migration `20260621120000`)
+- `auto_expire_on_offer_change` — statement-level, fires on `offers` INSERT/UPDATE → sweeps stale pending offers (older than the 7-day window) to `expired` via `vaultset_expire_stale_offers()`. Guarded by `pg_trigger_depth()` so its own `UPDATE offers` doesn't recurse into itself (the `offer_status` enum must include `expired`/`countered`/`completed`)
+- `wishlist_listing_match_trigger` — fires on `collection_items` INSERT/UPDATE of `for_sale`/`for_trade`/`on_hold` → when an item *becomes* available on the marketplace, creates a `wishlist_listing_match` notification for every collector who has that card (`cards.game_data->>'pokemon_api_id'`) on their wishlist, excluding the seller and anyone already notified about that listing
 
 Price alert notifications are created by the market refresh API route (`/api/market-refresh`) after prices update, using the `check_wishlist_price_alerts(p_user_id)` RPC to find listings at or below each wishlist item's `target_price`. This is price-conditioned (needs a `target_price`); the `wishlist_listing_match` trigger above is the unconditional "your wishlist card was just listed" signal.
 
@@ -427,7 +427,7 @@ Browser push is delivered via the VAPID/web-push stack. Devices register the ser
 
 **Setup per environment:**
 - Env: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (generate with `npx web-push generate-vapid-keys`), and `PUSH_DISPATCH_SECRET`.
-- Tell the DB trigger where to POST (the migration leaves `push_dispatch_config` empty = feature off until set):
+- Tell the DB trigger where to POST (the schema ships `push_dispatch_config` empty = feature off until set):
   ```sql
   insert into public.push_dispatch_config (id, dispatch_url, dispatch_secret)
   values (1, 'https://vaultset.app/api/push/dispatch', '<PUSH_DISPATCH_SECRET>')
@@ -664,6 +664,4 @@ Donations are not tax-deductible.
 - A cron job to update `set_cards` when new sets release
 - Ownership matched by `set_name + card_number` as the primary key (not `pokemon_api_id`) for resilience
 
-**Migration files to reapply when resuming:**
-- `supabase/migrations/20260612200000_complete_master_set.sql` — original forward migration
-- `supabase/migrations/20260612300000_revert_complete_master_set.sql` — the revert (drop before re-running forward)
+**Schema state:** The forward changes were reverted and are **not** present in the current snapshot (`supabase/schema_6-21.sql`) — `required_finish`, the widened unique constraint, and the extended type check would all need to be re-added when this is picked back up.

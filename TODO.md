@@ -27,7 +27,7 @@
 - [x] **Email change verification** — Pending email banner in account settings shows when `user.new_email` is set, with a resend confirmation button.
 - [x] **Rate limit feedback** — Offer rate limit now shows a distinct amber banner with a link to `/offers` instead of a generic red error.
 - [x] **Duplicate card merging** — Duplicate warning now fetches and displays existing copies (condition, grade, quantity) with direct links to each inventory item.
-- [x] **Database migrations** — `supabase/migrations/` directory created with setup README. `CLAUDE.md` updated. New features write SQL migration files here going forward.
+- [x] **Database schema tracking** — schema is tracked as a single committed snapshot (`supabase/schema_6-21.sql`), regenerated via `supabase db dump`. DB changes are applied in the Supabase SQL Editor, then the snapshot is refreshed. (Per-file migrations were retired.) See `CLAUDE.md`.
 
 ### Phase 2
 
@@ -40,13 +40,13 @@
 ### Phase 3
 
 - [x] **Stripe integration** — `stripe` 22.2 added. `utils/stripe.ts` client. Migration `20260611100000_add_stripe_fields.sql` adds `stripe_customer_id` + `is_pro` to profiles. API routes: `POST /api/stripe/checkout` (create checkout session), `POST /api/stripe/webhook` (sync subscription status), `POST /api/stripe/portal` (billing portal). `lib/isPro.ts` server helper for Phase 4 gates. Env vars needed: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SITE_URL`.
-- [ ] **Transaction fee hook** — When offer is accepted, record a 2–3% platform fee against the sale; enforce/collect once Stripe is in place. *Offers table currently has no `fee` column; payment is arranged off-platform.* **Doubles as a Pro lever: reduced / 0% seller fees for Pro instead of gating the marketplace itself** — see decision §5.7 in [`docs/monetization-gating-strategy.md`](docs/monetization-gating-strategy.md) (do NOT gate offers/trades/sales; monetize success, not access). *Collecting (vs. just recording) a fee needs Stripe Connect — bigger lift; v1 may record/display only.* **User returning to this later.**
+- [ ] **Transaction fee hook** — When offer is accepted, record a 2–3% platform fee against the sale; enforce/collect once Stripe is in place. *Offers table currently has no `fee` column; payment is arranged off-platform.* **Doubles as a Pro lever: reduced / 0% seller fees for Pro instead of gating the marketplace itself** (do NOT gate offers/trades/sales; monetize success, not access). *Collecting (vs. just recording) a fee needs Stripe Connect — bigger lift; v1 may record/display only.* **User returning to this later.**
 
 ### Phase 4
 
 - [x] **Pricing page** — `/pricing` with 5 plan cards (Lifetime/Monthly/Quarterly/6-Month/Annual), savings % vs monthly fetched live from Stripe, Free vs Pro feature table, FAQ, nav link added to homepage.
 
-**Pro feature build-out — build these *before* gating, in order. Source of truth: [`docs/monetization-gating-strategy.md`](docs/monetization-gating-strategy.md).**
+**Pro feature build-out — build these *before* gating, in order.**
 
 - [x] **1. Pro Seller badge on listings** — `ProSellerBadge` ("Pro Seller" pill) added to `components/ProBadge.tsx` and rendered on `MarketplaceGrid` cards, `ListingDetail`, and `SealedProductsGrid`, subscriber-gated via `isProSubscriber()`. Seller pro fields added to the marketplace + listing queries.
 - [x] **2. Bulk CSV export + tax/insurance presets** — `/inventory/export` page + `components/InventoryExport.tsx` with three presets (**Full**, **Tax / cost-basis**, **Insurance inventory**), shared `lib/exportCsv.ts` (`buildCsv` + `downloadCsv`), an **Export** button in the inventory header, and a "not tax/insurance advice" disclaimer. *Cards only (`collection_items`); sealed products not included yet. Not yet Pro-gated — gating happens in the enforcement step below. PDF deferred.*
@@ -91,7 +91,7 @@
 
 ## Free vs. Pro Reference
 
-> Source of truth for gating decisions: [`docs/monetization-gating-strategy.md`](docs/monetization-gating-strategy.md) (decided 2026-06-13).
+> Gating decisions decided 2026-06-13; the table below is the reference.
 
 | Feature | Free | Pro |
 |---|---|---|
