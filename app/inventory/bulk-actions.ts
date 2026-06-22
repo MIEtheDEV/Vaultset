@@ -2,6 +2,7 @@
 
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { isPro } from "@/lib/isPro";
 import { revalidatePath } from "next/cache";
 import { PriceFetchEngine } from "@/lib/pricing/PriceFetchEngine";
 import { propagateMarketValues } from "@/lib/pricing/propagateMarketValues";
@@ -50,6 +51,9 @@ export async function refreshItemMarketValue(itemId: string): Promise<number | n
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+  // On-demand refresh is a Pro feature — enforced here, not just in the UI,
+  // since server actions are directly callable and this spends the price-API budget.
+  if (!(await isPro(user.id))) throw new Error("On-demand refresh is a Pro feature.");
 
   const { data: item } = await supabase
     .from("collection_items")

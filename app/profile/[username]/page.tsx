@@ -19,6 +19,8 @@ import { MessageButton } from "@/components/MessageButton";
 import { FollowButton } from "@/components/FollowButton";
 import { timeAgo } from "@/lib/timeAgo";
 import { parseBio } from "@/lib/parseBio";
+import { likeEscape } from "@/lib/username";
+import { isUserAdmin } from "@/lib/auth/admin";
 
 // ── Metadata ───────────────────────────────────────────────────────────────────
 
@@ -34,13 +36,13 @@ export async function generateMetadata({
     supabase
       .from("profiles")
       .select("username, bio, specialty, city")
-      .eq("username", username)
+      .ilike("username", likeEscape(username))
       .single(),
     supabase
       .from("collection_items")
       .select("*", { count: "exact", head: true })
       .eq("user_id",
-        (await supabase.from("profiles").select("id").eq("username", username).single()).data?.id ?? ""
+        (await supabase.from("profiles").select("id").ilike("username", likeEscape(username)).single()).data?.id ?? ""
       ),
   ]);
 
@@ -91,15 +93,17 @@ export default async function ProfilePage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, username, created_at, is_admin, is_supporter, is_pro, pro_plan, pro_expires_at, bio, specialty, city, featured_item_id, avatar_url, avatar_color, showcase_border")
-    .eq("username", username)
+    .select("id, username, created_at, is_supporter, is_pro, pro_plan, pro_expires_at, bio, specialty, city, featured_item_id, avatar_url, avatar_color, showcase_border")
+    .ilike("username", likeEscape(username))
     .eq("banned", false)
     .single();
 
   if (!profile) redirect("/community");
 
   const isOwnProfile   = user?.id === profile.id;
-  const isAdmin        = (profile as any).is_admin === true;
+  // is_admin isn't exposed to the public/authenticated role (column-level grants);
+  // read it authoritatively via the service-role helper instead of the SELECT.
+  const isAdmin        = await isUserAdmin(profile.id);
   const bio            = (profile as any).bio              as string | null;
   const specialty      = (profile as any).specialty        as string | null;
   const city           = (profile as any).city             as string | null;
@@ -742,6 +746,14 @@ export default async function ProfilePage({
               className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
             >
               Edit profile
+            </Link>
+          )}
+          {isOwnProfile && (
+            <Link
+              href="/showcase/edit"
+              className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+            >
+              {showcaseItems.length > 0 ? "Edit showcase" : "Create showcase"}
             </Link>
           )}
         </div>

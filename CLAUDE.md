@@ -118,7 +118,7 @@ POKEWALLET_API_KEY=   # PokéWallet (scaffold, not yet wired)
 
 Keys are in the Supabase dashboard under **Settings → API**.
 
-**Database:** The schema is tracked as a single committed snapshot, `supabase/schema_6-21.sql`, regenerated from the live database with `supabase db dump`. There are no per-file migrations. Apply DB changes directly in the Supabase SQL Editor, then refresh the snapshot so the repo reflects production. To bootstrap a fresh project, run the snapshot against an empty database.
+**Database:** The schema is tracked as a single committed snapshot, `supabase/schema_6-22.sql`, regenerated from the live database with `supabase db dump`. There are no per-file migrations. Apply DB changes directly in the Supabase SQL Editor, then refresh the snapshot so the repo reflects production. To bootstrap a fresh project, run the snapshot against an empty database.
 
 **Supabase Auth redirect URLs** (Authentication → URL Configuration):
 - Local: `http://localhost:3000/auth/callback`

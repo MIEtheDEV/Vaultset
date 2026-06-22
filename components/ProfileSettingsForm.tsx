@@ -8,6 +8,7 @@ import { AvatarUpload } from "@/components/AvatarUpload";
 import { AvatarColorPicker } from "@/components/AvatarColorPicker";
 import { checkText } from "@/lib/moderation";
 import { resolveAvatarColor } from "@/lib/avatarColors";
+import { likeEscape } from "@/lib/username";
 
 function inputClass() {
   return "w-full rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm text-foreground placeholder:text-foreground-muted focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors";
@@ -101,7 +102,7 @@ export function ProfileSettingsForm({
       const { data: existing } = await supabase
         .from("profiles")
         .select("id")
-        .eq("username", username)
+        .ilike("username", likeEscape(username))
         .maybeSingle();
       if (existing) {
         setSaveError("This username is already taken.");

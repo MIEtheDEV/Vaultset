@@ -2,6 +2,7 @@
 
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { likeEscape } from "@/lib/username";
 
 /**
  * Completes profile setup for a freshly-authenticated user (typically OAuth,
@@ -38,7 +39,7 @@ export async function completeProfileSetup(
   const { data: existing } = await admin
     .from("profiles")
     .select("id")
-    .eq("username", username)
+    .ilike("username", likeEscape(username))
     .maybeSingle();
 
   if (existing && existing.id !== user.id) {

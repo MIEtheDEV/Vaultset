@@ -5,6 +5,7 @@ import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { PasswordInput } from "@/components/PasswordInput";
 import { OAuthButtons } from "@/components/OAuthButtons";
+import { likeEscape } from "@/lib/username";
 
 export default function RegisterPage() {
   const [username, setUsername] = useState("");
@@ -25,7 +26,7 @@ export default function RegisterPage() {
     const { data: existingProfile } = await supabase
       .from("profiles")
       .select("id")
-      .eq("username", username)
+      .ilike("username", likeEscape(username))
       .maybeSingle();
 
     if (existingProfile) {
