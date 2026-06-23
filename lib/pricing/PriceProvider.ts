@@ -76,4 +76,21 @@ export abstract class PriceProvider {
    * to make the engine stop using this provider and cascade the chunk.
    */
   abstract fetchBatch(cards: CardRef[], ctx: FetchContext): Promise<Map<string, PricePayload>>;
+
+  /**
+   * Single chokepoint for an upstream response, so non-OK statuses are never
+   * swallowed silently again (two such bugs — JustTCG `{items}` 400 and bedrock
+   * colon-poisoned 400 — each hid for days behind a bare `if (!res.ok) return`).
+   *   - 429/401/403 → throw PriceProviderError so the engine drops this provider.
+   *   - any other non-OK → log loudly and return false; caller yields no results.
+   *   - OK → true.
+   */
+  protected ensureOk(res: { ok: boolean; status: number }, context: string): boolean {
+    if (res.ok) return true;
+    if (res.status === 429 || res.status === 401 || res.status === 403) {
+      throw new PriceProviderError(res.status, `${this.source} ${res.status}`);
+    }
+    console.warn(`[pricing] ${this.source}: unexpected HTTP ${res.status} (${context}) — no results from this provider`);
+    return false;
+  }
 }

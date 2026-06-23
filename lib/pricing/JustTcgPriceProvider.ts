@@ -1,4 +1,4 @@
-import { CardRef, FetchContext, PricePayload, PriceProvider, PriceProviderError } from "./PriceProvider";
+import { CardRef, FetchContext, PricePayload, PriceProvider } from "./PriceProvider";
 import { variantsToPrices, variantsToConditionPrices, type JustTcgVariant } from "./justtcgVariants";
 
 const API_BASE = "https://api.justtcg.com/v1";
@@ -62,7 +62,7 @@ export class JustTcgPriceProvider extends PriceProvider {
 
     // Resolve unmapped cards one GET at a time until the daily budget runs out;
     // whatever resolved before that point is kept (partial results), rather than
-    // discarding the chunk. Real API rate-limits still throw via throwIfBlocked.
+    // discarding the chunk. Real API rate-limits still throw via ensureOk.
     if (ctx.allowResolve) {
       for (const card of unmapped) {
         if (!(await ctx.recordRequest())) break;
@@ -82,10 +82,11 @@ export class JustTcgPriceProvider extends PriceProvider {
     const res = await fetch(`${API_BASE}/cards`, {
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify({ items: cards.map((c) => ({ tcgplayerId: c.tcgplayerId })) }),
+      // JustTCG's batch endpoint expects a BARE ARRAY of lookup objects, not a
+      // { items: [...] } envelope — the latter returns 400 INVALID_REQUEST.
+      body: JSON.stringify(cards.map((c) => ({ tcgplayerId: c.tcgplayerId }))),
     });
-    this.throwIfBlocked(res.status);
-    if (!res.ok) return;
+    if (!this.ensureOk(res, `batch of ${cards.length}`)) return;
 
     for (const jcard of await this.parseCards(res)) {
       const ref = jcard.tcgplayerId ? byTcgId.get(jcard.tcgplayerId) : undefined;
@@ -107,8 +108,7 @@ export class JustTcgPriceProvider extends PriceProvider {
 
     const params = new URLSearchParams({ game: GAME, q: card.name });
     const res = await fetch(`${API_BASE}/cards?${params}`, { headers: this.headers() });
-    this.throwIfBlocked(res.status);
-    if (!res.ok) return;
+    if (!this.ensureOk(res, `resolve ${card.name ?? "?"}`)) return;
 
     const candidates = await this.parseCards(res);
     const match = this.bestMatch(candidates, card);
@@ -168,9 +168,4 @@ export class JustTcgPriceProvider extends PriceProvider {
     return (json?.data ?? []) as JustTcgCard[];
   }
 
-  private throwIfBlocked(status: number): void {
-    if (status === 429 || status === 401 || status === 403) {
-      throw new PriceProviderError(status, `JustTCG ${status}`);
-    }
-  }
 }

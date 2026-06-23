@@ -65,3 +65,42 @@ describe("JustTcgPriceProvider resolution matching", () => {
     expect(out.has("mega-x")).toBe(false);
   });
 });
+
+describe("JustTcgPriceProvider batch (mapped tcgplayerId)", () => {
+  let provider: JustTcgPriceProvider;
+  const realFetch = global.fetch;
+
+  beforeEach(() => { provider = new JustTcgPriceProvider(); });
+  afterEach(() => { global.fetch = realFetch; jest.restoreAllMocks(); });
+
+  // Regression: JustTCG's batch endpoint requires a BARE ARRAY body. The code
+  // previously sent { items: [...] }, which 400s — silently producing no prices
+  // and burning quota (observed in prod: 47 calls / 2 days / 0 cache writes).
+  it("POSTs a bare array of lookup objects, not an { items } envelope", async () => {
+    let captured: { url: string; body: unknown } = { url: "", body: null };
+    global.fetch = jest.fn(async (url: string, init: RequestInit) => {
+      captured = { url, body: JSON.parse(init.body as string) };
+      return {
+        ok: true, status: 200,
+        json: async () => ({ data: [
+          { tcgplayerId: "88075", name: "Pikachu", number: "086/110",
+            variants: [
+              { condition: "Near Mint",      printing: "Holofoil", price: 10 },
+              { condition: "Lightly Played", printing: "Holofoil", price: 7 },
+            ] },
+        ] }),
+      };
+    }) as unknown as typeof fetch;
+
+    const out = await provider.fetchBatch([{ apiId: "base-25", tcgplayerId: "88075", name: "Pikachu" }], ctx);
+
+    expect(captured.url).toMatch(/\/cards$/);
+    expect(Array.isArray(captured.body)).toBe(true);                 // NOT { items: [...] }
+    expect(captured.body).toEqual([{ tcgplayerId: "88075" }]);
+
+    // And it parses real per-condition prices off the returned variants.
+    const payload = out.get("base-25");
+    expect(payload?.prices.holofoil.market).toBe(10);
+    expect(payload?.conditionPrices?.holofoil).toEqual({ near_mint: 10, lightly_played: 7 });
+  });
+});
