@@ -103,11 +103,22 @@ describe("PokemonTCGProvider", () => {
       expect(out[0].name).toBe("Charizard");
     });
 
-    it("strips punctuation so possessive names produce a valid query", async () => {
+    it("truncates intra-word punctuation to a matchable prefix term", async () => {
+      // "Farfetch'd" → name:farfetch* (matches), NOT name:farfetchd* (0 results).
       const calls = mockFetch([mk("Farfetch'd", "27")]);
       const out = await provider.search("Farfetch'd");
-      expect(decodeURIComponent(calls[0])).toContain("name:farfetchd*"); // no apostrophe in the term
+      const q = decodeURIComponent(calls[0]);
+      expect(q).toContain("name:farfetch*");
+      expect(q).not.toContain("farfetchd");
       expect(out).toHaveLength(1);
+    });
+
+    it("splits a punctuated multi-word name into per-word prefix terms", async () => {
+      const calls = mockFetch([mk("Mr. Mime", "122")]);
+      await provider.search("Mr. Mime");
+      const q = decodeURIComponent(calls[0]);
+      expect(q).toContain("name:mr*");
+      expect(q).toContain("name:mime*");
     });
 
     it("includes a promo filter only on explicit promo intent", async () => {
