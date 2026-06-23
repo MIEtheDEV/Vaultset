@@ -1,4 +1,5 @@
 import { CardSearchProvider, SearchResult, SearchOptions, TcgPlayerData } from "./CardSearchProvider";
+import { normalizeCardNumber } from "./cardNumber";
 
 const BASE = "https://api.pokemontcg.io/v2";
 
@@ -36,30 +37,52 @@ export class PokemonTCGProvider extends CardSearchProvider {
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     const { set, number, promoRequested } = options;
 
-    const nameClause   = query.trim().split(/\s+/).map((w) => `name:${w}*`).join(" ");
-    const setClause    = set    ? ` set.name:${set}*` : "";
-    const numberClause = number ? ` number:${number}` : "";
+    // Take each word's LEADING alphanumeric run as a prefix term, truncating at
+    // intra-word punctuation: "Farfetch'd" → name:farfetch* (which pokemontcg.io
+    // matches), whereas removing the punctuation gives "farfetchd" → 0 results.
+    // "Mr. Mime" → name:mr* name:mime*, "Hop's Zacian" → name:hop* name:zacian*.
+    const tokens = query.toLowerCase().split(/\s+/).map((w) => (w.match(/[a-z0-9]+/) ?? [""])[0]).filter(Boolean);
+    if (tokens.length === 0) return [];
+    const nameClause = tokens.map((w) => `name:${w}*`).join(" ");
 
-    // Always pull promos alongside the general results. pokemontcg.io sorts
-    // newest-first, so without this, older promo printings sink to the bottom of
-    // a name search and effectively disappear from the UI.
-    const promoQ   = `${nameClause} set.name:*Promo*${numberClause}`;
-    const generalQ = `${nameClause}${setClause}${numberClause}`;
+    // Set is a safe narrowing filter; number is NOT used as a hard Lucene clause
+    // (pokemontcg.io number formats vary — "067" / "TG12" / "SV01" — so an exact
+    // `number:` filter can wrongly exclude the target card). The number instead
+    // drives ranking below, and we widen the page so the target is in range.
+    const setClause = set ? ` set.name:${set.replace(/[^a-zA-Z0-9 ]/g, "").trim()}*` : "";
+    const q = promoRequested ? `${nameClause} set.name:*Promo*` : `${nameClause}${setClause}`;
 
-    const [promoCards, generalCards] = await Promise.all([
-      this.fetchCards(promoQ, 30),
-      this.fetchCards(generalQ, 60),
-    ]);
+    const cards = await this.fetchCards(q, number ? 40 : 25);
+    return this.rankByRelevance(cards, query.trim().toLowerCase(), tokens, number ? normalizeCardNumber(number) : null);
+  }
 
-    const promoIds = new Set(promoCards.map((c) => c.id));
-    const general  = generalCards.filter((c) => !promoIds.has(c.id));
-
-    // Explicit promo intent → lead entirely with promos. Otherwise still surface
-    // a few promos at the top so they're visible, without flooding common-card
-    // searches (the rest trail after the regular results).
-    if (promoRequested) return [...promoCards, ...general];
-    const LEAD = 5;
-    return [...promoCards.slice(0, LEAD), ...general, ...promoCards.slice(LEAD)];
+  /**
+   * Re-rank API results (which arrive newest-first) by relevance to the query,
+   * so the *right* card leads instead of merely the newest match. Stable sort:
+   * equal scores keep the API's recency order. Score, high → low:
+   *   +1000 exact (normalized) collector-number match, when a number was given
+   *   +100  exact name · +50 name starts-with query · +20 all tokens present
+   */
+  private rankByRelevance(
+    cards: SearchResult[],
+    qLower: string,
+    tokens: string[],
+    wantNumber: string | null,
+  ): SearchResult[] {
+    const score = (c: SearchResult): number => {
+      let s = 0;
+      if (wantNumber && normalizeCardNumber(c.number) === wantNumber) s += 1000;
+      const name = c.name.toLowerCase();
+      const nameAlnum = name.replace(/[^a-z0-9]/g, "");
+      if (name === qLower) s += 100;
+      else if (name.startsWith(qLower)) s += 50;
+      else if (tokens.every((t) => nameAlnum.includes(t))) s += 20;
+      return s;
+    };
+    return cards
+      .map((c, i) => ({ c, i, s: score(c) }))
+      .sort((a, b) => b.s - a.s || a.i - b.i)
+      .map((x) => x.c);
   }
 
   getMarketPrice(
