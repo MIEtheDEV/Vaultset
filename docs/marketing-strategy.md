@@ -170,6 +170,11 @@ the incumbents on the accuracy collectors complain about.
 - **The moat assumes the data is actually better.** It's architecturally better, but thin
   JustTCG ID-mapping coverage means many cards still fall to stale bedrock. Get the
   coverage number before the marketing claim.
+- **The real-time source has a hard quota ceiling.** JustTCG's free tier is **100 requests/day**
+  — exhausted in a single afternoon of *diagnosis*, before any user load. The differentiator
+  (real-time per-condition/graded prices) depends entirely on it, so at any real scale the cache
+  cannot stay fresh on the free tier. Marketing "most accurate pricing" implies a quota budget
+  (paid JustTCG tier and/or a cache-warming job for actively-listed cards) that doesn't exist yet.
 - **The one-time SKU may be net-negative.** It's an unusual SKU competitors don't offer, it
   complicates the pricing page, and it invites "I paid for Pro, where's my badge?"
   complaints. Question whether it earns its place.
