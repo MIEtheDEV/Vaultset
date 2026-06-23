@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { getSearchProvider } from "@/lib/search";
 import { searchJustTcg } from "@/lib/search/justTcgSearch";
+import { normalizeCardNumber } from "@/lib/search/cardNumber";
 
 // Dedup key so a card found in both sources isn't shown twice. JustTCG and
 // pokemontcg.io disagree on set names, so we key on name + collector number.
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 const dedupKey = (name: string, number: string) =>
-  `${norm(name)}|${norm((number ?? "").split("/")[0])}`;
+  `${norm(name)}|${normalizeCardNumber(number)}`;
 
 export async function GET(request: Request) {
   // Card search spends the JustTCG/pokemontcg.io budget, so require an
@@ -48,7 +49,7 @@ export async function GET(request: Request) {
 
   const seen = new Set(primary.map((c) => dedupKey(c.name, c.number)));
   const extra = justtcg.filter((c) => {
-    if (number && norm(c.number) !== norm(number)) return false;
+    if (number && normalizeCardNumber(c.number) !== normalizeCardNumber(number)) return false;
     const k = dedupKey(c.name, c.number);
     if (seen.has(k)) return false;
     seen.add(k);

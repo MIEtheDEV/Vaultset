@@ -1,15 +1,11 @@
 import { CardRef, FetchContext, PricePayload, PriceProvider } from "./PriceProvider";
 import { variantsToPrices, variantsToConditionPrices, type JustTcgVariant } from "./justtcgVariants";
+import { normalizeCardNumber as normNumber } from "@/lib/search/cardNumber";
 
 const API_BASE = "https://api.justtcg.com/v1";
 // JustTCG game identifier for Pokémon. Verify against /docs if lookups 404.
 const GAME = "pokemon";
 
-// Collector number compare key: drop the "/total" suffix, casefold, strip
-// leading zeros. "268", "268/191", "0268" → "268"; "TG12" → "tg12".
-function normNumber(s: string): string {
-  return s.split("/")[0].trim().toLowerCase().replace(/^0+(?=\w)/, "");
-}
 // Loose text key for name/set comparison: alphanumerics only, casefolded.
 function normText(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");

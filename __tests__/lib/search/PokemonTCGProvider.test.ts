@@ -63,4 +63,61 @@ describe("PokemonTCGProvider", () => {
       expect(provider.mapRarity("")).toBe("");
     });
   });
+
+  describe("search ranking & query building", () => {
+    const realFetch = global.fetch;
+    afterEach(() => { global.fetch = realFetch; jest.restoreAllMocks(); });
+
+    const mk = (name: string, number: string) => ({
+      id: `${name}-${number}`, name, number,
+      set: { id: "s", name: "Set", releaseDate: "2024/01/01" },
+      images: { small: "", large: "" },
+    });
+
+    function mockFetch(cards: unknown[]) {
+      const calls: string[] = [];
+      global.fetch = jest.fn(async (url: string) => {
+        calls.push(String(url));
+        return { ok: true, json: async () => ({ data: cards }) };
+      }) as unknown as typeof fetch;
+      return calls;
+    }
+
+    it("floats the exact collector-number match to the top, with a single upstream call", async () => {
+      // API order is recency-first (#131 newest); the requested #67 must lead.
+      const calls = mockFetch([mk("Tapu Koko", "131"), mk("Tapu Koko", "67"), mk("Tapu Koko", "51")]);
+      const out = await provider.search("Tapu Koko", { number: "67" });
+      expect(out[0].number).toBe("67");
+      expect(calls).toHaveLength(1); // no separate promo fetch
+    });
+
+    it("normalizes number formats so 67 matches 067", async () => {
+      mockFetch([mk("Pikachu", "058"), mk("Pikachu", "067")]);
+      const out = await provider.search("Pikachu", { number: "67" });
+      expect(out[0].number).toBe("067");
+    });
+
+    it("ranks an exact name above a partial match", async () => {
+      mockFetch([mk("Charizard ex", "6"), mk("Charizard", "4")]);
+      const out = await provider.search("Charizard");
+      expect(out[0].name).toBe("Charizard");
+    });
+
+    it("strips punctuation so possessive names produce a valid query", async () => {
+      const calls = mockFetch([mk("Farfetch'd", "27")]);
+      const out = await provider.search("Farfetch'd");
+      expect(decodeURIComponent(calls[0])).toContain("name:farfetchd*"); // no apostrophe in the term
+      expect(out).toHaveLength(1);
+    });
+
+    it("includes a promo filter only on explicit promo intent", async () => {
+      const general = mockFetch([]);
+      await provider.search("Pikachu");
+      expect(decodeURIComponent(general[0])).not.toContain("Promo");
+
+      const promo = mockFetch([]);
+      await provider.search("Pikachu", { promoRequested: true });
+      expect(decodeURIComponent(promo[0])).toContain("Promo");
+    });
+  });
 });
