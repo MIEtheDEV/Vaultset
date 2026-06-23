@@ -123,6 +123,22 @@ describe("PriceFetchEngine", () => {
     expect(provider.calls.map((c) => c.length)).toEqual([2, 2, 1]);
   });
 
+  it("backs off a capped provider for the day after an over-limit error (pins usage to cap)", async () => {
+    const tier1 = new FakeProvider({
+      source: "justtcg", cap: 100,
+      behavior: () => { throw new PriceProviderError(429, "over limit"); },
+    });
+    const tier2 = new FakeProvider({ source: "pokemon_tcg", behavior: (c) => new Map(c.map((r) => [r.apiId, price(5)])) });
+    const db = mockDb([], []);
+    const engine = new PriceFetchEngine(db as any, { providers: [tier1, tier2], now: () => NOW });
+
+    const out = await engine.getPrices(refs("a"));
+
+    expect(out.get("a")?.source).toBe("pokemon_tcg"); // cascaded to bedrock this run
+    const justtcg = db.writes.usage.find((u: any) => u.provider === "justtcg");
+    expect(justtcg?.request_count).toBe(100);          // pinned to cap → skipped rest of day
+  });
+
   it("respects the daily request budget and skips a provider once its cap is hit", async () => {
     const tier1 = new FakeProvider({
       source: "justtcg", cap: 1,
