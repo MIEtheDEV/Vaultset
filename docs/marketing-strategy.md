@@ -114,16 +114,22 @@ already answer this. Two moves turn plumbing into a headline:
 > advertise a moat we can't consistently deliver — perceived price unreliability is a top
 > churn trigger.
 
-> **Coverage check result — 2026-06-22 (n=27, whole DB; early-stage, directional only).**
-> 85% priced, but **real-time only 30% · bedrock 56% · missing 15%**, **per-condition 0%**,
-> **fresh-<6h 0% (everything >24h stale)**, no graded items in sample.
-> **Verdict: blanket headline is not safe — lead with capability, not a claim** ("net-of-fees,
-> per-grade pricing where available"). The bigger finding is structural, not statistical: with
-> on-demand refresh now Pro-gated (Step 1) and a thin/zero Pro base, nothing keeps the cache
-> warm, so real-time coverage decays toward bedrock. **The accuracy moat needs a refresh source
-> that doesn't depend on Pro users manually refreshing** — see §6 step 2 note. Re-measure after
-> a deliberate refresh to separate "pipeline idle" from "data genuinely unavailable" (esp. the
-> 0% per-condition among the 8 justtcg rows — JustTCG should supply `condition_prices`).
+> **Coverage check — 2026-06-22 (n=27, whole DB; early-stage, directional only).**
+> First reading: 85% priced but **real-time 30% · bedrock 56% · missing 15%**, **per-condition 0%**,
+> **fresh-<6h 0%**. That reading turned out to be measuring **two production bugs**, not true
+> coverage — the pricing pipeline was silently writing nothing.
+>
+> **Root cause (fixed, merged to `main`):** ① JustTCG batch sent `{items}` instead of a bare array
+> → 400, no real-time/per-condition data; ② bedrock put `id:tcg:`/`id:manual:` into a Lucene `OR`
+> query → one non-native card 400'd the whole batch, so bedrock wrote nothing either. Both were
+> non-OK responses swallowed silently; now routed through `PriceProvider.ensureOk` (warns/throws).
+> Bedrock fix **verified on prod data** — 15 cards repriced, cache unfroze.
+>
+> **Verdict — still capability-framed, pending re-measure.** Don't make the blanket "most accurate
+> pricing" headline yet: real numbers are unknown until coverage is re-run on the *fixed* pipeline
+> with **fresh JustTCG quota** (free tier 100/day was exhausted during diagnosis). Re-run
+> `../supabase/pricing_coverage_check.sql` after reset; watch **per-condition** and **real-time**
+> climb. The 100/day ceiling is itself a Step-2 deliverability risk — see §7.
 
 ---
 
