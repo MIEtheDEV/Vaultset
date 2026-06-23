@@ -114,6 +114,17 @@ already answer this. Two moves turn plumbing into a headline:
 > advertise a moat we can't consistently deliver — perceived price unreliability is a top
 > churn trigger.
 
+> **Coverage check result — 2026-06-22 (n=27, whole DB; early-stage, directional only).**
+> 85% priced, but **real-time only 30% · bedrock 56% · missing 15%**, **per-condition 0%**,
+> **fresh-<6h 0% (everything >24h stale)**, no graded items in sample.
+> **Verdict: blanket headline is not safe — lead with capability, not a claim** ("net-of-fees,
+> per-grade pricing where available"). The bigger finding is structural, not statistical: with
+> on-demand refresh now Pro-gated (Step 1) and a thin/zero Pro base, nothing keeps the cache
+> warm, so real-time coverage decays toward bedrock. **The accuracy moat needs a refresh source
+> that doesn't depend on Pro users manually refreshing** — see §6 step 2 note. Re-measure after
+> a deliberate refresh to separate "pipeline idle" from "data genuinely unavailable" (esp. the
+> 0% per-condition among the 8 justtcg rows — JustTCG should supply `condition_prices`).
+
 ---
 
 ## 5. The gap — scanning is the freemium meter waiting to happen
@@ -167,10 +178,16 @@ the incumbents on the accuracy collectors complain about.
 
 ## 8. Open decisions
 
-1. **Scope of the leak fix** — turn C1–C4 into a concrete engineering work order, or keep
-   strategic? *(Decided: work order created; `fix/paywall-enforcement` underway.)*
-2. **The "instant alerts" claim** — build real priority delivery, or remove the claim from
-   the UI? One is roadmap, one is a one-line copy fix.
+1. ~~**Scope of the leak fix**~~ — ✅ **Done & merged.** C1–C4 enforced server-side +
+   regression tests in `main` (PRs #1/#2). Step 1 of the recommended sequence is complete.
+2. ~~**The "instant alerts" claim**~~ — ✅ **Resolved by removal.** The unbuilt priority-delivery
+   claim was pulled from `PushToggle` (the one-line copy fix), not sold. Real priority
+   delivery remains a deferred roadmap item if we want it later.
 3. **The one-time 30-day SKU** — keep and disclose, or retire in favor of annual-primary?
-4. **Coverage check** — measure real-price vs. bedrock coverage on a sample collection so
-   we know whether the accuracy headline is safe to make.
+   *(Still open — pricing-page decision.)*
+4. **Coverage check** — ▶ **Ready to run.** Query at
+   [`../supabase/pricing_coverage_check.sql`](../supabase/pricing_coverage_check.sql) measures
+   real-time/graded vs. stale-bedrock coverage on the live collection data. **Decision rule:**
+   the "most accurate pricing" headline (Step 2) is safe only if the bedrock-or-missing share
+   is low enough that a typical collection mostly shows real-time/graded prices — otherwise
+   lead with the *capability* ("net-of-fees, per-grade where available"), not a blanket claim.
