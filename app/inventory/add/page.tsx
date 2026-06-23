@@ -371,6 +371,23 @@ export default function AddCardPage() {
       return;
     }
 
+    // Populate the tracked market value through the cache-first engine
+    // (bedrock-first, no JustTCG spend) so the card doesn't land with a null
+    // market_price when the search payload carried no usable price. Best-effort:
+    // the card is already saved, so a failure here must not block the add.
+    try {
+      const apiId = pokemonApiId
+        ? pokemonApiId
+        : tcgplayerId ? `tcg:${tcgplayerId}` : `manual:${card.id}`;
+      await fetch("/api/populate-card-price", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiId, name, setName: cardSet, setCode, number: cardNumber }),
+      });
+    } catch {
+      /* non-fatal — market value can be filled later via "Fill missing prices" */
+    }
+
     router.push("/inventory");
     router.refresh();
   }

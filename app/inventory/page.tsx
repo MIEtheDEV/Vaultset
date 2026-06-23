@@ -6,6 +6,7 @@ import { InventoryGrid } from "@/components/InventoryGrid";
 import { MarkReceivedButton } from "@/components/MarkReceivedButton";
 import { RefreshMarketButton } from "@/components/RefreshMarketButton";
 import { MatchAllListingsButton } from "@/components/MatchAllListingsButton";
+import { FillMissingPricesButton } from "@/components/FillMissingPricesButton";
 import { hasProAccess } from "@/lib/proStatus";
 
 export const metadata: Metadata = {
@@ -160,6 +161,7 @@ export default async function InventoryPage() {
                 Prices update automatically · <span className="text-gold">Upgrade for on-demand refresh →</span>
               </Link>
             )}
+            <FillMissingPricesButton />
             <MatchAllListingsButton />
           </div>
         </div>
