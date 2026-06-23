@@ -131,6 +131,16 @@ export class PriceFetchEngine {
             // Rate-limited / quota / auth → stop using this provider, cascade rest.
             providerDead = true;
             stillStale.push(...chunk);
+            // Back off for the rest of the UTC day. The upstream reported a hard
+            // limit (e.g. JustTCG 401/429 over its free-tier cap), which can occur
+            // before our own counter reaches the cap when requests are made
+            // out-of-band. Pin usage to the cap so later refreshes this day skip
+            // the provider entirely instead of re-hitting the wall; loadUsage
+            // reads a fresh day at UTC midnight, so it self-resets.
+            if (provider.dailyRequestCap != null) {
+              usageToday.set(provider.source, provider.dailyRequestCap);
+              if (process.env.PRICE_DEBUG) console.log(`[PRICE] ${provider.source} backed off for the day (HTTP ${err.status})`);
+            }
           } else {
             stillStale.push(...chunk); // transient: let the next tier try
           }
