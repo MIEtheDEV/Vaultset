@@ -10,7 +10,7 @@ const price = (market: number): PricePayload => ({
 
 // Minimal stand-in for the service-role Supabase client used by the engine.
 function mockDb(cacheRows: any[] = [], usageRows: any[] = []) {
-  const writes = { cardPrices: [] as any[], usage: [] as any[] };
+  const writes = { cardPrices: [] as any[], usage: [] as any[], snapshots: [] as any[] };
   const db = {
     writes,
     from(table: string) {
@@ -20,8 +20,16 @@ function mockDb(cacheRows: any[] = [], usageRows: any[] = []) {
           upsert: async (rows: any[]) => { writes.cardPrices.push(...rows); return { error: null }; },
         };
       }
+      if (table === "card_price_snapshots") {
+        return {
+          insert: async (rows: any[]) => { writes.snapshots.push(...rows); return { error: null }; },
+        };
+      }
       return {
-        select: () => ({ eq: async () => ({ data: usageRows }) }),
+        select: () => ({
+          eq:  async () => ({ data: usageRows }), // daily (loadUsage)
+          gte: async () => ({ data: usageRows }), // month-to-date (loadMonthUsage)
+        }),
         upsert: async (rows: any[]) => { writes.usage.push(...rows); return { error: null }; },
       };
     },
@@ -33,12 +41,14 @@ interface FakeOpts {
   source: PricingSource;
   batchSize?: number;
   cap?: number | null;
+  monthlyCap?: number | null;
   behavior: (cards: CardRef[]) => Map<string, PricePayload>;
 }
 class FakeProvider extends PriceProvider {
   readonly source: PricingSource;
   readonly batchSize: number;
   readonly dailyRequestCap: number | null;
+  readonly monthlyRequestCap: number | null;
   readonly calls: CardRef[][] = [];
   private behavior: FakeOpts["behavior"];
   constructor(o: FakeOpts) {
@@ -46,6 +56,7 @@ class FakeProvider extends PriceProvider {
     this.source = o.source;
     this.batchSize = o.batchSize ?? 50;
     this.dailyRequestCap = o.cap ?? null;
+    this.monthlyRequestCap = o.monthlyCap ?? null;
     this.behavior = o.behavior;
   }
   isConfigured() { return true; }
@@ -139,6 +150,30 @@ describe("PriceFetchEngine", () => {
     expect(justtcg?.request_count).toBe(100);          // pinned to cap → skipped rest of day
   });
 
+  it("persists the raw payload to card_prices and appends a snapshot for each fresh fetch", async () => {
+    const raw = { variants: [{ condition: "Near Mint", printing: "Holofoil", price: 20, priceChange7d: 5, priceHistory: [{ p: 19, t: 1 }] }] };
+    const payload: PricePayload = { prices: price(20).prices, raw };
+    const provider = new FakeProvider({ source: "justtcg", behavior: (c) => new Map(c.map((r) => [r.apiId, payload])) });
+    const db = mockDb();
+    const engine = new PriceFetchEngine(db as any, { providers: [provider], now: () => NOW });
+
+    await engine.getPrices(refs("sv4-1"));
+
+    const cached = db.writes.cardPrices.find((r: any) => r.card_api_id === "sv4-1");
+    expect(cached.raw).toEqual(raw);                       // full payload on the cache row
+    expect(db.writes.snapshots).toHaveLength(1);           // one archived snapshot
+    expect(db.writes.snapshots[0]).toMatchObject({ card_api_id: "sv4-1", game: "pokemon", source: "justtcg", raw });
+  });
+
+  it("does not archive a snapshot when the payload carried no raw", async () => {
+    const provider = new FakeProvider({ source: "pokemon_tcg", behavior: (c) => new Map(c.map((r) => [r.apiId, price(5)])) });
+    const db = mockDb();
+    const engine = new PriceFetchEngine(db as any, { providers: [provider], now: () => NOW });
+
+    await engine.getPrices(refs("a"));
+    expect(db.writes.snapshots).toHaveLength(0);
+  });
+
   it("respects the daily request budget and skips a provider once its cap is hit", async () => {
     const tier1 = new FakeProvider({
       source: "justtcg", cap: 1,
@@ -151,5 +186,19 @@ describe("PriceFetchEngine", () => {
 
     const out = await engine.getPrices(refs("a"));
     expect(out.get("a")?.source).toBe("pokemon_tcg"); // tier1 over budget → bedrock
+  });
+
+  it("skips a provider whose month-to-date usage has hit the monthly cap (even with daily room left)", async () => {
+    const tier1 = new FakeProvider({
+      source: "justtcg", cap: 1000, monthlyCap: 10,
+      behavior: (c) => new Map(c.map((r) => [r.apiId, price(2)])),
+    });
+    const tier2 = new FakeProvider({ source: "pokemon_tcg", behavior: (c) => new Map(c.map((r) => [r.apiId, price(8)])) });
+    // Month-to-date already at 10 (= monthly cap); daily (1000) has plenty of room.
+    const usage = [{ provider: "justtcg", request_count: 10 }];
+    const engine = new PriceFetchEngine(mockDb([], usage) as any, { providers: [tier1, tier2], now: () => NOW });
+
+    const out = await engine.getPrices(refs("a"));
+    expect(out.get("a")?.source).toBe("pokemon_tcg"); // tier1 over MONTHLY budget → bedrock
   });
 });

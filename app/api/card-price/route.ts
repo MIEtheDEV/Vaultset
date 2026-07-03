@@ -47,9 +47,11 @@ export async function POST(request: Request) {
   if (!resolved.fromCache) await propagateMarketValues(admin, [ref.apiId]);
 
   return NextResponse.json({
-    prices:      resolved.prices,
-    source:      resolved.source,
-    updatedAt:   resolved.updatedAt,
-    tcgplayerId: resolved.tcgplayerId,
+    prices:          resolved.prices,
+    conditionPrices: resolved.conditionPrices,
+    source:          resolved.source,
+    updatedAt:       resolved.updatedAt,
+    tcgplayerId:     resolved.tcgplayerId,
+    tcgplayerUrl:    resolved.tcgplayerUrl,
   });
 }

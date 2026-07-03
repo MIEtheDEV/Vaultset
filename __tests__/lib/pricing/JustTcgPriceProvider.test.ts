@@ -64,6 +64,82 @@ describe("JustTcgPriceProvider resolution matching", () => {
     );
     expect(out.has("mega-x")).toBe(false);
   });
+
+  // Modern ME sets put several cards on one collector number (base + ball/pattern
+  // variants). The exact base name must win over the adorned siblings.
+  it("prefers the exact base-name variant over same-number pattern variants", async () => {
+    mockSearch([
+      { tcgplayerId: "id-pattern", name: "Rayquaza (Energy Symbol Pattern)", number: "153/217", set_name: "ME: Ascended Heroes",
+        variants: [{ condition: "Near Mint", printing: "Holofoil", price: 9.99 }] },
+      { tcgplayerId: "id-ball",    name: "Rayquaza (Friend Ball)",           number: "153/217", set_name: "ME: Ascended Heroes",
+        variants: [{ condition: "Near Mint", printing: "Holofoil", price: 5.55 }] },
+      { tcgplayerId: "id-base",    name: "Rayquaza",                         number: "153/217", set_name: "ME: Ascended Heroes",
+        variants: [{ condition: "Near Mint", printing: "Holofoil", price: 0.42 }] },
+    ]);
+    const out = await provider.fetchBatch(
+      [{ apiId: "me-153", name: "Rayquaza", setName: "Ascended Heroes", number: "153" }],
+      ctx,
+    );
+    expect(out.get("me-153")?.tcgplayerId).toBe("id-base");
+    expect(out.get("me-153")?.prices.holofoil.market).toBe(0.42);
+  });
+
+  // When JustTCG has no bare-name row (it embeds the number into every variant),
+  // the plainest = strictly-shortest name is the base card.
+  it("falls back to the shortest name when no exact match exists", async () => {
+    mockSearch([
+      { tcgplayerId: "id-poke",    name: "Larry's Staraptor - 170/217 (Poke Ball)",            number: "170/217", set_name: "ME: Ascended Heroes",
+        variants: [{ condition: "Near Mint", printing: "Holofoil", price: 3.00 }] },
+      { tcgplayerId: "id-pattern", name: "Larry's Staraptor - 170/217 (Energy Symbol Pattern)", number: "170/217", set_name: "ME: Ascended Heroes",
+        variants: [{ condition: "Near Mint", printing: "Holofoil", price: 4.00 }] },
+      { tcgplayerId: "id-base",    name: "Larry's Staraptor - 170/217",                         number: "170/217", set_name: "ME: Ascended Heroes",
+        variants: [{ condition: "Near Mint", printing: "Holofoil", price: 1.11 }] },
+    ]);
+    const out = await provider.fetchBatch(
+      [{ apiId: "me-170", name: "Larry's Staraptor", setName: "Ascended Heroes", number: "170" }],
+      ctx,
+    );
+    expect(out.get("me-170")?.tcgplayerId).toBe("id-base");
+  });
+});
+
+describe("JustTcgPriceProvider set+number resolution", () => {
+  const realFetch = global.fetch;
+  const ctxLocal: FetchContext = { allowResolve: true, recordRequest: async () => true };
+  afterEach(() => { global.fetch = realFetch; jest.restoreAllMocks(); });
+
+  // A common name (Gengar) has dozens of printings, so a plain q=name search only
+  // sees the first page and buries the one we want. Mapping our set name to
+  // JustTCG's set id lets us query set+number for the single exact card.
+  it("queries by set id + number when the set maps, hitting the exact card", async () => {
+    await jest.isolateModulesAsync(async () => {
+      const urls: string[] = [];
+      global.fetch = jest.fn(async (url: string) => {
+        urls.push(url);
+        if (url.includes("/sets")) {
+          return { ok: true, status: 200, json: async () => ({ data: [
+            { id: "me03-perfect-order-pokemon", name: "ME03: Perfect Order" },
+          ] }) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [
+          { tcgplayerId: "684431", name: "Gengar", number: "050/088", set_name: "ME03: Perfect Order",
+            variants: [{ condition: "Near Mint", printing: "Holofoil", price: 0.63 }] },
+        ] }) };
+      }) as unknown as typeof fetch;
+
+      const { JustTcgPriceProvider } = await import("@/lib/pricing/JustTcgPriceProvider");
+      const out = await new JustTcgPriceProvider().fetchBatch(
+        [{ apiId: "me3-50", name: "Gengar", setName: "Perfect Order", number: "50" }],
+        ctxLocal,
+      );
+
+      const cardsUrl = urls.find((u) => u.includes("/cards"));
+      expect(cardsUrl).toContain("set=me03-perfect-order-pokemon");
+      expect(cardsUrl).toContain("number=50");
+      expect(out.get("me3-50")?.tcgplayerId).toBe("684431");
+      expect(out.get("me3-50")?.prices.holofoil.market).toBe(0.63);
+    });
+  });
 });
 
 describe("JustTcgPriceProvider batch (mapped tcgplayerId)", () => {

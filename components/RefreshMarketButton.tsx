@@ -17,32 +17,27 @@ function formatRelative(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function hoursUntil(iso: string): string {
-  const ms    = new Date(iso).getTime() - Date.now();
-  const hours = Math.ceil(ms / 3_600_000);
-  return hours <= 1 ? "less than 1 hour" : `${hours} hours`;
-}
-
 export function RefreshMarketButton({ lastRefreshedAt }: Props) {
   const router = useRouter();
-  const [loading,          setLoading]          = useState(false);
-  const [updatedCount,     setUpdatedCount]      = useState<number | null>(null);
-  const [rateLimitedUntil, setRateLimitedUntil]  = useState<string | null>(null);
-  const [hasError,         setHasError]          = useState(false);
+  const [loading,      setLoading]      = useState(false);
+  const [updatedCount, setUpdatedCount] = useState<number | null>(null);
+  const [needsPro,     setNeedsPro]     = useState(false);
+  const [hasError,     setHasError]     = useState(false);
 
   async function handleRefresh() {
     setLoading(true);
     setUpdatedCount(null);
-    setRateLimitedUntil(null);
+    setNeedsPro(false);
     setHasError(false);
 
     try {
-      const res  = await fetch("/api/market-refresh", { method: "POST" });
-      const json = await res.json();
+      const res = await fetch("/api/market-refresh", { method: "POST" });
 
-      if (res.status === 429) { setRateLimitedUntil(json.nextAllowedAt); return; }
+      // On-demand bulk refresh is Pro-gated (403 for free users).
+      if (res.status === 403) { setNeedsPro(true); return; }
       if (!res.ok)            { setHasError(true); return; }
 
+      const json = await res.json();
       setUpdatedCount(json.updated);
       router.refresh();
     } catch {
@@ -52,7 +47,7 @@ export function RefreshMarketButton({ lastRefreshedAt }: Props) {
     }
   }
 
-  const isDisabled = loading || !!rateLimitedUntil;
+  const isDisabled = loading;
 
   return (
     <div className="flex flex-col items-start sm:items-end gap-1">
@@ -76,12 +71,16 @@ export function RefreshMarketButton({ lastRefreshedAt }: Props) {
       </button>
 
       <p className="min-h-4 text-xs text-foreground-muted">
-        {hasError         && <span className="text-red-400">Refresh failed — try again</span>}
-        {rateLimitedUntil && <span>Available in {hoursUntil(rateLimitedUntil)}</span>}
-        {updatedCount != null && !hasError && !rateLimitedUntil && (
+        {hasError && <span className="text-red-400">Refresh failed — try again</span>}
+        {needsPro && (
+          <a href="/account" className="text-gold hover:underline">
+            On-demand refresh is a Pro feature — upgrade
+          </a>
+        )}
+        {updatedCount != null && !hasError && !needsPro && (
           <span className="text-emerald-400">Updated {updatedCount} card{updatedCount !== 1 ? "s" : ""}</span>
         )}
-        {!hasError && !rateLimitedUntil && updatedCount == null && lastRefreshedAt && (
+        {!hasError && !needsPro && updatedCount == null && lastRefreshedAt && (
           <span>Last refreshed {formatRelative(lastRefreshedAt)}</span>
         )}
       </p>

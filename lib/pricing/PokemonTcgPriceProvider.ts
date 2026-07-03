@@ -41,14 +41,17 @@ export class PokemonTcgPriceProvider extends PriceProvider {
     const q = lookup.map((c) => `id:${c.apiId}`).join(" OR ");
     const params = new URLSearchParams({
       q,
-      select: "id,tcgplayer",
+      // Keep cardmarket too — it's a second free price block in the same response
+      // (EU market: trendPrice/avg1/7/30). Dropping it lost data we already paid to
+      // fetch; archived via `raw` and available for a future cardmarket fallback.
+      select: "id,tcgplayer,cardmarket",
       pageSize: String(lookup.length),
     });
 
     const res = await fetch(`${API_BASE}/cards?${params}`, { headers: this.headers() });
     if (!this.ensureOk(res, `batch of ${lookup.length}`)) return result;
 
-    const json: { data?: { id: string; tcgplayer?: TcgPlayerData | null }[] } = await res.json();
+    const json: { data?: { id: string; tcgplayer?: TcgPlayerData | null; cardmarket?: unknown }[] } = await res.json();
     let withPrices = 0;
     for (const card of json.data ?? []) {
       if (!card.tcgplayer?.prices) continue;
@@ -56,6 +59,7 @@ export class PokemonTcgPriceProvider extends PriceProvider {
       result.set(card.id, {
         prices: card.tcgplayer.prices,
         tcgplayerUrl: card.tcgplayer.url ?? null,
+        raw: { tcgplayer: card.tcgplayer, cardmarket: card.cardmarket ?? null },
       });
     }
     if (process.env.PRICE_DEBUG) console.log(`[PRICE] pokemontcg.io status=200 asked=${lookup.length} returned=${(json.data ?? []).length} withPrices=${withPrices}`);

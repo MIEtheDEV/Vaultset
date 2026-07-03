@@ -36,6 +36,14 @@ export interface PricePayload {
   /** Real per-condition prices ({ finish: { condition: price } }), when the
    *  source provides them (JustTCG). Absent for bedrock. */
   conditionPrices?: Record<string, Record<string, number>> | null;
+  /**
+   * The COMPLETE, untouched provider payload for this card (JustTCG's full card
+   * object incl. every variant's analytics; pokemontcg.io's tcgplayer + cardmarket
+   * blocks). The engine persists this verbatim to `card_prices.raw` and appends it
+   * to `card_price_snapshots`, so no field a paid request returns is ever discarded
+   * — anything we don't normalize yet can be derived later with zero new requests.
+   */
+  raw?: unknown;
 }
 
 /**
@@ -63,8 +71,10 @@ export abstract class PriceProvider {
   abstract readonly source: PricingSource;
   /** Max cards per upstream request. */
   abstract readonly batchSize: number;
-  /** Daily request cap for the free tier; null = effectively unlimited. */
+  /** Daily request cap; null = effectively unlimited. */
   abstract readonly dailyRequestCap: number | null;
+  /** Calendar-month request cap; null = no monthly limit (default). */
+  readonly monthlyRequestCap: number | null = null;
 
   /** False when the source isn't usable (e.g. missing API key) → skipped. */
   abstract isConfigured(): boolean;

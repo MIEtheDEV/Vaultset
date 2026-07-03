@@ -95,10 +95,12 @@ export async function POST() {
   );
 
   // Resolve prices through the cache-first cascading engine (writes use admin).
-  // allowResolve lets JustTCG fill in values pokemontcg.io lacks (e.g. newer
-  // cards), capped by the daily request budget — leftovers fall back to bedrock.
+  // Gap-aware: bedrock prices everything it can for free, then JustTCG resolves
+  // only the cards pokemontcg.io lacks (e.g. newer sets), spending the limited
+  // daily budget on real gaps in the priority order above rather than on every
+  // unmapped card.
   const engine = new PriceFetchEngine(admin);
-  const priced = await engine.getPrices(orderedRefs, { allowResolve: true });
+  const priced = await engine.getPricesGapAware(orderedRefs);
 
   const provider = new PokemonTCGProvider();
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -66,6 +66,13 @@ function promoFinishFromPrices(prices?: Record<string, unknown> | null): string 
     ),
   ];
   return finishes.length === 1 ? finishes[0] : "";
+}
+
+// True when a search payload already carries a usable market price. When it
+// doesn't (e.g. a brand-new set pokemontcg.io hasn't priced yet), the add form
+// resolves the authoritative value through the pricing engine instead.
+function hasUsableMarket(t?: TcgPlayerData | null): boolean {
+  return !!t?.prices && Object.values(t.prices).some((p) => p?.market != null);
 }
 
 // Variant options available when promo override is active.
@@ -140,6 +147,11 @@ export default function AddCardPage() {
   const [notes, setNotes]           = useState("");
 
   const [tcgplayerData, setTcgplayerData] = useState<TcgPlayerData | null>(null);
+  // Real per-condition prices (JustTCG), when the engine resolves them — lets the
+  // estimate match the value the engine actually stores. Null → NM×multiplier.
+  const [conditionPrices, setConditionPrices] = useState<Record<string, Record<string, number>> | null>(null);
+  const [priceLoading, setPriceLoading] = useState(false);
+  const priceReqRef = useRef(0); // guards against out-of-order price resolutions
 
   const [sets, setSets]             = useState<{ id: string; name: string; series: string }[]>([]);
   const [setsLoading, setSetsLoading] = useState(true);
@@ -185,6 +197,7 @@ export default function AddCardPage() {
         graded ? null        : condition || null,
         graded ? grader || null : null,
         graded && grade ? Number(grade) : null,
+        conditionPrices,
       )
     : null;
 
@@ -237,6 +250,35 @@ export default function AddCardPage() {
       setTcgplayerId("");
     }
     setTcgplayerData(card.tcgplayer ?? null);
+    setConditionPrices(null);
+    // When the search payload has no usable price (e.g. a brand-new set that
+    // pokemontcg.io hasn't priced yet), resolve the real value through the pricing
+    // engine so the live estimate isn't blank. Cache-first (6h) → cheap, and it
+    // warms the shared cache for everyone. Established cards already have a price
+    // in the payload, so no extra request is spent. reqId guards against a slow
+    // response landing after the user has picked a different card.
+    if (!hasUsableMarket(card.tcgplayer)) {
+      const reqId = ++priceReqRef.current;
+      setPriceLoading(true);
+      fetch("/api/card-price", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiId: card.id, name: card.name, setName: card.set.name, setCode: card.set.id, number: card.number }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (reqId !== priceReqRef.current) return; // superseded by a newer selection
+          if (j?.prices) {
+            setTcgplayerData({ url: j.tcgplayerUrl ?? "", updatedAt: j.updatedAt ?? "", prices: j.prices });
+            setConditionPrices(j.conditionPrices ?? null);
+          }
+        })
+        .catch(() => { /* leave estimate blank — the card still saves and fills later */ })
+        .finally(() => { if (reqId === priceReqRef.current) setPriceLoading(false); });
+    } else {
+      priceReqRef.current++;   // invalidate any in-flight resolution from a prior pick
+      setPriceLoading(false);
+    }
     setName(card.name);
     setCardSet(card.set.name);
     setSetCode(card.set.id);
@@ -345,6 +387,7 @@ export default function AddCardPage() {
       graded ? null        : condition || null,
       graded ? grader || null : null,
       graded && grade ? Number(grade) : null,
+      conditionPrices,
     );
 
     const { error: itemError } = await supabase.from("collection_items").insert({
@@ -371,10 +414,11 @@ export default function AddCardPage() {
       return;
     }
 
-    // Populate the tracked market value through the cache-first engine
-    // (bedrock-first, no JustTCG spend) so the card doesn't land with a null
-    // market_price when the search payload carried no usable price. Best-effort:
-    // the card is already saved, so a failure here must not block the add.
+    // Populate the tracked market value through the cache-first, gap-aware engine
+    // (bedrock for what it can, JustTCG for the gaps) so the card doesn't land with
+    // a null market_price when the search payload carried no usable price. Usually
+    // a cache hit here — the on-select estimate already warmed it. Best-effort: the
+    // card is already saved, so a failure here must not block the add.
     try {
       const apiId = pokemonApiId
         ? pokemonApiId
@@ -588,7 +632,7 @@ export default function AddCardPage() {
               </select>
               {linkedProduct && (
                 <p className="mt-1.5 text-xs text-foreground-muted">
-                  Purchase price is optional — product cost covers this pull's investment.
+                  Purchase price is optional — product cost covers this pull&apos;s investment.
                 </p>
               )}
             </div>
@@ -658,11 +702,15 @@ export default function AddCardPage() {
             <div>
               <label className={labelClass()}>Purchase Price ($)</label>
               <input type="number" step="0.01" placeholder="0.00" value={paidPrice} onChange={(e) => setPaidPrice(e.target.value)} className={`${inputClass()} no-spinner`} />
-              {computedMarketHint != null && (
+              {priceLoading ? (
+                <p className="mt-1.5 text-xs text-foreground-muted">Fetching latest market price…</p>
+              ) : computedMarketHint != null ? (
                 <p className="mt-1.5 text-xs text-foreground-muted">
                   TCGPlayer market (est.): <span className="font-medium text-foreground">${computedMarketHint.toFixed(2)}</span>
                 </p>
-              )}
+              ) : (pokemonApiId || tcgplayerId) ? (
+                <p className="mt-1.5 text-xs text-foreground-muted">No market price available yet.</p>
+              ) : null}
             </div>
           </div>
 

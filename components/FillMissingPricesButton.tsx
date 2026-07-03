@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * Backfills market values for inventory items that have none (bedrock-first, no
- * JustTCG quota spend). Available to all users — initial population is free.
+ * Backfills market values for inventory items that have none. Gap-aware:
+ * bedrock covers what it can for free, then JustTCG fills the cards bedrock
+ * lacks (bounded by the daily budget). Available to all users.
  */
 export function FillMissingPricesButton() {
   const router = useRouter();

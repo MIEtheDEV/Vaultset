@@ -26,7 +26,8 @@ function tcgImage(id: string, size: "small" | "large"): string {
  * works at add-time. No-ops (returns []) when JUSTTCG_API_KEY is unset.
  */
 export async function searchJustTcg(query: string, number?: string): Promise<SearchResult[]> {
-  const key = process.env.JUSTTCG_API_KEY;
+  // Prefer the paid key (higher limits) when present, matching the pricing engine.
+  const key = process.env.JUSTTCG_API_KEY_PAID || process.env.JUSTTCG_API_KEY;
   if (!key) return [];
   try {
     const params = new URLSearchParams({ game: "pokemon", q: query });

@@ -1,0 +1,11 @@
+# pnpm build-script approvals (pnpm v10+ reads them here, not package.json).
+# All three ship prebuilt native binaries and are trusted deps:
+#   esbuild       — used by tsx (scripts/, e.g. warm:catalog)
+#   sharp         — Next.js image optimization
+#   unrs-resolver — eslint import resolver
+# Approving them clears pnpm's ERR_PNPM_IGNORED_BUILDS precheck that otherwise
+# fails `pnpm run <script>` and CI's `pnpm test`.
+allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true

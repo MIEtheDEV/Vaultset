@@ -8,8 +8,10 @@ import type { CardRef } from "@/lib/pricing/PriceProvider";
 /**
  * Backfill `market_price` for the caller's inventory items that have none —
  * cards added before fetch-on-add existed, or via CSV import (which doesn't
- * price). Bedrock-first, so it burns no JustTCG quota. Scoped to the caller's
- * own items; open to any authenticated user (free baseline coverage).
+ * price). Gap-aware: bedrock covers everything it can for free, then JustTCG
+ * resolves the cards bedrock lacks (e.g. brand-new sets), bounded by the daily
+ * JustTCG budget guard. Scoped to the caller's own items; open to any
+ * authenticated user (free baseline coverage).
  */
 export async function POST() {
   const supabase = await createClient();

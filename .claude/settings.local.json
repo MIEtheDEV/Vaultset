@@ -16,7 +16,8 @@
       "Bash(node -e \"const s = require\\('stripe'\\); console.log\\(s.LATEST_API_VERSION\\)\")",
       "Bash(Select-String -Pattern \"error\")",
       "Bash(Select-Object -First 20)",
-      "WebFetch(domain:gemini.google.com)"
+      "WebFetch(domain:gemini.google.com)",
+      "Bash(git check-ignore *)"
     ]
   }
 }

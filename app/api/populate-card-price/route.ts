@@ -5,10 +5,11 @@ import { populateMarketValues } from "@/lib/pricing/populateMarketValues";
 import type { CardRef } from "@/lib/pricing/PriceProvider";
 
 /**
- * Populate a freshly-added card's market value (bedrock-first, no JustTCG spend)
- * so cards don't land in inventory with a null `market_price`. Called by the add
- * flow after insert. Open to any authenticated user — initial population is free
- * baseline coverage, distinct from the Pro-gated on-demand refresh.
+ * Populate a freshly-added card's market value via the gap-aware engine (bedrock
+ * for what it can, JustTCG for the gaps) so cards don't land in inventory with a
+ * null `market_price`. Called by the add flow after insert. Open to any
+ * authenticated user — initial population is free baseline coverage, distinct from
+ * the Pro-gated bulk on-demand refresh.
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
