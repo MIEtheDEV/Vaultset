@@ -3,6 +3,47 @@ import { normalizeCardNumber } from "./cardNumber";
 
 const BASE = "https://api.pokemontcg.io/v2";
 
+// Full pokemontcg.io card object — the fields we surface on the card-data page
+// beyond search/pricing (illustrator, attacks, EU Cardmarket prices, set totals…).
+export interface PokemonCardDetail {
+  hp?: string;
+  types?: string[];
+  subtypes?: string[];
+  supertype?: string;
+  evolvesFrom?: string;
+  artist?: string;
+  flavorText?: string;
+  nationalPokedexNumbers?: number[];
+  rarity?: string;
+  regulationMark?: string;
+  abilities?: { name: string; text: string; type?: string }[];
+  attacks?: { name: string; cost?: string[]; damage?: string; text?: string }[];
+  weaknesses?: { type: string; value: string }[];
+  resistances?: { type: string; value: string }[];
+  retreatCost?: string[];
+  legalities?: { standard?: string; expanded?: string; unlimited?: string };
+  set?: { id?: string; name?: string; series?: string; printedTotal?: number; total?: number; releaseDate?: string; images?: { symbol?: string; logo?: string } };
+  cardmarket?: { url?: string; updatedAt?: string; prices?: Record<string, number | null> };
+}
+
+/**
+ * Fetch the full pokemontcg.io card object by native id (not tcg:/manual:). Used
+ * by the card-data page for card details, EU Cardmarket prices, and set context.
+ * Cheap + revalidated hourly; returns null for non-native ids or on error.
+ */
+export async function fetchPokemonCardDetail(id: string): Promise<PokemonCardDetail | null> {
+  if (id.startsWith("tcg:") || id.startsWith("manual:")) return null;
+  try {
+    const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY ? { "X-Api-Key": process.env.POKEMON_TCG_API_KEY } : {};
+    const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}`, { headers, next: { revalidate: 3600 } });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return (json?.data as PokemonCardDetail) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Concrete implementation of CardSearchProvider for the Pokémon TCG API.
 // All Pokémon-specific HTTP logic and field mapping lives here.
 export class PokemonTCGProvider extends CardSearchProvider {
@@ -31,6 +72,24 @@ export class PokemonTCGProvider extends CardSearchProvider {
       return json.data ?? [];
     } catch {
       return [];
+    }
+  }
+
+  async getById(id: string): Promise<SearchResult | null> {
+    // Native pokemontcg.io id only (e.g. "sv4-1"). tcg:/manual: keys aren't ours
+    // to fetch here — the caller routes those elsewhere.
+    if (id.startsWith("tcg:") || id.startsWith("manual:")) return null;
+    try {
+      const params = new URLSearchParams({ select: "id,name,number,rarity,subtypes,set,images,tcgplayer" });
+      const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}?${params}`, {
+        headers: this.getHeaders(),
+        next: { revalidate: 3600 },
+      });
+      if (!res.ok) return null;
+      const json = await res.json();
+      return (json?.data as SearchResult) ?? null;
+    } catch {
+      return null;
     }
   }
 

@@ -32,7 +32,7 @@ export async function generateMetadata({
   const { username } = await params;
   const supabase = await createClient();
 
-  const [{ data: profile }, { count: cardCount }] = await Promise.all([
+  const [{ data: profile }, { data: cardRows }] = await Promise.all([
     supabase
       .from("profiles")
       .select("username, bio, specialty, city")
@@ -40,11 +40,14 @@ export async function generateMetadata({
       .single(),
     supabase
       .from("collection_items")
-      .select("*", { count: "exact", head: true })
+      .select("quantity")
       .eq("user_id",
         (await supabase.from("profiles").select("id").ilike("username", likeEscape(username)).single()).data?.id ?? ""
       ),
   ]);
+
+  // "N-card collection" counts physical copies (sum of quantity), not rows.
+  const cardCount = (cardRows ?? []).reduce((s, r) => s + ((r as { quantity: number | null }).quantity ?? 1), 0);
 
   const parts: string[] = [];
   if (cardCount && cardCount > 0) parts.push(`${cardCount}-card collection`);
@@ -140,7 +143,7 @@ export default async function ProfilePage({
       .from("collection_items")
       .select(`
         id, user_id, condition, finish, for_sale, for_trade,
-        list_price, grader, grade, quantity, created_at,
+        list_price, market_price, grader, grade, quantity, created_at,
         cards ( id, game, name, set_name, card_number, year, image_url, game_data )
       `)
       .eq("user_id", profile.id)
@@ -253,7 +256,7 @@ export default async function ProfilePage({
   const showcaseBorderClass =
     showcaseBorder === "foil" ? "showcase-foil" : showcaseBorder === "gold" ? "showcase-gold" : "";
   const totalCards  = vaultItems.reduce((s, r) => s + ((r as any).quantity ?? 1), 0);
-  const gradedCount = vaultItems.filter((r) => !!(r as any).grader).length;
+  const gradedCount = vaultItems.filter((r) => !!(r as any).grader).reduce((s, r) => s + ((r as any).quantity ?? 1), 0);
 
   const setNames = new Set<string>();
   vaultItems.forEach((r) => {
@@ -263,11 +266,13 @@ export default async function ProfilePage({
   });
   const uniqueSets = setNames.size;
 
-  const activeCardListings   = cardListings?.length   ?? 0;
+  // Card listings/trades count physical copies (sum of quantity); sealed products
+  // have no quantity column, so each row is one unit.
+  const activeCardListings   = (cardListings ?? []).reduce((s, l) => s + ((l as any).quantity ?? 1), 0);
   const activeSealedListings = sealedListings?.length ?? 0;
   const activeListings       = activeCardListings + activeSealedListings;
   const forTradeCount        =
-    (cardListings?.filter((l) => l.for_trade).length   ?? 0) +
+    (cardListings ?? []).filter((l) => l.for_trade).reduce((s, l) => s + ((l as any).quantity ?? 1), 0) +
     (sealedListings?.filter((l) => l.for_trade).length ?? 0);
 
   const isFollowing    = !!followState;
@@ -900,7 +905,7 @@ export default async function ProfilePage({
       <ProfileTabs
         showcaseCount={showcaseItems.length}
         listingCount={activeListings}
-        vaultCount={vaultItems.length}
+        vaultCount={totalCards}
         collectionCount={userCollections.length}
         wishlistCount={wishlistItems?.length ?? 0}
         showcaseContent={showcaseItems.length > 0 ? showcaseContent : undefined}

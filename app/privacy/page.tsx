@@ -2,6 +2,7 @@ import Link from "next/link";
 
 export const metadata = {
   title: "Privacy Policy — Vaultset",
+  alternates: { canonical: "/privacy" },
   description: "Read the Vaultset Privacy Policy to understand how we collect, use, and protect your data.",
 };
 

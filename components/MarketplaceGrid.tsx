@@ -25,7 +25,7 @@ const finishLabel: Record<string, string> = {
 };
 
 type FilterKey = "all" | "for_sale" | "for_trade" | "graded" | "wanted" | "following";
-type SortKey   = "newest" | "price_asc" | "price_desc" | "name_asc";
+type SortKey   = "newest" | "price_asc" | "price_desc" | "value_desc" | "value_asc" | "name_asc";
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all",       label: "All" },
@@ -38,6 +38,8 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "newest",     label: "Recently Listed" },
   { key: "price_asc",  label: "Price (low – high)" },
   { key: "price_desc", label: "Price (high – low)" },
+  { key: "value_desc", label: "Value (high – low)" },
+  { key: "value_asc",  label: "Value (low – high)" },
   { key: "name_asc",   label: "Name (A – Z)" },
 ];
 
@@ -50,6 +52,7 @@ export interface MarketplaceListing {
   for_sale: boolean;
   for_trade: boolean;
   list_price: number | null;
+  market_price: number | null;
   grader: string | null;
   grade: number | null;
   quantity: number;
@@ -164,6 +167,9 @@ export function MarketplaceGrid({
 
     if (sort === "price_asc")  result.sort((a, b) => (a.list_price ?? Infinity) - (b.list_price ?? Infinity));
     if (sort === "price_desc") result.sort((a, b) => (b.list_price ?? -Infinity) - (a.list_price ?? -Infinity));
+    // Value = the card's tracked market price (distinct from the seller's asking price).
+    if (sort === "value_desc") result.sort((a, b) => (b.market_price ?? -Infinity) - (a.market_price ?? -Infinity));
+    if (sort === "value_asc")  result.sort((a, b) => (a.market_price ??  Infinity) - (b.market_price ??  Infinity));
     if (sort === "name_asc")   result.sort((a, b) => (resolveCard(a)?.name ?? "").localeCompare(resolveCard(b)?.name ?? ""));
 
     // Float wishlist matches to top when browsing "all" by newest
@@ -422,6 +428,11 @@ export function MarketplaceGrid({
                       {item.finish && (
                         <span className="rounded-full border border-border px-2 py-0.5 text-xs text-foreground-muted">
                           {finishLabel[item.finish] ?? item.finish}
+                        </span>
+                      )}
+                      {item.quantity > 1 && (
+                        <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-foreground-muted">
+                          ×{item.quantity}
                         </span>
                       )}
                       {isPromo && (

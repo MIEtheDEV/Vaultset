@@ -37,7 +37,6 @@ export const metadata: Metadata = {
     "buy sell trade cards", "card market", "card inventory", "Pokemon TCG marketplace",
     "trading card collector platform",
   ],
-  alternates: { canonical: "https://vaultset.app" },
   robots: {
     index: true,
     follow: true,

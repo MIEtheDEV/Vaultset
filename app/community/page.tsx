@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { timeAgo } from "@/lib/timeAgo";
 import { BadgeChip } from "@/components/BadgeChip";
 import { BADGE_MAP, type BadgeSlug } from "@/lib/badges";
@@ -14,8 +14,12 @@ export const metadata: Metadata = {
   alternates: { canonical: "/community" },
 };
 
+// Public, no per-user data → ISR. Read via the service-role client so the page
+// isn't tied to request cookies (which would force dynamic rendering).
+export const revalidate = 3600;
+
 export default async function CommunityPage() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { data: allProfiles } = await supabase
     .from("profiles")
@@ -32,7 +36,7 @@ export default async function CommunityPage() {
     { data: earnedRows },
     { data: pricingItems },
   ] = await Promise.all([
-    supabase.from("collection_items").select("user_id").or("for_sale.eq.true,for_trade.eq.true"),
+    supabase.from("collection_items").select("user_id, quantity").or("for_sale.eq.true,for_trade.eq.true"),
     supabase.from("follows").select("following_id"),
     // Resilient: returns null data (not a crash) if column doesn't exist yet
     profileIds.length
@@ -75,9 +79,11 @@ export default async function CommunityPage() {
       .filter(Boolean) as NonNullable<ReturnType<typeof BADGE_MAP.get>>[];
   }
 
+  // Per-collector listing counts reflect physical copies (sum of quantity), consistent
+  // with the profile/storefront "active listings" stats.
   const listingCountMap = new Map<string, number>();
   publicItems?.forEach((l) => {
-    listingCountMap.set(l.user_id, (listingCountMap.get(l.user_id) ?? 0) + 1);
+    listingCountMap.set(l.user_id, (listingCountMap.get(l.user_id) ?? 0) + ((l as any).quantity ?? 1));
   });
 
   const followerCountMap = new Map<string, number>();
@@ -86,7 +92,7 @@ export default async function CommunityPage() {
   });
 
   const totalCollectors = allProfiles?.length ?? 0;
-  const totalListings   = publicItems?.length ?? 0;
+  const totalListings   = (publicItems ?? []).reduce((s, l) => s + ((l as any).quantity ?? 1), 0);
   const totalFollows    = followRows?.length ?? 0;
 
   const topCollectors = [...(allProfiles ?? [])]

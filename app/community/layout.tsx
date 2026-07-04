@@ -1,18 +1,11 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/utils/supabase/server";
-import { AppNav } from "@/components/AppNav";
+import { PublicNav } from "@/components/PublicNav";
 
-export default async function CommunityLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
-  const username = user.user_metadata?.username as string;
-
+// Ungated + static: /community reads only public data, so crawlers must be able
+// to render it. Auth is resolved client-side in PublicNav.
+export default function CommunityLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
-      <AppNav username={username} />
+      <PublicNav />
       <main className="mx-auto max-w-7xl px-6 py-10">{children}</main>
     </div>
   );

@@ -60,7 +60,7 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
     .from("collection_items")
     .select(`
       id, user_id, condition, finish, for_sale, for_trade,
-      list_price, grader, grade, quantity, created_at,
+      list_price, market_price, grader, grade, quantity, created_at,
       cards ( id, game, name, set_name, card_number, year, image_url, game_data )
     `)
     .eq("user_id", seller.id)
@@ -86,6 +86,8 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
   const watchedItemIds = watchlistData?.map((w) => w.item_id) ?? [];
   const wishedApiIds   = (wishlistItems ?? []).map((w) => w.pokemon_api_id).filter(Boolean) as string[];
   const joinedDate     = timeAgo(seller.created_at);
+  // "N active listings" counts physical copies (sum of quantity).
+  const activeCopies   = listingsWithSeller.reduce((s, l) => s + ((l as any).quantity ?? 1), 0);
 
   return (
     <div className="space-y-8">
@@ -113,7 +115,7 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
             </div>
           )}
           <p className="mt-1 text-sm text-foreground-muted">
-            Member since {joinedDate} · {listingsWithSeller.length} active {listingsWithSeller.length === 1 ? "listing" : "listings"}
+            Member since {joinedDate} · {activeCopies} active {activeCopies === 1 ? "listing" : "listings"}
           </p>
         </div>
       </div>

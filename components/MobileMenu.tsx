@@ -10,6 +10,7 @@ const navLinks = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Inventory", href: "/inventory" },
   { label: "Marketplace", href: "/marketplace" },
+  { label: "Cards", href: "/card-data" },
   { label: "Community", href: "/community" },
   { label: "Offers",   href: "/offers" },
 ];

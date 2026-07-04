@@ -6,11 +6,13 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 
 // Marketing nav links — mirrors the desktop set in the homepage navbar.
-const LINKS = [
+// `authOnly` links require an account, so they're shown only to signed-in users.
+const LINKS: { href: string; label: string; authOnly?: boolean }[] = [
   { href: "#how-it-works", label: "How it works" },
   { href: "#features",     label: "Features" },
-  { href: "/marketplace",  label: "Marketplace" },
-  { href: "/community",    label: "Community" },
+  { href: "#card-search",  label: "Card Search" },
+  { href: "/marketplace",  label: "Marketplace", authOnly: true },
+  { href: "/community",    label: "Community",   authOnly: true },
   { href: "/pricing",      label: "Pricing" },
 ];
 
@@ -63,7 +65,7 @@ export function HomeMobileNav({ loggedIn = false }: { loggedIn?: boolean }) {
             className="fixed inset-0 z-40 cursor-default"
           />
           <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-xl">
-            {LINKS.map((l) => (
+            {LINKS.filter((l) => !(l.authOnly && !loggedIn)).map((l) => (
               <Link
                 key={l.href}
                 href={l.href}

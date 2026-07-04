@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { UserNav } from "@/components/UserNav";
 import { MobileMenu } from "@/components/MobileMenu";
@@ -10,6 +12,7 @@ const navLinks = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Inventory", href: "/inventory" },
   { label: "Marketplace", href: "/marketplace" },
+  { label: "Cards", href: "/card-data" },
   { label: "Community", href: "/community" },
 ];
 

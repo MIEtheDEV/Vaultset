@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { ListingDetail } from "@/components/ListingDetail";
 import { isOnVacation, vacationReturnDate } from "@/lib/vacation";
+import { mergeDailySeries, apiDailyChange, dailyChange, type PricePoint, type Change } from "@/lib/priceHistory";
+import { priceApiId } from "@/lib/pricing/cardIdentity";
+import { extractApiCardHistory } from "@/lib/pricing/cardHistory";
 
 const CONDITION_LABEL: Record<string, string> = {
   mint: "Mint", near_mint: "Near Mint", lightly_played: "Lightly Played",
@@ -62,13 +66,14 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  // No auth redirect — listing pages are publicly crawlable
+  // Listings are gated — send logged-out visitors to sign in.
+  if (!user) redirect("/login");
 
   const { data: listing } = await supabase
     .from("collection_items")
     .select(`
       id, user_id, condition, finish, for_sale, for_trade,
-      list_price, quantity, grader, grade, cert_number, notes, created_at, on_hold,
+      list_price, market_price, quantity, grader, grade, cert_number, notes, created_at, on_hold,
       cards (
         id, game, name, set_name, set_code, card_number, year, image_url, game_data
       )
@@ -100,6 +105,37 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     .neq("id", id)
     .order("created_at", { ascending: false })
     .limit(6);
+
+  // Market-value history for the value-over-time chart. price_history is RLS-restricted
+  // to the owner, so read it with the service-role client — read-only, and a listed
+  // card's value-over-time is public, non-sensitive data.
+  const admin = createAdminClient();
+  const apiId = priceApiId((card as any).game_data ?? {}, (card as any).id);
+  const [{ data: histRows }, { data: priceRow }] = await Promise.all([
+    admin
+      .from("price_history")
+      .select("market_price, snapshotted_at")
+      .eq("collection_item_id", id)
+      .order("snapshotted_at", { ascending: true }),
+    apiId
+      ? admin.from("card_prices").select("raw").eq("card_api_id", apiId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const ownPoints: PricePoint[] = (histRows ?? []).map((h) => ({
+    date: h.snapshotted_at as string,
+    value: Number(h.market_price),
+  }));
+  const api = extractApiCardHistory((priceRow as any)?.raw, {
+    finish: (listing as any).finish ?? null,
+    edition: ((card as any).game_data as any)?.edition ?? null,
+    condition: listing.condition,
+    grader: listing.grader,
+  });
+  const marketPrice = (listing as any).market_price ?? null;
+  const valueHistory: PricePoint[] = mergeDailySeries(api?.points ?? [], ownPoints, marketPrice);
+  // Ticker: prefer the provider's real 24h move, else fall back to our snapshot diff.
+  const valueChange: Change | null = apiDailyChange(api?.change24hrPct, marketPrice) ?? dailyChange(valueHistory);
 
   const sellerFollowersOnly = !!(seller as any)?.followers_only_offers;
   const sellerOnVacation    = isOnVacation(seller as any);
@@ -218,6 +254,8 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
           condition:  l.condition,
           card:       Array.isArray(l.cards) ? l.cards[0] : l.cards,
         }))}
+        valueHistory={valueHistory}
+        valueChange={valueChange}
         currentUserId={user?.id ?? ""}
         initialWatched={!!watchEntry}
         sellerFollowersOnly={sellerFollowersOnly}

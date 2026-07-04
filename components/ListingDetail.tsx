@@ -9,8 +9,12 @@ import { isProSubscriber } from "@/lib/proStatus";
 import { MessageButton } from "@/components/MessageButton";
 import { OfferModal } from "@/components/OfferModal";
 import { MarketValueChip } from "@/components/MarketValueChip";
+import { CardValueChart } from "@/components/CardValueChart";
+import { DailyChange } from "@/components/DailyChange";
 import { createClient } from "@/utils/supabase/client";
 import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
+import { dailyChange, type PricePoint, type Change } from "@/lib/priceHistory";
+import { priceApiId } from "@/lib/pricing/cardIdentity";
 import { timeAgo } from "@/lib/timeAgo";
 
 const raritySystem = new PokemonRaritySystem();
@@ -79,11 +83,13 @@ interface OtherListing {
 
 export function ListingDetail({
   listing, card, seller, otherListings, currentUserId, initialWatched,
+  valueHistory = [], valueChange,
   sellerFollowersOnly = false, currentUserFollowsSeller = false,
   sellerOnVacation = false, vacationMessage = null, vacationReturnAt = null,
 }: {
   listing: Listing; card: Card; seller: Seller;
   otherListings: OtherListing[]; currentUserId: string; initialWatched: boolean;
+  valueHistory?: PricePoint[]; valueChange?: Change | null;
   sellerFollowersOnly?: boolean; currentUserFollowsSeller?: boolean;
   sellerOnVacation?: boolean; vacationMessage?: string | null; vacationReturnAt?: string | null;
 }) {
@@ -112,6 +118,9 @@ export function ListingDetail({
   }
 
   const joinedDate = timeAgo(seller.created_at);
+  const change = valueChange ?? dailyChange(valueHistory);
+  const cardApiId = priceApiId((card.game_data ?? {}) as Record<string, unknown>, card.id);
+  const cardDataHref = cardApiId ? `/card-data/${encodeURIComponent(cardApiId)}#value-chart` : undefined;
 
   return (
     <div className="space-y-10">
@@ -226,6 +235,12 @@ export function ListingDetail({
                 grade={listing.grade}
               />
             ) : null}
+            {change && (
+              <p className="flex items-center gap-1.5 pt-1 text-xs text-foreground-muted">
+                <span>Today</span>
+                <DailyChange change={change} href={cardDataHref} />
+              </p>
+            )}
           </div>
 
           {/* Seller */}
@@ -359,6 +374,13 @@ export function ListingDetail({
           </div>
         </div>
       </div>
+
+      {/* Market value over time */}
+      {valueHistory.length >= 2 && (
+        <div id="value-chart" className="scroll-mt-24">
+          <CardValueChart data={valueHistory} />
+        </div>
+      )}
 
       {/* More from this seller */}
       {otherListings.length > 0 && (

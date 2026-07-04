@@ -53,12 +53,11 @@ export default async function ProfileCardPage({
     { data: allItems },
     { count: serialCount },
     { data: thumbListings },
-    { count: activeListings },
     featuredResult,
   ] = await Promise.all([
     supabase
       .from("collection_items")
-      .select("quantity, grader")
+      .select("quantity, grader, for_sale, for_trade")
       .eq("user_id", profile.id),
 
     supabase
@@ -74,12 +73,6 @@ export default async function ProfileCardPage({
       .order("created_at", { ascending: false })
       .limit(3),
 
-    supabase
-      .from("collection_items")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", profile.id)
-      .or("for_sale.eq.true,for_trade.eq.true"),
-
     featuredItemId
       ? supabase
           .from("collection_items")
@@ -89,8 +82,10 @@ export default async function ProfileCardPage({
       : Promise.resolve({ data: null, error: null }),
   ]);
 
-  const totalCards  = allItems?.reduce((s, r) => s + (r.quantity ?? 1), 0) ?? 0;
-  const gradedCount = allItems?.filter((r) => !!(r as any).grader).length ?? 0;
+  // Counts reflect physical copies (sum of quantity), consistent with the rest of the site.
+  const totalCards     = allItems?.reduce((s, r) => s + (r.quantity ?? 1), 0) ?? 0;
+  const gradedCount    = allItems?.filter((r) => !!(r as any).grader).reduce((s, r) => s + (r.quantity ?? 1), 0) ?? 0;
+  const activeListings = allItems?.filter((r) => (r as any).for_sale || (r as any).for_trade).reduce((s, r) => s + (r.quantity ?? 1), 0) ?? 0;
 
   const listingThumbs: string[] = [];
   (thumbListings ?? []).forEach((l) => {

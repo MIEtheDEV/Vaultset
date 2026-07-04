@@ -4,6 +4,7 @@ import { createAdminClient } from "@/utils/supabase/admin";
 
 export const metadata: Metadata = {
   title: "Collector Reviews — Vaultset",
+  alternates: { canonical: "/reviews" },
   description: "See what Pokémon TCG collectors are saying about Vaultset — the free collection tracker, marketplace, and community platform.",
 };
 
@@ -24,8 +25,28 @@ export default async function ReviewsPage() {
     : 0;
   const pct          = (average / 5) * 100;
 
+  const reviewsLd = count > 0 ? {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Vaultset",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    url: "https://vaultset.app",
+    aggregateRating: { "@type": "AggregateRating", ratingValue: average.toFixed(1), reviewCount: count, bestRating: 5, worstRating: 1 },
+    review: all.slice(0, 20).map((r) => ({
+      "@type": "Review",
+      reviewRating: { "@type": "Rating", ratingValue: r.rating, bestRating: 5, worstRating: 1 },
+      author: { "@type": "Person", name: (r.display_name as string) ?? "Vaultset collector" },
+      reviewBody: r.body as string,
+      ...(r.created_at ? { datePublished: new Date(r.created_at as string).toISOString().slice(0, 10) } : {}),
+    })),
+  } : null;
+
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
+      {reviewsLd && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(reviewsLd) }} />
+      )}
 
       {/* Minimal nav */}
       <nav className="border-b border-border bg-background/80 backdrop-blur-md">

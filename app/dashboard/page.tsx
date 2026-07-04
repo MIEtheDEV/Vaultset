@@ -152,9 +152,9 @@ export default async function DashboardPage() {
 
   const [
     { data: quantityData },
-    { count: cardListings },
+    { data: cardListingRows },
     { count: sealedListings },
-    { count: pendingTrades },
+    { data: tradeRows },
     { data: recentItems },
     { data: watchlistData },
     { data: refreshLog },
@@ -165,15 +165,15 @@ export default async function DashboardPage() {
     { data: recentMessages },
     { count: existingReviewCount },
     { data: priceHistoryRaw },
-    { count: gradedItemCount },
+    { data: gradedRows },
     { count: userFollowerCount },
     { data: badgeData },
     { data: rpcBadgeSlugs },
   ] = await Promise.all([
     supabase.from("collection_items").select("quantity, market_price").eq("user_id", user!.id),
-    supabase.from("collection_items").select("*", { count: "exact", head: true }).eq("user_id", user!.id).eq("for_sale", true),
+    supabase.from("collection_items").select("quantity").eq("user_id", user!.id).eq("for_sale", true),
     supabase.from("product_purchases").select("*", { count: "exact", head: true }).eq("user_id", user!.id).or("for_sale.eq.true,for_trade.eq.true"),
-    supabase.from("collection_items").select("*", { count: "exact", head: true }).eq("user_id", user!.id).eq("for_trade", true),
+    supabase.from("collection_items").select("quantity").eq("user_id", user!.id).eq("for_trade", true),
     supabase.from("collection_items").select(`
       id, condition, grader, grade, quantity, for_sale, for_trade, list_price, created_at,
       cards ( name, set_name, card_number, image_url, game_data )
@@ -199,7 +199,7 @@ export default async function DashboardPage() {
       .order("snapshotted_at", { ascending: true }),
     supabase
       .from("collection_items")
-      .select("*", { count: "exact", head: true })
+      .select("quantity")
       .eq("user_id", user!.id)
       .not("grader", "is", null),
     supabase
@@ -262,7 +262,12 @@ export default async function DashboardPage() {
   const collectionValue  = quantityData?.reduce((sum, r) => {
     return sum + (r.market_price != null ? Number(r.market_price) * (r.quantity ?? 1) : 0);
   }, 0) ?? 0;
-  const activeListings = (cardListings ?? 0) + (sealedListings ?? 0);
+  // Card counts reflect physical copies (sum of quantity), not row/line-item counts,
+  // so they stay consistent with Total Cards. Sealed products have no quantity (1 row = 1 unit).
+  const cardListings    = (cardListingRows ?? []).reduce((sum, r) => sum + (r.quantity ?? 1), 0);
+  const pendingTrades   = (tradeRows       ?? []).reduce((sum, r) => sum + (r.quantity ?? 1), 0);
+  const gradedItemCount = (gradedRows      ?? []).reduce((sum, r) => sum + (r.quantity ?? 1), 0);
+  const activeListings  = cardListings + (sealedListings ?? 0);
 
   // Check and award any newly earned achievement badges
   const existingBadgeMap = new Map(

@@ -41,6 +41,9 @@ export abstract class CardSearchProvider {
   /** Fetch search results for a card name query. */
   abstract search(query: string, options?: SearchOptions): Promise<SearchResult[]>;
 
+  /** Fetch a single card by its native catalog id (e.g. pokemontcg.io "sv4-1"). */
+  abstract getById(id: string): Promise<SearchResult | null>;
+
   /**
    * Map a raw API rarity string (e.g. "Double Rare") to the internal
    * rarity key used throughout the application (e.g. "double_rare").

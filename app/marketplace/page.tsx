@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { MarketplaceGrid } from "@/components/MarketplaceGrid";
 import { SealedProductsGrid } from "@/components/SealedProductsGrid";
@@ -29,7 +30,7 @@ export default async function MarketplacePage({
 
   const listingSelect = `
     id, user_id, condition, finish, for_sale, for_trade,
-    list_price, grader, grade, quantity, created_at,
+    list_price, market_price, grader, grade, quantity, created_at,
     cards ( id, game, name, set_name, card_number, year, image_url, game_data )
   `;
 
@@ -136,11 +137,17 @@ export default async function MarketplacePage({
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Marketplace</h1>
-        <p className="mt-1 text-sm text-foreground-muted">
-          Browse cards listed for sale and trade across the community.
+      <div className="space-y-3">
+        <h1 className="text-2xl font-bold text-foreground">Pokémon TCG Marketplace — Buy, Sell &amp; Trade Cards</h1>
+        <p className="text-sm text-foreground-muted max-w-2xl">
+          Buy, sell, and trade Pokémon TCG cards with collectors across the community. Every listing
+          shows live market value, condition, and grade — send cash or trade offers directly.
         </p>
+        <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+          <Link href="/sets" className="text-gold hover:text-gold-light transition-colors">Browse by set →</Link>
+          <Link href="/most-valuable-pokemon-cards" className="text-gold hover:text-gold-light transition-colors">Most valuable cards →</Link>
+          <Link href="/card-data" className="text-gold hover:text-gold-light transition-colors">Search all cards →</Link>
+        </div>
       </div>
 
       <MarketplaceGrid

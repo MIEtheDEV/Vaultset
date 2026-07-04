@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { UserNav } from "@/components/UserNav";
@@ -7,6 +8,11 @@ import { RotatingHeadline } from "@/components/RotatingHeadline";
 import { InstallAppButton } from "@/components/InstallAppButton";
 import { InstallPwaCallout } from "@/components/InstallPwaCallout";
 import { HomeMobileNav } from "@/components/HomeMobileNav";
+import { CardSearchBrowser } from "@/components/CardSearchBrowser";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 const features: { title: string; description: string; icon: ReactNode; install?: boolean }[] = [
   {
@@ -213,6 +219,7 @@ export default async function Home() {
         url: "https://vaultset.app",
         logo: { "@type": "ImageObject", url: "https://vaultset.app/img/icon.png" },
         description: "The free Pokémon TCG collection tracker. Manage your inventory, track live market prices, and buy, sell, and trade cards with other collectors.",
+        sameAs: ["https://twitter.com/vaultsetapp"],
       },
       {
         "@type": "FAQPage",
@@ -242,8 +249,14 @@ export default async function Home() {
           <div className="hidden min-[1200px]:flex items-center gap-8 text-sm text-foreground-muted">
             <Link href="#how-it-works" className="hover:text-foreground transition-colors">How it works</Link>
             <Link href="#features" className="hover:text-foreground transition-colors">Features</Link>
-            <Link href="/marketplace" className="hover:text-foreground transition-colors">Marketplace</Link>
-            <Link href="/community" className="hover:text-foreground transition-colors">Community</Link>
+            <Link href="#card-search" className="hover:text-foreground transition-colors">Card Search</Link>
+            {/* Marketplace & Community require an account; show them only to signed-in users on the homepage. */}
+            {username && (
+              <>
+                <Link href="/marketplace" className="hover:text-foreground transition-colors">Marketplace</Link>
+                <Link href="/community" className="hover:text-foreground transition-colors">Community</Link>
+              </>
+            )}
             <Link href="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
           </div>
           <div className="flex items-center gap-4">
@@ -325,6 +338,20 @@ export default async function Home() {
       <div className="mx-auto max-w-7xl px-6">
         <InstallPwaCallout className="my-12" serverInstalled={pwaInstalled} />
       </div>
+
+      {/* Card Search */}
+      <section id="card-search" className="py-20 sm:py-28 border-t border-border scroll-mt-16">
+        <div className="mx-auto max-w-5xl px-6">
+          <div className="text-center mb-10 space-y-4">
+            <h2 className="text-4xl font-bold tracking-tight">Look up any card</h2>
+            <p className="text-foreground-muted text-lg max-w-xl mx-auto">
+              Search the full Pokémon TCG catalog for live market value, price history, and
+              what&apos;s available — even cards no one has added yet.
+            </p>
+          </div>
+          <CardSearchBrowser loggedIn={!!username} />
+        </div>
+      </section>
 
       {/* How It Works */}
       <section id="how-it-works" className="py-28">

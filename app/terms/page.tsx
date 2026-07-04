@@ -2,6 +2,7 @@ import Link from "next/link";
 
 export const metadata = {
   title: "Terms of Service — Vaultset",
+  alternates: { canonical: "/terms" },
   description: "Read the Vaultset Terms of Service governing your use of the platform.",
 };
 

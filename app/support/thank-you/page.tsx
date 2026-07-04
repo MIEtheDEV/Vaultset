@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export const metadata = { title: "Thank You — Vaultset" };
+export const metadata = { title: "Thank You — Vaultset", robots: { index: false } };
 
 export default function ThankYouPage() {
   return (

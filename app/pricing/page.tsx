@@ -11,6 +11,14 @@ export const metadata: Metadata = {
   alternates: { canonical: "/pricing" },
 };
 
+const FAQS = [
+  { q: "Can I cancel anytime?", a: "Yes. Cancel from your account settings or the billing portal at any time. Your Pro access continues until the end of the current billing period." },
+  { q: "What happens when I cancel?", a: "Nothing changes right away. Your membership stays active and simply stops auto-renewing — it ends on the date it would have renewed. Every Pro feature is preserved in full until that end date, so you keep everything you paid for through the rest of the period." },
+  { q: "What happens to my data if I downgrade?", a: "Nothing is deleted. You keep your full inventory and history. Features that require Pro (price charts, analytics) simply become inaccessible until you resubscribe." },
+  { q: "What is the One-Time plan?", a: "A single payment that gives you one month of Pro access with no subscription or auto-renewal. Great if you want to try Pro without committing to a recurring plan." },
+  { q: "Do you offer refunds?", a: "Subscriptions can be cancelled anytime but are not refunded for the current billing period. The One-Time plan is non-refundable." },
+];
+
 const CHECK = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gold shrink-0">
     <polyline points="20 6 9 17 4 12" />
@@ -207,29 +215,16 @@ export default async function PricingPage() {
 
           {/* FAQ */}
           <div className="max-w-2xl mx-auto space-y-6">
+            <script
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{ __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "FAQPage",
+                mainEntity: FAQS.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
+              }) }}
+            />
             <h2 className="text-xl font-bold text-foreground text-center">Common questions</h2>
-            {[
-              {
-                q: "Can I cancel anytime?",
-                a: "Yes. Cancel from your account settings or the billing portal at any time. Your Pro access continues until the end of the current billing period.",
-              },
-              {
-                q: "What happens when I cancel?",
-                a: "Nothing changes right away. Your membership stays active and simply stops auto-renewing — it ends on the date it would have renewed. Every Pro feature is preserved in full until that end date, so you keep everything you paid for through the rest of the period.",
-              },
-              {
-                q: "What happens to my data if I downgrade?",
-                a: "Nothing is deleted. You keep your full inventory and history. Features that require Pro (price charts, analytics) simply become inaccessible until you resubscribe.",
-              },
-              {
-                q: "What is the One-Time plan?",
-                a: "A single payment that gives you one month of Pro access with no subscription or auto-renewal. Great if you want to try Pro without committing to a recurring plan.",
-              },
-              {
-                q: "Do you offer refunds?",
-                a: "Subscriptions can be cancelled anytime but are not refunded for the current billing period. The One-Time plan is non-refundable.",
-              },
-            ].map(({ q, a }) => (
+            {FAQS.map(({ q, a }) => (
               <div key={q} className="space-y-1.5">
                 <p className="text-sm font-semibold text-foreground">{q}</p>
                 <p className="text-sm text-foreground-muted leading-relaxed">{a}</p>

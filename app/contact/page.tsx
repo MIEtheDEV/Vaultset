@@ -2,6 +2,7 @@ import Link from "next/link";
 
 export const metadata = {
   title: "Contact — Vaultset",
+  alternates: { canonical: "/contact" },
   description: "Get in touch with the Vaultset team for support, bug reports, privacy requests, or general feedback.",
 };
 

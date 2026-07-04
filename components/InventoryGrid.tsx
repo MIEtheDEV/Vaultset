@@ -11,6 +11,8 @@ import { CardImage } from "@/components/CardImage";
 import { RemoveCardButton } from "@/components/RemoveCardButton";
 import { ListAtMarketButton } from "@/components/ListAtMarketButton";
 import { RefreshValueButton } from "@/components/RefreshValueButton";
+import { DailyChange } from "@/components/DailyChange";
+import { priceApiId } from "@/lib/pricing/cardIdentity";
 
 const conditionLabel: Record<string, string> = {
   mint: "Mint",
@@ -31,7 +33,7 @@ const conditionColor: Record<string, string> = {
 };
 
 type FilterKey = "all" | "for_sale" | "for_trade" | "graded";
-type SortKey   = "newest" | "oldest" | "name_asc" | "name_desc" | "rarity_high";
+type SortKey   = "newest" | "oldest" | "name_asc" | "name_desc" | "rarity_high" | "value_high" | "value_low";
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all",       label: "All" },
@@ -46,6 +48,8 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "name_asc",    label: "Name (A – Z)" },
   { key: "name_desc",   label: "Name (Z – A)" },
   { key: "rarity_high", label: "Rarity (highest first)" },
+  { key: "value_high",  label: "Value (high – low)" },
+  { key: "value_low",   label: "Value (low – high)" },
 ];
 
 
@@ -97,7 +101,7 @@ function resolveCard(item: InventoryItem) {
   return Array.isArray(item.cards) ? item.cards[0] : item.cards;
 }
 
-export function InventoryGrid({ items, proposedItemIds = [], canRefresh = false }: { items: InventoryItem[]; proposedItemIds?: string[]; canRefresh?: boolean }) {
+export function InventoryGrid({ items, proposedItemIds = [], canRefresh = false, dailyChanges = {} }: { items: InventoryItem[]; proposedItemIds?: string[]; canRefresh?: boolean; dailyChanges?: Record<string, { abs: number; pct: number }> }) {
   const [search, setSearch]         = useState("");
   const [filter, setFilter]         = useState<FilterKey>("all");
   const [sort, setSort]             = useState<SortKey>("newest");
@@ -161,6 +165,9 @@ export function InventoryGrid({ items, proposedItemIds = [], canRefresh = false 
       const rb = (resolveCard(b)?.game_data as Record<string, unknown> | null)?.rarity as string ?? "";
       return raritySystem.getSortOrder(ra) - raritySystem.getSortOrder(rb);
     });
+    // Value = tracked market price. Cards without a value sort to the bottom either way.
+    if (sort === "value_high") result.sort((a, b) => (b.market_price ?? -Infinity) - (a.market_price ?? -Infinity));
+    if (sort === "value_low")  result.sort((a, b) => (a.market_price ??  Infinity) - (b.market_price ??  Infinity));
 
     return result;
   }, [items, filter, sort, search]);
@@ -315,6 +322,7 @@ export function InventoryGrid({ items, proposedItemIds = [], canRefresh = false 
             if (!card) return null;
             const condKey = item.condition ?? "";
             const isSelected = selected.has(item.id);
+            const cardApiId = priceApiId((card.game_data ?? {}) as Record<string, unknown>, card.id);
 
             return (
               <div
@@ -431,11 +439,18 @@ export function InventoryGrid({ items, proposedItemIds = [], canRefresh = false 
                       )}
                       {!selectMode && canRefresh && <RefreshValueButton itemId={item.id} />}
                     </span>
-                    {item.for_sale && item.list_price != null && (
-                      <span className="text-sm font-semibold text-gold">
-                        ${item.list_price.toFixed(2)}
-                      </span>
-                    )}
+                    <div className="flex flex-col items-end gap-0.5">
+                      {item.market_price != null && (
+                        dailyChanges[item.id]
+                          ? <DailyChange change={dailyChanges[item.id] ?? null} href={selectMode || !cardApiId ? undefined : `/card-data/${encodeURIComponent(cardApiId)}#value-chart`} />
+                          : <span className="text-xs text-foreground-muted/60" title="Daily change appears once there's a prior day to compare">—</span>
+                      )}
+                      {item.for_sale && item.list_price != null && (
+                        <span className="text-sm font-semibold text-gold">
+                          ${item.list_price.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {item.market_price != null && (

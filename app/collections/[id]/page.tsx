@@ -6,7 +6,7 @@ import { createClient } from "@/utils/supabase/server";
 import { CollectionEntryRemover } from "@/components/CollectionEntryRemover";
 import { CollectionDeleter } from "@/components/CollectionDeleter";
 
-export const metadata: Metadata = { title: "Collection" };
+export const metadata: Metadata = { title: "Collection", robots: { index: false } };
 
 const TYPE_LABELS: Record<string, string> = {
   set:    "Set",

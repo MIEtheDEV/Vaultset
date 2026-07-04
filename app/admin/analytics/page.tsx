@@ -25,9 +25,7 @@ export default async function AdminAnalyticsPage() {
 
   const [
     authResult,
-    itemsResult,
-    activeListingsResult,
-    tradeListingsResult,
+    cardCountsResult,
     offersResult,
     pendingReviewsResult,
     approvedReviewsResult,
@@ -37,9 +35,8 @@ export default async function AdminAnalyticsPage() {
     auditResult,
   ] = await Promise.all([
     admin.auth.admin.listUsers({ perPage: 1000 }),
-    admin.from("collection_items").select("*", { count: "exact", head: true }),
-    admin.from("collection_items").select("*", { count: "exact", head: true }).eq("for_sale", true),
-    admin.from("collection_items").select("*", { count: "exact", head: true }).eq("for_trade", true),
+    // Card totals as physical copies (sum of quantity), cap-free via SQL aggregate.
+    admin.rpc("admin_card_counts"),
     admin.from("offers").select("status"),
     admin.from("reviews").select("*", { count: "exact", head: true }).eq("approved", false),
     admin.from("reviews").select("*", { count: "exact", head: true }).eq("approved", true),
@@ -50,9 +47,11 @@ export default async function AdminAnalyticsPage() {
   ]);
 
   const authData            = authResult.data;
-  const totalItems          = itemsResult.count;
-  const activeListings      = activeListingsResult.count;
-  const tradeListings       = tradeListingsResult.count;
+  const cardCounts          = (cardCountsResult.data?.[0] ?? {}) as
+    { total_qty?: number; for_sale_qty?: number; for_trade_qty?: number };
+  const totalItems          = cardCounts.total_qty;
+  const activeListings      = cardCounts.for_sale_qty;
+  const tradeListings       = cardCounts.for_trade_qty;
   const offerRows           = offersResult.data;
   const pendingReviews      = pendingReviewsResult.count;
   const approvedReviews     = approvedReviewsResult.count;

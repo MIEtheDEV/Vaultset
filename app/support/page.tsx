@@ -4,6 +4,7 @@ import { DonateCardButton } from "@/components/DonateCardButton";
 
 export const metadata = {
   title: "Support Vaultset — Help Keep it Free",
+  alternates: { canonical: "/support" },
   description: "Vaultset is free to use and will stay that way. If it's been useful to you, a small contribution helps keep the servers running.",
 };
 
