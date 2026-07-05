@@ -25,6 +25,7 @@ type Status = "idle" | "cropping" | "reading" | "matching" | "done" | "error";
 
 interface ScanDebug {
   nameCandidates: string[];
+  number: string | null;
   poolSize: number;
   justtcgAppended: number;
   top: { name: string; set: string; number: string; score: number }[];
@@ -240,7 +241,7 @@ export function CardScanner({ onSelect }: Props) {
                   <div>
                     <p className="font-semibold text-foreground">Name candidates</p>
                     <p className="break-words">{debug.nameCandidates.join(", ") || "—"}</p>
-                    <p className="mt-0.5">pool {debug.poolSize} · JustTCG appended {debug.justtcgAppended}</p>
+                    <p className="mt-0.5">number read: {debug.number ?? "—"} · pool {debug.poolSize} · JustTCG appended {debug.justtcgAppended}</p>
                   </div>
                 )}
                 {debug && debug.top.length > 0 && (

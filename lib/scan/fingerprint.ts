@@ -6,6 +6,8 @@
 // queries live in lib/search, the OCR in lib/scan/ocr (client). See
 // docs/card-scanning-research.md §4 for the measurements behind this approach.
 
+import { normalizeCardNumber } from "@/lib/search/cardNumber";
+
 // ---------- fuzzy helpers (tolerate OCR character errors) ----------
 export function norm(s: string): string {
   return (s || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
@@ -118,10 +120,25 @@ export function extractAttackPhrases(text: string, lines: string[]): string[] {
   return [...new Set([...phrases, ...singles])].slice(0, 6);
 }
 
+// Collector number from OCR, when the "NNN/TTT" form reads (e.g. "093/086" → "093").
+// Post-crop this often reads even on modern cards, and it's the key to the *exact
+// printing*: it boosts ranking and lets JustTCG surface promos/new cards by number.
+// Conservative — only the slash form, to avoid inventing a wrong number.
+export function extractNumber(text: string): string | null {
+  const slash = text.match(/(\d{1,3})\s*\/\s*(\d{1,3})/);
+  if (slash) return slash[1];
+  // OCR frequently mangles the "/" — reading "093/086" as "0937086" (slash→7) or
+  // dropping it ("093086"). Recover NNN/TTT from those merged runs. Gated
+  // downstream (only trusted alongside a name/attack match), so a false read is cheap.
+  const merged = text.match(/\b(\d{2,3})7(\d{2,3})\b/) || text.match(/\b(\d{3})(\d{3})\b/);
+  return merged ? merged[1] : null;
+}
+
 // ---------- ranking ----------
 export interface RankableCard {
   id: string;
   name: string;
+  number?: string;
   attacks?: { name: string }[];
   hp?: string;
 }
@@ -144,14 +161,24 @@ function identityKey(c: RankableCard): string {
  * barely moves the score). Returns cards sorted best-first, each tagged with its
  * identity key so callers can collapse the reprint tie-set.
  */
-export function rankCandidates<T extends RankableCard>(candidates: T[], ocrText: string): RankedCard<T>[] {
+export function rankCandidates<T extends RankableCard>(
+  candidates: T[],
+  ocrText: string,
+  wantNumber?: string | null,
+): RankedCard<T>[] {
   const hay = tokens(ocrText);
+  const want = wantNumber ? normalizeCardNumber(wantNumber) : null;
   return candidates
     .map((card) => {
       const atkHit = (card.attacks || []).filter((a) => phrasePresent(hay, a.name)).length;
       const hpHit = card.hp && tokenPresent(hay, String(card.hp), 0.9) ? 1 : 0;
       const nameHit = phrasePresent(hay, card.name) ? 1 : 0;
-      const score = atkHit * 10 + hpHit * 4 + nameHit;
+      // A collector-number match is only trusted when the card also matches by name
+      // or attack — otherwise a coincidental number would surface a wrong card. When
+      // it does line up, it's the strongest signal for the *exact printing*.
+      const idMatch = nameHit === 1 || atkHit > 0;
+      const numHit = want && idMatch && card.number && normalizeCardNumber(card.number) === want ? 1 : 0;
+      const score = atkHit * 10 + hpHit * 4 + nameHit + numHit * 20;
       return { card, score, identityKey: identityKey(card) };
     })
     .sort((a, b) => b.score - a.score);

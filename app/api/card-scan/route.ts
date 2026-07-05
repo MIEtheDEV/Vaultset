@@ -5,7 +5,7 @@ import { isUserAdmin } from "@/lib/auth/admin";
 import { scanSearchPokemon, type ScanCandidate } from "@/lib/search/PokemonTCGProvider";
 import type { SearchResult } from "@/lib/search/CardSearchProvider";
 import { searchJustTcg } from "@/lib/search/justTcgSearch";
-import { extractNameCandidates, extractAttackPhrases, rankCandidates, resolveScan } from "@/lib/scan/fingerprint";
+import { extractNameCandidates, extractAttackPhrases, extractNumber, rankCandidates, resolveScan } from "@/lib/scan/fingerprint";
 
 interface TopMatch { name: string; set: string; number: string; score: number }
 
@@ -42,6 +42,7 @@ export async function POST(request: Request) {
   // Compute the match. Every path (including "nothing read" / "no candidates")
   // falls through to logging + a single return, so failures are captured too.
   let nameCandidates: string[] = [];
+  let number: string | null = null;
   let pool: ScanCandidate[] = [];
   let top: TopMatch[] = [];
   let out: SearchResult[] = [];
@@ -52,9 +53,10 @@ export async function POST(request: Request) {
     const useLines = lines.length ? lines : text.split("\n");
     nameCandidates = extractNameCandidates(text, useLines);
     const attackPhrases = extractAttackPhrases(text, useLines);
+    number = extractNumber(text);
     if (nameCandidates.length > 0 || attackPhrases.length > 0) {
       pool = await scanSearchPokemon(nameCandidates, attackPhrases);
-      const ranked = rankCandidates(pool, text);
+      const ranked = rankCandidates(pool, text, number);
       top = ranked.slice(0, 6).map((r) => ({
         name: r.card.name, set: r.card.set?.name ?? "", number: r.card.number, score: r.score,
       }));
@@ -73,7 +75,9 @@ export async function POST(request: Request) {
       // gate this (e.g. only when no promo already present) before public launch.
       const jtQuery = (confident && out[0]) ? out[0].name : nameCandidates[0];
       if (jtQuery) {
-        const jt = await searchJustTcg(jtQuery);
+        // Pass the OCR'd number too — JustTCG's number filter surfaces the exact
+        // obscure printing (promos, brand-new secret rares) that name-only misses.
+        const jt = await searchJustTcg(jtQuery, number ?? undefined);
         const seen = new Set(out.map((c) => `${c.name.toLowerCase()}|${c.number}`));
         for (const c of jt) {
           const k = `${c.name.toLowerCase()}|${c.number}`;
@@ -96,6 +100,7 @@ export async function POST(request: Request) {
       ocr_text: text,
       ocr_char_count: text.length,
       name_candidates: nameCandidates,
+      extracted_number: number,
       pool_size: pool.length,
       justtcg_appended: justtcgAppended,
       confident,
@@ -111,6 +116,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     candidates: out,
     confident,
-    debug: { nameCandidates, poolSize: pool.length, justtcgAppended, top },
+    debug: { nameCandidates, number, poolSize: pool.length, justtcgAppended, top },
   });
 }
