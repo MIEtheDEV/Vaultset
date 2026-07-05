@@ -23,6 +23,13 @@ interface ScannedCard {
 
 type Status = "idle" | "cropping" | "reading" | "matching" | "done" | "error";
 
+interface ScanDebug {
+  nameCandidates: string[];
+  poolSize: number;
+  justtcgAppended: number;
+  top: { name: string; set: string; number: string; score: number }[];
+}
+
 interface Props {
   onSelect: (card: ScannedCard) => void;
 }
@@ -37,6 +44,8 @@ export function CardScanner({ onSelect }: Props) {
   const [preview, setPreview] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [ocrText, setOcrText] = useState("");
+  const [debug, setDebug] = useState<ScanDebug | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // UI gate: only render for admins. The /api/card-scan POST enforces this
@@ -59,6 +68,8 @@ export function CardScanner({ onSelect }: Props) {
     setConfident(false);
     setErrorMsg("");
     setFile(null);
+    setOcrText("");
+    setDebug(null);
     if (preview) { URL.revokeObjectURL(preview); setPreview(null); }
     if (fileRef.current) fileRef.current.value = "";
   }
@@ -85,6 +96,7 @@ export function CardScanner({ onSelect }: Props) {
     try {
       setStatus("reading");
       const { text, lines } = await ocrImage(blob, setProgress);
+      setOcrText(text);
       if (!text.trim()) {
         setCandidates([]);
         setStatus("done");
@@ -94,12 +106,13 @@ export function CardScanner({ onSelect }: Props) {
       const res = await fetch("/api/card-scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, lines }),
+        body: JSON.stringify({ text, lines, bytes: blob.size }),
       });
       if (!res.ok) throw new Error(res.status === 403 ? "Not authorized." : `Scan failed (${res.status}).`);
       const json = await res.json();
       setCandidates(json.candidates ?? []);
       setConfident(!!json.confident);
+      setDebug(json.debug ?? null);
       setStatus("done");
     } catch (err) {
       setErrorMsg((err as Error).message || "Something went wrong.");
@@ -217,6 +230,33 @@ export function CardScanner({ onSelect }: Props) {
             <p className="text-xs text-foreground-muted">
               Couldn’t identify the card. Try a sharper, straight-on photo — or use the search below.
             </p>
+          )}
+
+          {(status === "done" || status === "error") && (ocrText || debug) && (
+            <details className="mt-1 rounded-lg border border-border bg-surface/50 p-2">
+              <summary className="cursor-pointer text-[11px] font-medium text-foreground-muted">Diagnostics (admin)</summary>
+              <div className="mt-2 space-y-2 text-[11px] text-foreground-muted">
+                {debug && (
+                  <div>
+                    <p className="font-semibold text-foreground">Name candidates</p>
+                    <p className="break-words">{debug.nameCandidates.join(", ") || "—"}</p>
+                    <p className="mt-0.5">pool {debug.poolSize} · JustTCG appended {debug.justtcgAppended}</p>
+                  </div>
+                )}
+                {debug && debug.top.length > 0 && (
+                  <div>
+                    <p className="font-semibold text-foreground">Top matches (score)</p>
+                    {debug.top.map((t, i) => (
+                      <p key={i} className="truncate">{t.score} · {t.name} · {t.set} #{t.number}</p>
+                    ))}
+                  </div>
+                )}
+                <div>
+                  <p className="font-semibold text-foreground">OCR text</p>
+                  <pre className="whitespace-pre-wrap break-words max-h-40 overflow-auto rounded bg-background/50 p-1.5">{ocrText || "—"}</pre>
+                </div>
+              </div>
+            </details>
           )}
           </>
           )}

@@ -44,22 +44,40 @@ export function phrasePresent(hayTokens: string[], phrase: string, thresh = 0.8)
 }
 
 // ---------- name extraction ----------
+// Card boilerplate that is never the Pokémon's name — filtered from candidates so
+// e.g. "Evolves from Charmander" can't make us query Charmander.
+const STOPWORDS = new Set([
+  "pokemon", "stage", "basic", "evolves", "evolve", "from", "weakness", "resistance",
+  "retreat", "trainer", "energy", "illus", "the", "and", "this", "your", "you", "when",
+  "put", "into", "play", "card", "cards", "turn", "damage", "each", "may", "for", "with",
+  "ability", "attack", "poke", "body", "power", "rule", "level", "team", "item", "supporter",
+  "gym", "special", "basic", "then", "search", "deck", "hand", "flip", "coin", "active",
+]);
+
 // Anchor: across every era the Pokémon name shares a top-band line with the HP
 // ("Blastoise 100 HP", "Pikachu 40 HP", "Mew … 180"). Pull the alpha tokens off
 // those lines; fall back to the longest tokens anywhere. OCR reads top-to-bottom,
-// so the first ~45% of lines is the "top band".
+// so the first ~45% of lines is the "top band". Evolution lines ("Evolves from X")
+// and boilerplate are excluded — they name a *different* Pokémon.
 export function extractNameCandidates(text: string, lines: string[]): string[] {
+  const excluded = new Set<string>();
+  lines.forEach((line) => {
+    if (/evolv/i.test(line)) tokens(line).forEach((t) => excluded.add(t));
+  });
+  const usable = (t: string) => t.length >= 3 && !STOPWORDS.has(t) && !excluded.has(t);
+
   const out: string[] = [];
   const topCount = Math.max(3, Math.ceil(lines.length * 0.45));
   lines.slice(0, topCount).forEach((line) => {
+    if (/evolv/i.test(line)) return;
     const hasHp = /\bhp\b/i.test(line);
     const num = /\b(\d{2,3})\b/.exec(line)?.[1];
     if (!hasHp && !(num && +num >= 20 && +num <= 340)) return;
     tokens(line.replace(/\bhp\b/gi, " ").replace(/\d+/g, " ")).forEach((t) => {
-      if (t.length >= 3) out.push(t);
+      if (usable(t)) out.push(t);
     });
   });
-  const longest = [...new Set(tokens(text).filter((t) => t.length >= 5))]
+  const longest = [...new Set(tokens(text).filter((t) => t.length >= 5 && usable(t)))]
     .sort((a, b) => b.length - a.length)
     .slice(0, 4);
   return [...new Set([...out, ...longest])].slice(0, 8);
