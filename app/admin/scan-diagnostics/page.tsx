@@ -17,6 +17,7 @@ interface ScanRow {
   top_matches: TopMatch[] | null;
   result_candidates: ResultCard[] | null;
   image_bytes: number | null;
+  image_path: string | null;
   user_agent: string | null;
 }
 
@@ -35,6 +36,14 @@ export default async function ScanDiagnosticsPage() {
     .limit(50);
 
   const rows = (data ?? []) as ScanRow[];
+
+  // Signed URLs for the private scan images (1h). Batched.
+  const paths = rows.map((r) => r.image_path).filter((p): p is string => !!p);
+  const signed = new Map<string, string>();
+  if (paths.length) {
+    const { data: urls } = await admin.storage.from("scan-diagnostics").createSignedUrls(paths, 3600);
+    for (const u of urls ?? []) if (u.path && u.signedUrl) signed.set(u.path, u.signedUrl);
+  }
 
   return (
     <div className="space-y-4">
@@ -79,6 +88,13 @@ export default async function ScanDiagnosticsPage() {
                 </summary>
 
                 <div className="mt-3 space-y-3 border-t border-border pt-3 text-xs">
+                  {r.image_path && signed.get(r.image_path) && (
+                    <div>
+                      <p className="font-semibold text-foreground mb-1">Scanned image (what OCR saw)</p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={signed.get(r.image_path)} alt="Scanned card" className="h-64 w-auto rounded-lg border border-border" />
+                    </div>
+                  )}
                   <div>
                     <p className="font-semibold text-foreground mb-1">Name candidates</p>
                     <p className="text-foreground-muted break-words">{(r.name_candidates ?? []).join(", ") || "—"}</p>

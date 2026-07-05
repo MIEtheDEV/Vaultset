@@ -30,6 +30,46 @@ export interface ScanMatch {
   };
 }
 
+/**
+ * Manual refine: the scanner identified the Pokémon but OCR couldn't read the
+ * collector number (common on foils/promos), so the user types the number they
+ * can see. JustTCG's number filter pulls the exact printing (promos/new cards
+ * name-only search misses); pokemontcg.io fills in any native match. Verified:
+ * ("Charmeleon","079") → the Cosmos Holo promo; ("Crobat","093") → ME04 093/086.
+ */
+export async function manualLookup(name: string, number: string): Promise<ScanMatch> {
+  const clean = name.trim();
+  const want = normalizeCardNumber(number);
+  const out: SearchResult[] = [];
+  const seen = new Set<string>();
+  let justtcgAppended = 0;
+
+  if (clean.length >= 2) {
+    for (const c of await searchJustTcg(clean, number)) {
+      const k = `${c.name.toLowerCase()}|${c.number}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(c);
+      justtcgAppended++;
+    }
+    for (const c of await scanSearchPokemon([clean])) {
+      if (normalizeCardNumber(c.number) !== want) continue;
+      const k = `${c.name.toLowerCase()}|${c.number}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({
+        id: c.id, name: c.name, number: c.number, rarity: c.rarity,
+        subtypes: c.subtypes, set: c.set, images: c.images, tcgplayer: c.tcgplayer ?? null,
+      });
+    }
+  }
+  return {
+    candidates: out,
+    confident: out.length === 1,
+    debug: { nameCandidates: [clean], numberCandidates: [number], poolSize: out.length, justtcgAppended, top: [] },
+  };
+}
+
 export async function matchScan(text: string, lines: string[]): Promise<ScanMatch> {
   const useLines = lines.length ? lines : text.split("\n");
   const nameCandidates = text.length >= 3 ? extractNameCandidates(text, useLines) : [];

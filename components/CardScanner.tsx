@@ -47,6 +47,9 @@ export function CardScanner({ onSelect }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [ocrText, setOcrText] = useState("");
   const [debug, setDebug] = useState<ScanDebug | null>(null);
+  const [manualName, setManualName] = useState("");
+  const [manualNum, setManualNum] = useState("");
+  const [manualBusy, setManualBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // UI gate: only render for admins. The /api/card-scan POST enforces this
@@ -71,8 +74,37 @@ export function CardScanner({ onSelect }: Props) {
     setFile(null);
     setOcrText("");
     setDebug(null);
+    setManualName("");
+    setManualNum("");
     if (preview) { URL.revokeObjectURL(preview); setPreview(null); }
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  // Manual refine: OCR identified the Pokémon but couldn't read the (foil/tiny)
+  // collector number — the user types the number they can see to pull the exact
+  // printing (JustTCG's number filter finds promos/new prints OCR-only misses).
+  async function manualFind() {
+    const name = (manualName || candidates[0]?.name || "").trim();
+    const number = manualNum.trim();
+    if (!name || !number) return;
+    setManualBusy(true);
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/card-scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, number }),
+      });
+      if (!res.ok) throw new Error(res.status === 403 ? "Not authorized." : `Lookup failed (${res.status}).`);
+      const json = await res.json();
+      setCandidates(json.candidates ?? []);
+      setConfident(!!json.confident);
+      setDebug(json.debug ?? null);
+    } catch (err) {
+      setErrorMsg((err as Error).message || "Lookup failed.");
+    } finally {
+      setManualBusy(false);
+    }
   }
 
   // A photo was captured — hand it to the cropper first (crop guide + perspective
@@ -104,10 +136,17 @@ export function CardScanner({ onSelect }: Props) {
         return;
       }
       setStatus("matching");
+      // Include the cropped image (data URL) so it can be logged for OCR tuning.
+      const image = await new Promise<string>((resolve) => {
+        const r = new FileReader();
+        r.onloadend = () => resolve(typeof r.result === "string" ? r.result : "");
+        r.onerror = () => resolve("");
+        r.readAsDataURL(blob);
+      });
       const res = await fetch("/api/card-scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, lines, bytes: blob.size }),
+        body: JSON.stringify({ text, lines, bytes: blob.size, image }),
       });
       if (!res.ok) throw new Error(res.status === 403 ? "Not authorized." : `Scan failed (${res.status}).`);
       const json = await res.json();
@@ -231,6 +270,37 @@ export function CardScanner({ onSelect }: Props) {
             <p className="text-xs text-foreground-muted">
               Couldn’t identify the card. Try a sharper, straight-on photo — or use the search below.
             </p>
+          )}
+
+          {status === "done" && (
+            <div className="rounded-lg border border-border/60 bg-surface/40 p-2 space-y-1.5">
+              <p className="text-[11px] text-foreground-muted">
+                Wrong printing (e.g. a foil/promo)? Type the card number you can see:
+              </p>
+              <div className="flex gap-2">
+                <input
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  placeholder={candidates[0]?.name || "Card name"}
+                  className="min-w-0 flex-1 rounded-lg border border-border bg-surface-raised px-2 py-1.5 text-xs text-foreground placeholder:text-foreground-muted"
+                />
+                <input
+                  value={manualNum}
+                  onChange={(e) => setManualNum(e.target.value)}
+                  placeholder="# 079"
+                  inputMode="numeric"
+                  className="w-20 rounded-lg border border-border bg-surface-raised px-2 py-1.5 text-xs text-foreground placeholder:text-foreground-muted"
+                />
+                <button
+                  type="button"
+                  onClick={manualFind}
+                  disabled={manualBusy || !manualNum.trim()}
+                  className="rounded-full bg-gold px-3 py-1.5 text-xs font-semibold text-background hover:bg-gold-light disabled:opacity-60 transition-colors"
+                >
+                  {manualBusy ? "…" : "Find"}
+                </button>
+              </div>
+            </div>
           )}
 
           {(status === "done" || status === "error") && (ocrText || debug) && (
