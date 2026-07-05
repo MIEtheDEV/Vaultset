@@ -71,6 +71,7 @@
 
 ### Phase 5
 
+- [ ] **PWA performance migration** — Make the installed PWA fast without regressing the (already-fast) browser experience. Adopt Serwist for real SW caching (app shell + immutable card images + `NetworkFirst` data), convert `CardImage` to `next/image`, virtualize the inventory grid, code-split recharts, and fix dashboard render-time writes/waterfalls. Full plan, desktop/mobile impact analysis, and rollout notes in [`docs/pwa-performance-migration.md`](docs/pwa-performance-migration.md). *Not started.*
 - [ ] **Shipping integration** — Label generation or shipping cost estimation; required before collecting transaction fees on shipped orders.
 - [ ] **Multi-game support** — Polymorphic `CardSearchProvider` and `RaritySystem` architecture is complete; only Pokémon TCG is implemented. To add a new game: implement the two abstract classes in `lib/search/` and `lib/rarity/`, then register in their respective `index.ts` factories.
 

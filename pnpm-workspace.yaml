@@ -3,9 +3,12 @@
 #   esbuild       — used by tsx (scripts/, e.g. warm:catalog)
 #   sharp         — Next.js image optimization
 #   unrs-resolver — eslint import resolver
-# Approving them clears pnpm's ERR_PNPM_IGNORED_BUILDS precheck that otherwise
-# fails `pnpm run <script>` and CI's `pnpm test`.
+# tesseract.js is set false — its OCR wasm/worker load from CDN at runtime
+# (browser, card scanner), so its install build script isn't needed.
+# Marking each dep (true or false) clears pnpm's ERR_PNPM_IGNORED_BUILDS precheck
+# that otherwise fails `pnpm run <script>` and CI's `pnpm test`.
 allowBuilds:
   esbuild: true
   sharp: true
+  tesseract.js: false
   unrs-resolver: true

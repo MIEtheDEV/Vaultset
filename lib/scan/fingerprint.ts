@@ -1,0 +1,128 @@
+// Text-fingerprint card identification (server-safe, no DOM).
+//
+// The scanner OCRs a card's high-contrast BODY text (name, attack names, HP) and
+// matches it against the card DB — far more reliable than reading the tiny print
+// number. This module holds the pure extraction + ranking logic; the pokemontcg.io
+// queries live in lib/search, the OCR in lib/scan/ocr (client). See
+// docs/card-scanning-research.md §4 for the measurements behind this approach.
+
+// ---------- fuzzy helpers (tolerate OCR character errors) ----------
+export function norm(s: string): string {
+  return (s || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+}
+export function tokens(s: string): string[] {
+  return norm(s).split(" ").filter((t) => t.length >= 2);
+}
+function lev(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  let curr = new Array<number>(n + 1);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+export function sim(a: string, b: string): number {
+  const L = Math.max(a.length, b.length);
+  return L === 0 ? 1 : 1 - lev(a, b) / L;
+}
+/** Is `token` present (fuzzily) among a bag of OCR tokens? */
+export function tokenPresent(hayTokens: string[], token: string, thresh = 0.8): boolean {
+  return hayTokens.some((h) => sim(h, token) >= thresh);
+}
+/** Are all of a phrase's content tokens present in the OCR token bag? */
+export function phrasePresent(hayTokens: string[], phrase: string, thresh = 0.8): boolean {
+  const pt = tokens(phrase);
+  if (!pt.length) return false;
+  return pt.every((t) => tokenPresent(hayTokens, t, thresh));
+}
+
+// ---------- name extraction ----------
+// Anchor: across every era the Pokémon name shares a top-band line with the HP
+// ("Blastoise 100 HP", "Pikachu 40 HP", "Mew … 180"). Pull the alpha tokens off
+// those lines; fall back to the longest tokens anywhere. OCR reads top-to-bottom,
+// so the first ~45% of lines is the "top band".
+export function extractNameCandidates(text: string, lines: string[]): string[] {
+  const out: string[] = [];
+  const topCount = Math.max(3, Math.ceil(lines.length * 0.45));
+  lines.slice(0, topCount).forEach((line) => {
+    const hasHp = /\bhp\b/i.test(line);
+    const num = /\b(\d{2,3})\b/.exec(line)?.[1];
+    if (!hasHp && !(num && +num >= 20 && +num <= 340)) return;
+    tokens(line.replace(/\bhp\b/gi, " ").replace(/\d+/g, " ")).forEach((t) => {
+      if (t.length >= 3) out.push(t);
+    });
+  });
+  const longest = [...new Set(tokens(text).filter((t) => t.length >= 5))]
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 4);
+  return [...new Set([...out, ...longest])].slice(0, 8);
+}
+
+// ---------- ranking ----------
+export interface RankableCard {
+  id: string;
+  name: string;
+  attacks?: { name: string }[];
+  hp?: string;
+}
+
+export interface RankedCard<T extends RankableCard> {
+  card: T;
+  score: number;
+  /** Cards sharing this identity (same name+attacks) are indistinguishable by text. */
+  identityKey: string;
+}
+
+function identityKey(c: RankableCard): string {
+  const atk = (c.attacks || []).map((a) => norm(a.name)).sort().join("|");
+  return `${norm(c.name)}#${atk}`;
+}
+
+/**
+ * Rank candidates by how much of the DISCRIMINATIVE fingerprint appears in the OCR:
+ * attack names + HP dominate (the Pokémon name is shared by every reprint, so it
+ * barely moves the score). Returns cards sorted best-first, each tagged with its
+ * identity key so callers can collapse the reprint tie-set.
+ */
+export function rankCandidates<T extends RankableCard>(candidates: T[], ocrText: string): RankedCard<T>[] {
+  const hay = tokens(ocrText);
+  return candidates
+    .map((card) => {
+      const atkHit = (card.attacks || []).filter((a) => phrasePresent(hay, a.name)).length;
+      const hpHit = card.hp && tokenPresent(hay, String(card.hp), 0.9) ? 1 : 0;
+      const nameHit = phrasePresent(hay, card.name) ? 1 : 0;
+      const score = atkHit * 10 + hpHit * 4 + nameHit;
+      return { card, score, identityKey: identityKey(card) };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Turn ranked candidates into a user-facing shortlist. Confidence-gated
+ * ("confident-or-nothing"): if the top identity is a clear winner we mark it
+ * confident, but we still surface the tie-set of same-identity reprints for the
+ * user to confirm the exact printing (text can't separate reprints — see research
+ * doc §4). Cross-identity runners-up are appended so a mis-rank is still fixable.
+ */
+export function resolveScan<T extends RankableCard>(ranked: RankedCard<T>[], limit = 8): {
+  candidates: T[];
+  confident: boolean;
+} {
+  if (ranked.length === 0) return { candidates: [], confident: false };
+  const top = ranked[0];
+  const topIdentity = ranked.filter((r) => r.identityKey === top.identityKey);
+  const others = ranked.filter((r) => r.identityKey !== top.identityKey);
+  const runnerUp = others[0];
+  // Confident when the top card actually matched fingerprint signal and beats the
+  // best different-identity candidate by a clear margin.
+  const confident = top.score > 0 && (!runnerUp || top.score >= runnerUp.score + 10);
+  const ordered = [...topIdentity, ...others].slice(0, limit).map((r) => r.card);
+  return { candidates: ordered, confident };
+}

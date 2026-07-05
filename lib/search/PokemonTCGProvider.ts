@@ -44,6 +44,48 @@ export async function fetchPokemonCardDetail(id: string): Promise<PokemonCardDet
   }
 }
 
+// A scan candidate is a search result plus the body-text fields (attacks, hp)
+// the fingerprint ranker scores against. See lib/scan/fingerprint.ts.
+export interface ScanCandidate extends SearchResult {
+  attacks?: { name: string }[];
+  hp?: string;
+}
+
+/**
+ * Fingerprint retrieval for the card scanner: union `name:<cand>*` queries over
+ * the OCR-derived name candidates, returning cards enriched with attacks + hp so
+ * the ranker can score by the discriminative body text. Deduped by native id.
+ * pokemontcg.io only (the free Tier-1 identity path — see lib/scan/).
+ */
+export async function scanSearchPokemon(nameCandidates: string[]): Promise<ScanCandidate[]> {
+  const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY
+    ? { "X-Api-Key": process.env.POKEMON_TCG_API_KEY }
+    : {};
+  const byId = new Map<string, ScanCandidate>();
+  await Promise.all(
+    nameCandidates.slice(0, 6).map(async (cand) => {
+      const term = cand.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (term.length < 2) return;
+      const params = new URLSearchParams({
+        q: `name:${term}*`,
+        pageSize: "250",
+        select: "id,name,number,rarity,subtypes,set,images,tcgplayer,attacks,hp",
+      });
+      try {
+        const res = await fetch(`${BASE}/cards?${params}`, { headers, next: { revalidate: 3600 } });
+        if (!res.ok) return;
+        const json = await res.json();
+        for (const c of (json.data ?? []) as ScanCandidate[]) {
+          if (!byId.has(c.id)) byId.set(c.id, c);
+        }
+      } catch {
+        /* skip this candidate term — others still contribute */
+      }
+    }),
+  );
+  return [...byId.values()];
+}
+
 // Concrete implementation of CardSearchProvider for the Pokémon TCG API.
 // All Pokémon-specific HTTP logic and field mapping lives here.
 export class PokemonTCGProvider extends CardSearchProvider {

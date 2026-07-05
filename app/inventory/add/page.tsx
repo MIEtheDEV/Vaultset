@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { PokemonCardSearch } from "@/components/PokemonCardSearch";
+import { CardScanner } from "@/components/CardScanner";
 import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
 import { PokemonTCGProvider } from "@/lib/search/PokemonTCGProvider";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
@@ -476,6 +477,9 @@ export default function AddCardPage() {
 
           <div>
             <label className={labelClass()}>Search Card</label>
+            {/* Admin-only card scanner (beta): self-hides for non-admins. Emits the
+                same card shape as manual search, so it reuses handlePokemonSelect. */}
+            <CardScanner onSelect={handlePokemonSelect} />
             <PokemonCardSearch onSelect={handlePokemonSelect} />
             {pokemonApiId && (
               <p className="mt-1.5 text-xs text-foreground-muted">
