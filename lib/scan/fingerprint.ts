@@ -120,18 +120,58 @@ export function extractAttackPhrases(text: string, lines: string[]): string[] {
   return [...new Set([...phrases, ...singles])].slice(0, 6);
 }
 
-// Collector number from OCR, when the "NNN/TTT" form reads (e.g. "093/086" → "093").
-// Post-crop this often reads even on modern cards, and it's the key to the *exact
-// printing*: it boosts ranking and lets JustTCG surface promos/new cards by number.
-// Conservative — only the slash form, to avoid inventing a wrong number.
+// Candidate collector numbers from OCR, best-guess first. The collector number is
+// the key to the *exact printing* (JustTCG's number filter finds promos/new cards
+// name-only search misses), but on foils OCR mangles it inconsistently — the "/"
+// becomes a "7", digits merge, or it hides in a noisy run ("1093Y 056"). So we
+// return several plausible numbers and let the caller probe each; a wrong guess
+// just returns nothing from JustTCG, so it's cheap.
+export function extractNumbers(text: string, lines?: string[]): string[] {
+  const out: string[] = [];
+  const add = (s?: string) => { if (s && !out.includes(s)) out.push(s); };
+  // Strongest: explicit or lightly-mangled "NNN/TTT" collector-number forms.
+  for (const m of text.matchAll(/(\d{1,3})\s*\/\s*(\d{1,3})/g)) add(m[1]);
+  for (const m of text.matchAll(/\b(\d{2,3})7(\d{2,3})\b/g)) add(m[1]); // slash → 7
+  for (const m of text.matchAll(/\b(\d{3})(\d{3})\b/g)) add(m[1]);      // slash dropped
+  // Then: digit runs from the bottom third, where the collector number lives (by
+  // the ©line). Split longer runs into leading/trailing 3-digit guesses.
+  const ls = lines && lines.length ? lines : text.split("\n");
+  const bottom = ls.slice(Math.floor(ls.length * 0.6)).join(" ");
+  for (const m of bottom.matchAll(/\d{2,4}/g)) {
+    const g = m[0];
+    if (g.length <= 3) add(g);
+    else { add(g.slice(0, 3)); add(g.slice(-3)); }
+  }
+  return out.slice(0, 5);
+}
+
+/** Best single collector-number guess (for ranking boost / display). */
 export function extractNumber(text: string): string | null {
-  const slash = text.match(/(\d{1,3})\s*\/\s*(\d{1,3})/);
-  if (slash) return slash[1];
-  // OCR frequently mangles the "/" — reading "093/086" as "0937086" (slash→7) or
-  // dropping it ("093086"). Recover NNN/TTT from those merged runs. Gated
-  // downstream (only trusted alongside a name/attack match), so a false read is cheap.
-  const merged = text.match(/\b(\d{2,3})7(\d{2,3})\b/) || text.match(/\b(\d{3})(\d{3})\b/);
-  return merged ? merged[1] : null;
+  return extractNumbers(text)[0] ?? null;
+}
+
+// The RELIABLE collector number: only from a "NNN/TTT"-shaped signal (a collector
+// number followed by a set total), which distinguishes it from HP/damage/weight
+// digits scattered elsewhere. Used for the ranking boost and to float the exact
+// printing — noisy standalone numbers must NOT drive those (they floated wrong
+// cards: Numel #5 from a stray "005", Shrouded Fable #029 from a stray "29").
+// Returns null when no collector/total pair is visible. Searches the bottom of
+// the card first (where the number lives, by the ©line).
+export function extractCollectorNumber(text: string, lines?: string[]): string | null {
+  const ls = lines && lines.length ? lines : text.split("\n");
+  // Digit-boundary lookarounds (not \b) so glued OCR like "CITT1093Y 056" still
+  // matches — letters touching the digits would defeat \b.
+  const zones = [ls.slice(Math.floor(ls.length * 0.5)).join(" "), text];
+  for (const zone of zones) {
+    let m = zone.match(/(?<!\d)(\d{1,3})\s*\/\s*(\d{1,3})(?!\d)/); // clean "093/086"
+    if (m) return m[1];
+    m = zone.match(/(?<!\d)(\d{2,3})7(\d{2,3})(?!\d)/) || zone.match(/(?<!\d)(\d{3})(\d{3})(?!\d)/); // "/"→7 / dropped
+    if (m) return m[1];
+    // collector-run [1-3 non-digit chars] total-run(2-3 digits): "1093Y 056" → 093
+    m = zone.match(/(?<!\d)(\d{2,4})[^\d\n]{1,3}(\d{2,3})(?!\d)/);
+    if (m) return m[1].length > 3 ? m[1].slice(-3) : m[1];
+  }
+  return null;
 }
 
 // ---------- ranking ----------
@@ -146,6 +186,8 @@ export interface RankableCard {
 export interface RankedCard<T extends RankableCard> {
   card: T;
   score: number;
+  /** The Pokémon name actually appeared in the OCR (not just an attack/HP coincidence). */
+  nameHit: boolean;
   /** Cards sharing this identity (same name+attacks) are indistinguishable by text. */
   identityKey: string;
 }
@@ -171,15 +213,16 @@ export function rankCandidates<T extends RankableCard>(
   return candidates
     .map((card) => {
       const atkHit = (card.attacks || []).filter((a) => phrasePresent(hay, a.name)).length;
-      const hpHit = card.hp && tokenPresent(hay, String(card.hp), 0.9) ? 1 : 0;
       const nameHit = phrasePresent(hay, card.name) ? 1 : 0;
-      // A collector-number match is only trusted when the card also matches by name
-      // or attack — otherwise a coincidental number would surface a wrong card. When
-      // it does line up, it's the strongest signal for the *exact printing*.
+      // The Pokémon name actually reading is a strong signal; a bare HP or number
+      // match is weak/coincidental (many cards share HP 60, number 12…), so those
+      // only count alongside a name/attack match. Without that gate, an HP fluke
+      // ranked Numel over the correct Charmeleon.
       const idMatch = nameHit === 1 || atkHit > 0;
+      const hpHit = idMatch && card.hp && tokenPresent(hay, String(card.hp), 0.9) ? 1 : 0;
       const numHit = want && idMatch && card.number && normalizeCardNumber(card.number) === want ? 1 : 0;
-      const score = atkHit * 10 + hpHit * 4 + nameHit + numHit * 20;
-      return { card, score, identityKey: identityKey(card) };
+      const score = atkHit * 10 + nameHit * 6 + hpHit * 2 + numHit * 20;
+      return { card, score, nameHit: nameHit === 1, identityKey: identityKey(card) };
     })
     .sort((a, b) => b.score - a.score);
 }
@@ -206,8 +249,10 @@ export function resolveScan<T extends RankableCard>(ranked: RankedCard<T>[], lim
   const topIdentity = scored.filter((r) => r.identityKey === top.identityKey);
   const others = scored.filter((r) => r.identityKey !== top.identityKey);
   const runnerUp = others[0];
-  // Confident when the top card beats the best different-identity candidate clearly.
-  const confident = !runnerUp || top.score >= runnerUp.score + 10;
+  // Confident only when the Pokémon NAME actually read (not an attack/HP fluke —
+  // that produced a confident *wrong* match, e.g. "Seel δ" for a Crobat) AND the
+  // top beats the best different-identity candidate clearly.
+  const confident = top.nameHit && (!runnerUp || top.score >= runnerUp.score + 10);
   const ordered = [...topIdentity, ...others].slice(0, limit).map((r) => r.card);
   return { candidates: ordered, confident };
 }
