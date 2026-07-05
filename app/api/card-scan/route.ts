@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  let body: { text?: string; lines?: string[]; bytes?: number; name?: string; number?: string; image?: string };
+  let body: { text?: string; lines?: string[]; bytes?: number; name?: string; number?: string; image?: string; numberHints?: string[] };
   try {
     body = await request.json();
   } catch {
@@ -41,8 +41,11 @@ export async function POST(request: Request) {
 
   const text = (body.text ?? "").trim();
   const lines = Array.isArray(body.lines) ? body.lines.filter((l) => typeof l === "string") : [];
+  const numberHints = Array.isArray(body.numberHints)
+    ? body.numberHints.filter((n): n is string => typeof n === "string")
+    : [];
 
-  const { candidates, confident, debug } = await matchScan(text, lines);
+  const { candidates, confident, debug } = await matchScan(text, lines, numberHints);
 
   // Persist a diagnostics row (+ the cropped image) so real-world phone failures
   // are reviewable and OCR can be tuned against real foils. Best-effort throughout.

@@ -128,7 +128,7 @@ export function CardScanner({ onSelect }: Props) {
     setProgress(0);
     try {
       setStatus("reading");
-      const { text, lines } = await ocrImage(blob, setProgress);
+      const { text, lines, numberHints } = await ocrImage(blob, setProgress);
       setOcrText(text);
       if (!text.trim()) {
         setCandidates([]);
@@ -146,7 +146,7 @@ export function CardScanner({ onSelect }: Props) {
       const res = await fetch("/api/card-scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, lines, bytes: blob.size, image }),
+        body: JSON.stringify({ text, lines, bytes: blob.size, image, numberHints }),
       });
       if (!res.ok) throw new Error(res.status === 403 ? "Not authorized." : `Scan failed (${res.status}).`);
       const json = await res.json();

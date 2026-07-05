@@ -135,12 +135,13 @@ export function extractNumbers(text: string, lines?: string[]): string[] {
   for (const m of text.matchAll(/\b(\d{3})(\d{3})\b/g)) add(m[1]);      // slash dropped
   // Then: digit runs from the bottom third, where the collector number lives (by
   // the ©line). Split longer runs into leading/trailing 3-digit guesses.
+  // Standalone 2-3 digit runs from the bottom third. Digit-bounded (via \d+ length
+  // filter) so a 4-digit Pokédex number ("0005") or ©year ("2026") can't fragment
+  // into false collector numbers.
   const ls = lines && lines.length ? lines : text.split("\n");
   const bottom = ls.slice(Math.floor(ls.length * 0.6)).join(" ");
-  for (const m of bottom.matchAll(/\d{2,4}/g)) {
-    const g = m[0];
-    if (g.length <= 3) add(g);
-    else { add(g.slice(0, 3)); add(g.slice(-3)); }
+  for (const g of bottom.match(/\d+/g) ?? []) {
+    if (g.length >= 2 && g.length <= 3) add(g);
   }
   return out.slice(0, 5);
 }
@@ -212,16 +213,31 @@ export function rankCandidates<T extends RankableCard>(
   const want = wantNumber ? normalizeCardNumber(wantNumber) : null;
   return candidates
     .map((card) => {
-      const atkHit = (card.attacks || []).filter((a) => phrasePresent(hay, a.name)).length;
+      // Weight a matched attack by how many of its words matched. A distinctive
+      // multi-word attack ("Steady Firebreathing") is a far stronger identity
+      // signal than a 1-word fuzzy coincidence (a "Flare" attack matching the
+      // "Flame Pokémon" species line — which made every fire-type tie the correct
+      // card when the name OCR'd badly).
+      const atkScore = (card.attacks || []).reduce(
+        (s, a) => s + (phrasePresent(hay, a.name) ? tokens(a.name).length : 0), 0,
+      );
       const nameHit = phrasePresent(hay, card.name) ? 1 : 0;
-      // The Pokémon name actually reading is a strong signal; a bare HP or number
-      // match is weak/coincidental (many cards share HP 60, number 12…), so those
-      // only count alongside a name/attack match. Without that gate, an HP fluke
-      // ranked Numel over the correct Charmeleon.
-      const idMatch = nameHit === 1 || atkHit > 0;
+      // Graded name similarity (best card-name token vs any OCR token). A near-miss
+      // like "charmelggy"→"charmeleon" (0.7) still nudges the right card up — the
+      // decisive tiebreak when an attack ("Steady Firebreathing") is shared by
+      // several Pokémon (Charmeleon/Crocalor/Charmander) and the name OCR'd badly.
+      let nameSim = 0;
+      for (const nt of tokens(card.name)) {
+        if (nt.length < 3) continue;
+        for (const h of hay) { const s = sim(nt, h); if (s > nameSim) nameSim = s; }
+      }
+      const nameScore = nameSim >= 0.6 ? nameSim * 6 : 0;
+      // Bare HP/number matches are weak/coincidental, so they only count alongside
+      // a name/attack match (an HP fluke once ranked Numel over the correct card).
+      const idMatch = nameHit === 1 || atkScore > 0;
       const hpHit = idMatch && card.hp && tokenPresent(hay, String(card.hp), 0.9) ? 1 : 0;
       const numHit = want && idMatch && card.number && normalizeCardNumber(card.number) === want ? 1 : 0;
-      const score = atkHit * 10 + nameHit * 6 + hpHit * 2 + numHit * 20;
+      const score = atkScore * 8 + nameScore + hpHit * 2 + numHit * 20;
       return { card, score, nameHit: nameHit === 1, identityKey: identityKey(card) };
     })
     .sort((a, b) => b.score - a.score);

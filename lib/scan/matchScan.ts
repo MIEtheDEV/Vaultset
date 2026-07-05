@@ -70,15 +70,19 @@ export async function manualLookup(name: string, number: string): Promise<ScanMa
   };
 }
 
-export async function matchScan(text: string, lines: string[]): Promise<ScanMatch> {
+export async function matchScan(text: string, lines: string[], numberHints: string[] = []): Promise<ScanMatch> {
   const useLines = lines.length ? lines : text.split("\n");
   const nameCandidates = text.length >= 3 ? extractNameCandidates(text, useLines) : [];
   const attackPhrases = text.length >= 3 ? extractAttackPhrases(text, useLines) : [];
   // The reliable collector number (drives ranking + float); the broad list is only
-  // for cheap JustTCG probing. Put the reliable one first so it's tried first.
+  // for cheap JustTCG probing. numberHints (targeted bottom-strip OCR, client-side)
+  // are the most reliable, so they lead; then the NNN/TTT collector number from the
+  // full text; then broad standalone digits. Deduped, best-guess first.
   const collectorNumber = text.length >= 3 ? extractCollectorNumber(text, useLines) : null;
   const numberCandidates = [
-    ...new Set([collectorNumber, ...(text.length >= 3 ? extractNumbers(text, useLines) : [])].filter(Boolean)),
+    ...new Set(
+      [...numberHints, collectorNumber, ...(text.length >= 3 ? extractNumbers(text, useLines) : [])].filter(Boolean),
+    ),
   ] as string[];
 
   let top: ScanTopMatch[] = [];
@@ -90,7 +94,7 @@ export async function matchScan(text: string, lines: string[]): Promise<ScanMatc
   if (nameCandidates.length > 0 || attackPhrases.length > 0) {
     const pool = await scanSearchPokemon(nameCandidates, attackPhrases);
     poolSize = pool.length;
-    const ranked = rankCandidates(pool, text, collectorNumber);
+    const ranked = rankCandidates(pool, text, numberCandidates[0] ?? null);
     top = ranked.slice(0, 6).map((r) => ({
       name: r.card.name, set: r.card.set?.name ?? "", number: r.card.number, score: r.score,
     }));
@@ -107,26 +111,29 @@ export async function matchScan(text: string, lines: string[]): Promise<ScanMatc
     // Prefer the clean matched name; if nothing matched, fall back to the LONGEST
     // OCR name candidate (a real name like "crobat" beats junk like "ale").
     const jtName = out[0]?.name ?? [...nameCandidates].sort((a, b) => b.length - a.length)[0];
+    let hitNumber: string | null = null;
     if (jtName) {
       const seen = new Set(out.map((c) => `${c.name.toLowerCase()}|${c.number}`));
-      const tries: (string | undefined)[] = numberCandidates.length ? numberCandidates.slice(0, 3) : [undefined];
+      const tries: (string | undefined)[] = numberCandidates.length ? numberCandidates.slice(0, 4) : [undefined];
       for (const num of tries) {
         const jt = await searchJustTcg(jtName, num);
         let exactHit = false;
         for (const c of jt) {
           const k = `${c.name.toLowerCase()}|${c.number}`;
           if (!seen.has(k)) { seen.add(k); out.push(c); justtcgAppended++; }
-          if (num && normalizeCardNumber(c.number) === normalizeCardNumber(num)) exactHit = true;
+          if (num && normalizeCardNumber(c.number) === normalizeCardNumber(num)) { exactHit = true; hitNumber = num; }
           if (out.length >= 14) break;
         }
         if (exactHit || out.length >= 14) break;
       }
     }
 
-    // Float the card matching the RELIABLE collector number to the top — the exact
-    // printing. Only the collector number (not noisy standalone digits) drives this.
-    if (collectorNumber) {
-      const want = normalizeCardNumber(collectorNumber);
+    // Float the exact printing to the top. Prefer the number that actually landed
+    // an exact JustTCG hit; else the reliable collector number. (Not noisy broad
+    // digits — those would float a wrong printing.)
+    const floatNum = hitNumber ?? collectorNumber;
+    if (floatNum) {
+      const want = normalizeCardNumber(floatNum);
       out.sort((a, b) =>
         (normalizeCardNumber(b.number) === want ? 1 : 0) - (normalizeCardNumber(a.number) === want ? 1 : 0),
       );
