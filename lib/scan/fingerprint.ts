@@ -168,14 +168,19 @@ export function resolveScan<T extends RankableCard>(ranked: RankedCard<T>[], lim
   candidates: T[];
   confident: boolean;
 } {
-  if (ranked.length === 0) return { candidates: [], confident: false };
-  const top = ranked[0];
-  const topIdentity = ranked.filter((r) => r.identityKey === top.identityKey);
-  const others = ranked.filter((r) => r.identityKey !== top.identityKey);
+  // Only keep cards that actually matched fingerprint signal (attack/HP/name).
+  // A score of 0 means a name-prefix query pulled in an unrelated card (e.g. a
+  // garbled "arm" candidate matching every Armaldo) — that's noise, not a match,
+  // and returning it just buries the real card. Callers still append JustTCG
+  // fuzzy-name results separately for cards pokemontcg.io can't fingerprint.
+  const scored = ranked.filter((r) => r.score > 0);
+  if (scored.length === 0) return { candidates: [], confident: false };
+  const top = scored[0];
+  const topIdentity = scored.filter((r) => r.identityKey === top.identityKey);
+  const others = scored.filter((r) => r.identityKey !== top.identityKey);
   const runnerUp = others[0];
-  // Confident when the top card actually matched fingerprint signal and beats the
-  // best different-identity candidate by a clear margin.
-  const confident = top.score > 0 && (!runnerUp || top.score >= runnerUp.score + 10);
+  // Confident when the top card beats the best different-identity candidate clearly.
+  const confident = !runnerUp || top.score >= runnerUp.score + 10;
   const ordered = [...topIdentity, ...others].slice(0, limit).map((r) => r.card);
   return { candidates: ordered, confident };
 }

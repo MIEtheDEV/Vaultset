@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { warpQuadToRect, type Pt } from "@/lib/scan/perspective";
+import { detectCardCorners } from "@/lib/scan/detectCard";
 
 // Crop + perspective-correct a captured card photo before OCR. The user drags 4
 // corner handles onto the card's edges; on confirm we warp that quad to a flat,
@@ -23,6 +24,7 @@ export function CardCropper({ file, onCropped, onCancel }: Props) {
   const [disp, setDisp] = useState({ w: 0, h: 0 });
   const [corners, setCorners] = useState<Pt[]>([]);
   const [busy, setBusy] = useState(false);
+  const [detecting, setDetecting] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<number | null>(null);
@@ -37,13 +39,34 @@ export function CardCropper({ file, onCropped, onCancel }: Props) {
     const img = imgRef.current;
     if (!img) return;
     const maxW = Math.min(340, boxRef.current?.clientWidth || 340);
-    const scale = maxW / img.naturalWidth;
     const w = maxW;
-    const h = Math.round(img.naturalHeight * scale);
+    const h = Math.round(img.naturalHeight * (maxW / img.naturalWidth));
     setDisp({ w, h });
-    // Start with a card-shaped guide inset ~8% — the user nudges to the real edges.
+    // Inset guide as the immediate default; auto-detection refines it below.
     const ix = w * 0.08, iy = h * 0.08;
     setCorners([[ix, iy], [w - ix, iy], [w - ix, h - iy], [ix, h - iy]]);
+
+    // Auto-detect the card's edges (OpenCV.js) and snap the handles to them, so
+    // the common case needs no dragging. Runs on a downscaled copy for speed;
+    // falls back silently to the inset guide if nothing card-like is found.
+    setDetecting(true);
+    const cap = 1000;
+    const ds = Math.min(1, cap / Math.max(img.naturalWidth, img.naturalHeight));
+    const dw = Math.max(1, Math.round(img.naturalWidth * ds));
+    const dh = Math.max(1, Math.round(img.naturalHeight * ds));
+    const dc = document.createElement("canvas");
+    dc.width = dw;
+    dc.height = dh;
+    dc.getContext("2d")?.drawImage(img, 0, 0, dw, dh);
+    detectCardCorners(dc)
+      .then((pts) => {
+        if (pts) {
+          const k = w / dw; // detection-canvas coords → display coords
+          setCorners(pts.map(([x, y]) => [x * k, y * k] as Pt));
+        }
+      })
+      .catch(() => { /* keep the inset default */ })
+      .finally(() => setDetecting(false));
   }
 
   const clampToBox = useCallback((x: number, y: number): Pt => [
@@ -101,7 +124,11 @@ export function CardCropper({ file, onCropped, onCancel }: Props) {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-foreground-muted">Drag the corners to the edges of the card, then confirm.</p>
+      <p className="text-xs text-foreground-muted">
+        {detecting
+          ? "Detecting card edges…"
+          : "Auto-detected — drag any corner to fine-tune, then confirm."}
+      </p>
 
       <div ref={boxRef} className="relative mx-auto select-none touch-none" style={{ width: disp.w || "auto" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -145,14 +172,6 @@ export function CardCropper({ file, onCropped, onCancel }: Props) {
           className="rounded-full bg-gold px-4 py-2 text-xs font-semibold text-background hover:bg-gold-light disabled:opacity-60 transition-colors"
         >
           {busy ? "Processing…" : "Use this crop"}
-        </button>
-        <button
-          type="button"
-          onClick={() => onCropped(file)}
-          disabled={busy}
-          className="rounded-full border border-border px-4 py-2 text-xs font-medium text-foreground-muted hover:text-foreground hover:border-gold/40 transition-colors"
-        >
-          Use full photo
         </button>
         <button
           type="button"
