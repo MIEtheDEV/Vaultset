@@ -12,30 +12,34 @@ export type Pt = [number, number];
 let cvPromise: Promise<any> | null = null;
 
 // Load OpenCV.js once and resolve when its wasm runtime is ready. Polls for
-// `cv.Mat` (robust across the emscripten Module init variants).
+// `cv.Mat` on a hard deadline that starts IMMEDIATELY — not inside script.onload,
+// which on mobile may never fire if the 11MB download stalls (that was the "stuck
+// on Detecting" hang). On failure the memo is cleared so a later scan can retry.
 function loadCv(): Promise<any> {
   if (cvPromise) return cvPromise;
   cvPromise = new Promise<any>((resolve, reject) => {
     const w = window as unknown as { cv?: any };
-    const waitReady = () => {
-      const start = Date.now();
-      const check = () => {
-        if (w.cv && w.cv.Mat) resolve(w.cv);
-        else if (Date.now() - start > 25000) reject(new Error("opencv init timeout"));
-        else setTimeout(check, 50);
-      };
-      check();
-    };
     if (w.cv && w.cv.Mat) return resolve(w.cv);
-    const existing = document.getElementById("opencv-js") as HTMLScriptElement | null;
-    if (existing) return waitReady();
-    const script = document.createElement("script");
-    script.id = "opencv-js";
-    script.src = "https://docs.opencv.org/4.x/opencv.js";
-    script.async = true;
-    script.onload = waitReady;
-    script.onerror = () => reject(new Error("opencv load failed"));
-    document.body.appendChild(script);
+
+    if (!document.getElementById("opencv-js")) {
+      const script = document.createElement("script");
+      script.id = "opencv-js";
+      script.src = "https://docs.opencv.org/4.x/opencv.js";
+      script.async = true;
+      script.onerror = () => reject(new Error("opencv load failed"));
+      document.body.appendChild(script);
+    }
+
+    const deadline = Date.now() + 20000;
+    const poll = () => {
+      if (w.cv && w.cv.Mat) resolve(w.cv);
+      else if (Date.now() > deadline) reject(new Error("opencv init timeout"));
+      else setTimeout(poll, 100);
+    };
+    poll();
+  }).catch((e) => {
+    cvPromise = null; // allow a retry on the next scan
+    throw e;
   });
   return cvPromise;
 }

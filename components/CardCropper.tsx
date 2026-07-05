@@ -28,12 +28,15 @@ export function CardCropper({ file, onCropped, onCancel }: Props) {
   const imgRef = useRef<HTMLImageElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<number | null>(null);
+  const aliveRef = useRef(true);
 
   useEffect(() => {
     const u = URL.createObjectURL(file);
     setUrl(u);
     return () => URL.revokeObjectURL(u);
   }, [file]);
+
+  useEffect(() => () => { aliveRef.current = false; }, []);
 
   function onImgLoad() {
     const img = imgRef.current;
@@ -58,15 +61,18 @@ export function CardCropper({ file, onCropped, onCancel }: Props) {
     dc.width = dw;
     dc.height = dh;
     dc.getContext("2d")?.drawImage(img, 0, 0, dw, dh);
-    detectCardCorners(dc)
+    // Hard cap: auto-detect must NEVER block manual cropping. If OpenCV is slow or
+    // fails to load (e.g. 11MB stalls on mobile data), fall back to the inset guide.
+    const timeout = new Promise<null>((res) => setTimeout(() => res(null), 8000));
+    Promise.race([detectCardCorners(dc), timeout])
       .then((pts) => {
-        if (pts) {
+        if (pts && aliveRef.current) {
           const k = w / dw; // detection-canvas coords → display coords
           setCorners(pts.map(([x, y]) => [x * k, y * k] as Pt));
         }
       })
       .catch(() => { /* keep the inset default */ })
-      .finally(() => setDetecting(false));
+      .finally(() => { if (aliveRef.current) setDetecting(false); });
   }
 
   const clampToBox = useCallback((x: number, y: number): Pt => [
@@ -127,7 +133,7 @@ export function CardCropper({ file, onCropped, onCancel }: Props) {
       <p className="text-xs text-foreground-muted">
         {detecting
           ? "Detecting card edges…"
-          : "Auto-detected — drag any corner to fine-tune, then confirm."}
+          : "Drag the corners to the card's edges, then confirm."}
       </p>
 
       <div ref={boxRef} className="relative mx-auto select-none touch-none" style={{ width: disp.w || "auto" }}>
