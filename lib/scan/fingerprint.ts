@@ -49,7 +49,7 @@ export function phrasePresent(hayTokens: string[], phrase: string, thresh = 0.8)
 // Card boilerplate that is never the Pokémon's name — filtered from candidates so
 // e.g. "Evolves from Charmander" can't make us query Charmander.
 const STOPWORDS = new Set([
-  "pokemon", "stage", "basic", "evolves", "evolve", "from", "weakness", "resistance",
+  "pokemon", "stage", "stages", "basic", "evolves", "evolve", "from", "weakness", "resistance",
   "retreat", "trainer", "energy", "illus", "the", "and", "this", "your", "you", "when",
   "put", "into", "play", "card", "cards", "turn", "damage", "each", "may", "for", "with",
   "ability", "attack", "poke", "body", "power", "rule", "level", "team", "item", "supporter",

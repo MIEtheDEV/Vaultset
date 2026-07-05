@@ -67,38 +67,35 @@ export async function scanSearchPokemon(
   const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY
     ? { "X-Api-Key": process.env.POKEMON_TCG_API_KEY }
     : {};
-  const byId = new Map<string, ScanCandidate>();
   const select = "id,name,number,rarity,subtypes,set,images,tcgplayer,attacks,hp";
 
-  const runQuery = async (q: string) => {
-    const params = new URLSearchParams({ q, pageSize: "250", select });
-    try {
-      const res = await fetch(`${BASE}/cards?${params}`, { headers, next: { revalidate: 3600 } });
-      if (!res.ok) return;
-      const json = await res.json();
-      for (const c of (json.data ?? []) as ScanCandidate[]) {
-        if (!byId.has(c.id)) byId.set(c.id, c);
-      }
-    } catch {
-      /* skip this query — others still contribute */
-    }
-  };
-
-  const nameQueries = nameCandidates.slice(0, 6).flatMap((cand) => {
+  // Build ONE OR-combined Lucene query rather than a fetch per term. pokemontcg.io
+  // rate-limits hard without an API key, so firing 12 requests per scan quickly
+  // got us 429'd (empty pool → "couldn't identify"). One request per scan is far
+  // more sustainable. Terms are sanitized so a clause can't 400 the whole query.
+  const clauses: string[] = [];
+  for (const cand of nameCandidates.slice(0, 5)) {
     const term = cand.toLowerCase().replace(/[^a-z0-9]/g, "");
-    return term.length >= 2 ? [`name:${term}*`] : [];
-  });
-
-  // Multi-word attack terms → exact phrase (attacks.name:"a b"); single words →
-  // prefix. Lucene special chars are stripped so the query can't 400.
-  const attackQueries = attackTerms.slice(0, 6).flatMap((phrase) => {
+    if (term.length >= 3) clauses.push(`name:${term}*`);
+  }
+  for (const phrase of attackTerms.slice(0, 4)) {
     const clean = phrase.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
-    if (clean.length < 4) return [];
-    return clean.includes(" ") ? [`attacks.name:"${clean}"`] : [`attacks.name:${clean}*`];
-  });
+    if (clean.length < 4) continue;
+    clauses.push(clean.includes(" ") ? `attacks.name:"${clean}"` : `attacks.name:${clean}*`);
+  }
+  if (clauses.length === 0) return [];
 
-  await Promise.all([...nameQueries, ...attackQueries].map(runQuery));
-  return [...byId.values()];
+  const params = new URLSearchParams({ q: clauses.join(" OR "), pageSize: "250", select });
+  try {
+    const res = await fetch(`${BASE}/cards?${params}`, { headers, next: { revalidate: 3600 } });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const byId = new Map<string, ScanCandidate>();
+    for (const c of (json.data ?? []) as ScanCandidate[]) if (!byId.has(c.id)) byId.set(c.id, c);
+    return [...byId.values()];
+  } catch {
+    return [];
+  }
 }
 
 // Concrete implementation of CardSearchProvider for the Pokémon TCG API.

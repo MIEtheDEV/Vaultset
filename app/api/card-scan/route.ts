@@ -5,6 +5,7 @@ import { isUserAdmin } from "@/lib/auth/admin";
 import { scanSearchPokemon, type ScanCandidate } from "@/lib/search/PokemonTCGProvider";
 import type { SearchResult } from "@/lib/search/CardSearchProvider";
 import { searchJustTcg } from "@/lib/search/justTcgSearch";
+import { normalizeCardNumber } from "@/lib/search/cardNumber";
 import { extractNameCandidates, extractAttackPhrases, extractNumber, rankCandidates, resolveScan } from "@/lib/scan/fingerprint";
 
 interface TopMatch { name: string; set: string; number: string; score: number }
@@ -73,7 +74,9 @@ export async function POST(request: Request) {
       // confident matches, keyed on the clean matched name when we have one.
       // Admin beta: JustTCG's ~100 req/day quota isn't a concern with one tester;
       // gate this (e.g. only when no promo already present) before public launch.
-      const jtQuery = (confident && out[0]) ? out[0].name : nameCandidates[0];
+      // Prefer the clean matched name (e.g. "Crobat") over the raw OCR candidate
+      // for the JustTCG query — far more likely to hit than a garbled token.
+      const jtQuery = out[0]?.name ?? nameCandidates[0];
       if (jtQuery) {
         // Pass the OCR'd number too — JustTCG's number filter surfaces the exact
         // obscure printing (promos, brand-new secret rares) that name-only misses.
@@ -87,6 +90,15 @@ export async function POST(request: Request) {
           justtcgAppended++;
           if (out.length >= 14) break;
         }
+      }
+
+      // If we read a collector number, float any exact-number match to the top —
+      // that's almost certainly the specific printing the user is holding.
+      if (number) {
+        const want = normalizeCardNumber(number);
+        out.sort((a, b) =>
+          (normalizeCardNumber(b.number) === want ? 1 : 0) - (normalizeCardNumber(a.number) === want ? 1 : 0),
+        );
       }
     }
   }
