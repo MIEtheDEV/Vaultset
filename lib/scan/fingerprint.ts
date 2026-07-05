@@ -54,6 +54,11 @@ const STOPWORDS = new Set([
   "gym", "special", "basic", "then", "search", "deck", "hand", "flip", "coin", "active",
 ]);
 
+// A real Pokémon name is a single token of at most ~13 chars. Longer "tokens" are
+// OCR run-on garbage (merged words with lost spaces) — capping length keeps them
+// from crowding out the actual name in the candidate list.
+const MAX_NAME_LEN = 13;
+
 // Anchor: across every era the Pokémon name shares a top-band line with the HP
 // ("Blastoise 100 HP", "Pikachu 40 HP", "Mew … 180"). Pull the alpha tokens off
 // those lines; fall back to the longest tokens anywhere. OCR reads top-to-bottom,
@@ -64,7 +69,8 @@ export function extractNameCandidates(text: string, lines: string[]): string[] {
   lines.forEach((line) => {
     if (/evolv/i.test(line)) tokens(line).forEach((t) => excluded.add(t));
   });
-  const usable = (t: string) => t.length >= 3 && !STOPWORDS.has(t) && !excluded.has(t);
+  const usable = (t: string) =>
+    t.length >= 3 && t.length <= MAX_NAME_LEN && !STOPWORDS.has(t) && !excluded.has(t);
 
   const out: string[] = [];
   const topCount = Math.max(3, Math.ceil(lines.length * 0.45));
@@ -72,15 +78,44 @@ export function extractNameCandidates(text: string, lines: string[]): string[] {
     if (/evolv/i.test(line)) return;
     const hasHp = /\bhp\b/i.test(line);
     const num = /\b(\d{2,3})\b/.exec(line)?.[1];
-    if (!hasHp && !(num && +num >= 20 && +num <= 340)) return;
-    tokens(line.replace(/\bhp\b/gi, " ").replace(/\d+/g, " ")).forEach((t) => {
-      if (usable(t)) out.push(t);
-    });
+    const lineTokens = tokens(line.replace(/\bhp\b/gi, " ").replace(/\d+/g, " ")).filter(usable);
+    if (hasHp || (num && +num >= 20 && +num <= 340)) {
+      // HP-anchored line — the name sits here (best signal).
+      lineTokens.forEach((t) => out.push(t));
+    } else if (lineTokens.length >= 1 && lineTokens.length <= 3) {
+      // A short top-band line with no HP read — likely the title (name) on a foil
+      // where the HP didn't OCR. Take its longest token as a name candidate.
+      out.push([...lineTokens].sort((a, b) => b.length - a.length)[0]);
+    }
   });
   const longest = [...new Set(tokens(text).filter((t) => t.length >= 5 && usable(t)))]
     .sort((a, b) => b.length - a.length)
     .slice(0, 4);
   return [...new Set([...out, ...longest])].slice(0, 8);
+}
+
+// Attack-name candidates. When the Pokémon name OCRs badly (stylized foil), the
+// attack text often still reads — so we also retrieve by attack name. Pull
+// multi-word phrases (adjacent alpha words) and distinctive long single words from
+// the body (below the top band), skipping boilerplate.
+export function extractAttackPhrases(text: string, lines: string[]): string[] {
+  const topCount = Math.max(3, Math.ceil(lines.length * 0.45));
+  const body = lines.slice(topCount);
+  const phrases: string[] = [];
+  const singles: string[] = [];
+
+  body.forEach((line) => {
+    if (/evolv/i.test(line)) return;
+    const words = tokens(line).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+    for (let i = 0; i < words.length - 1; i++) {
+      if (words[i].length <= MAX_NAME_LEN && words[i + 1].length <= MAX_NAME_LEN) {
+        phrases.push(`${words[i]} ${words[i + 1]}`);
+      }
+    }
+    words.forEach((w) => { if (w.length >= 7 && w.length <= MAX_NAME_LEN) singles.push(w); });
+  });
+
+  return [...new Set([...phrases, ...singles])].slice(0, 6);
 }
 
 // ---------- ranking ----------

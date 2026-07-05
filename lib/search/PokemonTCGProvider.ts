@@ -52,37 +52,52 @@ export interface ScanCandidate extends SearchResult {
 }
 
 /**
- * Fingerprint retrieval for the card scanner: union `name:<cand>*` queries over
- * the OCR-derived name candidates, returning cards enriched with attacks + hp so
- * the ranker can score by the discriminative body text. Deduped by native id.
+ * Fingerprint retrieval for the card scanner. Unions two query families, deduped
+ * by native id, returning cards enriched with attacks + hp so the ranker can score
+ * by the discriminative body text:
+ *   - `name:<cand>*` over OCR-derived name candidates
+ *   - `attacks.name:...` over OCR-derived attack terms — this rescues cards whose
+ *     Pokémon name OCRs badly (stylized foil) but whose attack text still reads.
  * pokemontcg.io only (the free Tier-1 identity path — see lib/scan/).
  */
-export async function scanSearchPokemon(nameCandidates: string[]): Promise<ScanCandidate[]> {
+export async function scanSearchPokemon(
+  nameCandidates: string[],
+  attackTerms: string[] = [],
+): Promise<ScanCandidate[]> {
   const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY
     ? { "X-Api-Key": process.env.POKEMON_TCG_API_KEY }
     : {};
   const byId = new Map<string, ScanCandidate>();
-  await Promise.all(
-    nameCandidates.slice(0, 6).map(async (cand) => {
-      const term = cand.toLowerCase().replace(/[^a-z0-9]/g, "");
-      if (term.length < 2) return;
-      const params = new URLSearchParams({
-        q: `name:${term}*`,
-        pageSize: "250",
-        select: "id,name,number,rarity,subtypes,set,images,tcgplayer,attacks,hp",
-      });
-      try {
-        const res = await fetch(`${BASE}/cards?${params}`, { headers, next: { revalidate: 3600 } });
-        if (!res.ok) return;
-        const json = await res.json();
-        for (const c of (json.data ?? []) as ScanCandidate[]) {
-          if (!byId.has(c.id)) byId.set(c.id, c);
-        }
-      } catch {
-        /* skip this candidate term — others still contribute */
+  const select = "id,name,number,rarity,subtypes,set,images,tcgplayer,attacks,hp";
+
+  const runQuery = async (q: string) => {
+    const params = new URLSearchParams({ q, pageSize: "250", select });
+    try {
+      const res = await fetch(`${BASE}/cards?${params}`, { headers, next: { revalidate: 3600 } });
+      if (!res.ok) return;
+      const json = await res.json();
+      for (const c of (json.data ?? []) as ScanCandidate[]) {
+        if (!byId.has(c.id)) byId.set(c.id, c);
       }
-    }),
-  );
+    } catch {
+      /* skip this query — others still contribute */
+    }
+  };
+
+  const nameQueries = nameCandidates.slice(0, 6).flatMap((cand) => {
+    const term = cand.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return term.length >= 2 ? [`name:${term}*`] : [];
+  });
+
+  // Multi-word attack terms → exact phrase (attacks.name:"a b"); single words →
+  // prefix. Lucene special chars are stripped so the query can't 400.
+  const attackQueries = attackTerms.slice(0, 6).flatMap((phrase) => {
+    const clean = phrase.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+    if (clean.length < 4) return [];
+    return clean.includes(" ") ? [`attacks.name:"${clean}"`] : [`attacks.name:${clean}*`];
+  });
+
+  await Promise.all([...nameQueries, ...attackQueries].map(runQuery));
   return [...byId.values()];
 }
 

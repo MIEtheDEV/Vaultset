@@ -5,7 +5,7 @@ import { isUserAdmin } from "@/lib/auth/admin";
 import { scanSearchPokemon, type ScanCandidate } from "@/lib/search/PokemonTCGProvider";
 import type { SearchResult } from "@/lib/search/CardSearchProvider";
 import { searchJustTcg } from "@/lib/search/justTcgSearch";
-import { extractNameCandidates, rankCandidates, resolveScan } from "@/lib/scan/fingerprint";
+import { extractNameCandidates, extractAttackPhrases, rankCandidates, resolveScan } from "@/lib/scan/fingerprint";
 
 interface TopMatch { name: string; set: string; number: string; score: number }
 
@@ -49,9 +49,11 @@ export async function POST(request: Request) {
   let justtcgAppended = 0;
 
   if (text.length >= 3) {
-    nameCandidates = extractNameCandidates(text, lines.length ? lines : text.split("\n"));
-    if (nameCandidates.length > 0) {
-      pool = await scanSearchPokemon(nameCandidates);
+    const useLines = lines.length ? lines : text.split("\n");
+    nameCandidates = extractNameCandidates(text, useLines);
+    const attackPhrases = extractAttackPhrases(text, useLines);
+    if (nameCandidates.length > 0 || attackPhrases.length > 0) {
+      pool = await scanSearchPokemon(nameCandidates, attackPhrases);
       const ranked = rankCandidates(pool, text);
       top = ranked.slice(0, 6).map((r) => ({
         name: r.card.name, set: r.card.set?.name ?? "", number: r.card.number, score: r.score,
@@ -64,11 +66,14 @@ export async function POST(request: Request) {
         subtypes: c.subtypes, set: c.set, images: c.images, tcgplayer: c.tcgplayer ?? null,
       }));
 
-      // pokemontcg.io misses many promos/secret rares (Charmeleon 079 promo, etc.).
-      // When the primary match is weak, fall back to JustTCG by the best name guess
-      // so those cards can still surface as options (unranked — JustTCG has no attacks).
-      if (!confident || out.length < 3) {
-        const jt = await searchJustTcg(nameCandidates[0]);
+      // Surface promo/secret-rare printings pokemontcg.io lacks (e.g. Charmeleon
+      // 079 promo — a promo of an otherwise-known card). Run JustTCG even on
+      // confident matches, keyed on the clean matched name when we have one.
+      // Admin beta: JustTCG's ~100 req/day quota isn't a concern with one tester;
+      // gate this (e.g. only when no promo already present) before public launch.
+      const jtQuery = (confident && out[0]) ? out[0].name : nameCandidates[0];
+      if (jtQuery) {
+        const jt = await searchJustTcg(jtQuery);
         const seen = new Set(out.map((c) => `${c.name.toLowerCase()}|${c.number}`));
         for (const c of jt) {
           const k = `${c.name.toLowerCase()}|${c.number}`;
@@ -76,7 +81,7 @@ export async function POST(request: Request) {
           seen.add(k);
           out.push(c);
           justtcgAppended++;
-          if (out.length >= 12) break;
+          if (out.length >= 14) break;
         }
       }
     }
