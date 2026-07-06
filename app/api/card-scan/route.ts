@@ -10,23 +10,23 @@ import { matchScan, manualLookup } from "@/lib/scan/matchScan";
 // pipeline lives in lib/scan/matchScan so it can be replayed locally against real
 // logged OCR text (scripts/scan-replay.ts). See docs/card-scanning-research.md.
 
-/** GET → { enabled }: whether the caller may use the scanner (admin gate for the UI). */
+/** GET → { enabled }: any signed-in user may use the scanner (GA — no longer admin-gated). */
 export async function GET() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const enabled = user ? await isUserAdmin(user.id) : false;
-  return NextResponse.json({ enabled });
+  return NextResponse.json({ enabled: !!user });
 }
 
-/** POST { text, lines, bytes? } → { candidates, confident, debug }. Admin gate + logs. */
+/** POST { text, lines, bytes? } → { candidates, confident, debug }. Any signed-in user. */
 export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user || !(await isUserAdmin(user.id))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const isAdmin = await isUserAdmin(user.id);
 
-  let body: { text?: string; lines?: string[]; bytes?: number; name?: string; number?: string; image?: string; numberHints?: string[] };
+  let body: { text?: string; lines?: string[]; bytes?: number; name?: string; number?: string; image?: string; nameHints?: string[]; numberHints?: string[] };
   try {
     body = await request.json();
   } catch {
@@ -44,17 +44,22 @@ export async function POST(request: Request) {
   const numberHints = Array.isArray(body.numberHints)
     ? body.numberHints.filter((n): n is string => typeof n === "string")
     : [];
+  const nameHints = Array.isArray(body.nameHints)
+    ? body.nameHints.filter((n): n is string => typeof n === "string")
+    : [];
 
-  const { candidates, confident, debug } = await matchScan(text, lines, numberHints);
+  const { candidates, confident, debug } = await matchScan(text, lines, numberHints, nameHints);
 
   // Persist a diagnostics row (+ the cropped image) so real-world phone failures
   // are reviewable and OCR can be tuned against real foils. Best-effort throughout.
   try {
     const admin = createAdminClient();
 
-    // Upload the cropped image the client OCR'd (data URL) to private storage.
+    // Upload the cropped image the client OCR'd (data URL) to private storage —
+    // ADMIN ONLY. Now the scanner is GA, we don't store every user's card photo
+    // (storage + privacy); admin scans still log images so OCR can be tuned.
     let imagePath: string | null = null;
-    if (typeof body.image === "string" && body.image.startsWith("data:")) {
+    if (isAdmin && typeof body.image === "string" && body.image.startsWith("data:")) {
       const b64 = body.image.split(",")[1] ?? "";
       const buf = Buffer.from(b64, "base64");
       if (buf.length > 0 && buf.length < 3_000_000) {

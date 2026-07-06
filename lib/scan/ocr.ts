@@ -8,6 +8,8 @@
 export interface OcrResult {
   text: string;
   lines: string[];
+  /** Pokémon-name guesses from a targeted top-banner pass (full-art names). */
+  nameHints: string[];
   /** 2–3 digit collector-number guesses from a targeted bottom-strip pass. */
   numberHints: string[];
 }
@@ -73,6 +75,44 @@ function fullCanvas(bmp: ImageBitmap): HTMLCanvasElement | null {
 function digitTokens(text: string): string[] {
   const toks = (text.match(/\d+/g) ?? []).filter((t) => t.length >= 2 && t.length <= 3);
   return [...new Set(toks)].sort((a, b) => b.length - a.length);
+}
+
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz '";
+const NAME_STOP = new Set(["stage", "basic", "evolves", "from"]);
+
+// Targeted name read: crop the top name banner (where the Pokémon name lives),
+// upscale, grayscale+normalize, OCR letters. On full-art/holo cards the stylized
+// name over busy art defeats the full-card pass (e.g. "Empoleon" → "leon", which
+// then matched the Leon trainer). Extract capitalized words (leading cap + ≥3
+// lowercase) so the trailing "ex"/logo glyph ("EmpoleonX") doesn't corrupt it.
+async function ocrNameStrip(worker: MiniWorker, bmp: ImageBitmap): Promise<string[]> {
+  const scale = Math.max(3, Math.round(2000 / bmp.width));
+  const sy = Math.round(bmp.height * 0.03);
+  const sh = Math.round(bmp.height * 0.085);
+  const sw = Math.round(bmp.width * 0.8); // exclude the HP number (top-right)
+  const w = sw * scale;
+  const h = sh * scale;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return [];
+  ctx.drawImage(bmp, 0, sy, sw, sh, 0, 0, w, h);
+  const img = ctx.getImageData(0, 0, w, h);
+  grayNormalize(img.data);
+  ctx.putImageData(img, 0, 0);
+
+  const names = new Set<string>();
+  for (const psm of ["7", "6"]) {
+    await worker.setParameters({ tessedit_char_whitelist: LETTERS, tessedit_pageseg_mode: psm });
+    const { data } = await worker.recognize(canvas);
+    for (const m of (data.text || "").matchAll(/[A-Z][a-z]{3,}/g)) {
+      const n = m[0].toLowerCase();
+      if (!NAME_STOP.has(n)) names.add(n);
+    }
+  }
+  await worker.setParameters({ tessedit_char_whitelist: "", tessedit_pageseg_mode: "3" });
+  return [...names].sort((a, b) => b.length - a.length).slice(0, 3);
 }
 
 // Targeted collector-number read: crop the bottom strip (where the number lives),
@@ -150,14 +190,18 @@ export async function ocrImage(
     walk(data.blocks as unknown as OcrNode[]);
 
     const text = data.text || "";
+    let nameHints: string[] = [];
     let numberHints: string[] = [];
     if (bmp) {
-      try { numberHints = await ocrNumberStrip(worker as unknown as MiniWorker, bmp); } catch { /* best-effort */ }
+      const mini = worker as unknown as MiniWorker;
+      try { nameHints = await ocrNameStrip(mini, bmp); } catch { /* best-effort */ }
+      try { numberHints = await ocrNumberStrip(mini, bmp); } catch { /* best-effort */ }
     }
 
     return {
       text,
       lines: lines.length ? lines : text.split("\n").map((l) => l.trim()).filter(Boolean),
+      nameHints,
       numberHints,
     };
   } finally {

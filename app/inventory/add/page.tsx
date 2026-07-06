@@ -192,6 +192,33 @@ export default function AddCardPage() {
   const [duplicateWarning, setDuplicateWarning] = useState(false);
   const [duplicateItems, setDuplicateItems] = useState<{ id: string; condition: string | null; grader: string | null; grade: number | null; quantity: number }[]>([]);
 
+  // Scanner telemetry: how the card was selected (scan/search/manual), which scan
+  // result rank, and an identity snapshot to diff against the final saved values.
+  const pendingSourceRef = useRef<{ source: "scan" | "search"; index: number | null } | null>(null);
+  const selectionRef = useRef<{ source: "scan" | "search"; index: number | null; snapshot: Record<string, string> } | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const pendingEventRef = useRef<{ source: string; index: number | null; acceptedFirst: boolean | null; modifiedFields: string[] } | null>(null);
+
+  function logScanEvent(extra?: { feedback?: string }) {
+    const ev = pendingEventRef.current;
+    if (!ev) return;
+    fetch("/api/scan-event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...ev, ...extra }),
+    }).catch(() => { /* telemetry best-effort */ });
+  }
+
+  function handleScanSelect(card: Parameters<typeof handlePokemonSelect>[0], index: number) {
+    pendingSourceRef.current = { source: "scan", index };
+    handlePokemonSelect(card);
+  }
+  function handleSearchSelect(card: Parameters<typeof handlePokemonSelect>[0]) {
+    pendingSourceRef.current = { source: "search", index: null };
+    handlePokemonSelect(card);
+  }
+
   const computedMarketHint = tcgplayerData
     ? searchProvider.getMarketPrice(
         tcgplayerData, finish || null, edition || null,
@@ -308,6 +335,22 @@ export default function AddCardPage() {
       sub.includes("ex") || sub.includes("mega") || sub.includes("gx") ||
       sub.includes("v")  || sub.includes("vmax") || sub.includes("vstar")
     );
+
+    // Snapshot the auto-filled identity so we can tell at save time whether the
+    // user had to correct the scanned/searched card's data.
+    const src = pendingSourceRef.current ?? { source: "search" as const, index: null };
+    pendingSourceRef.current = null;
+    selectionRef.current = {
+      source: src.source,
+      index: src.index,
+      snapshot: {
+        name: card.name,
+        setCode: card.set.id,
+        cardNumber: card.number,
+        isPromo: String(detectedPromo),
+        rarity: detectedPromo ? "promo" : (card.rarity ? searchProvider.mapRarity(card.rarity.toLowerCase()) : ""),
+      },
+    };
   }
 
   async function checkForDuplicate(): Promise<boolean> {
@@ -433,6 +476,37 @@ export default function AddCardPage() {
       /* non-fatal — market value can be filled later via "Fill missing prices" */
     }
 
+    // Build the add-telemetry event: source, whether the top scan result was
+    // accepted, and which identity fields were corrected vs the selection snapshot.
+    const sel = selectionRef.current;
+    const source = sel?.source ?? "manual";
+    let modifiedFields: string[] = [];
+    if (sel) {
+      const cur: Record<string, string> = { name, setCode, cardNumber, isPromo: String(isPromo), rarity };
+      modifiedFields = Object.keys(sel.snapshot).filter((k) => sel.snapshot[k] !== cur[k]);
+    }
+    pendingEventRef.current = {
+      source,
+      index: sel?.index ?? null,
+      acceptedFirst: source === "scan" ? sel?.index === 0 : null,
+      modifiedFields,
+    };
+
+    // Scan-sourced adds: log and go. Non-scan adds (never scanned, or scanned and
+    // fell back to manual/search): prompt for feedback first, then log + go.
+    if (source === "scan") {
+      logScanEvent();
+      router.push("/inventory");
+      router.refresh();
+    } else {
+      setLoading(false);
+      setFeedbackOpen(true);
+    }
+  }
+
+  function finishFeedback(send: boolean) {
+    logScanEvent(send && feedbackText.trim() ? { feedback: feedbackText.trim() } : undefined);
+    setFeedbackOpen(false);
     router.push("/inventory");
     router.refresh();
   }
@@ -457,6 +531,42 @@ export default function AddCardPage() {
 
   return (
     <div className="space-y-8">
+      {feedbackOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 space-y-4">
+            <div>
+              <h3 className="font-semibold text-foreground">Card added — quick feedback?</h3>
+              <p className="mt-1 text-sm text-foreground-muted">
+                You added this one without the scanner. Mind saying why — didn&apos;t try it, or did it
+                miss your card? Helps us make scanning better. (optional)
+              </p>
+            </div>
+            <textarea
+              rows={3}
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder="e.g. scan couldn't read the number · didn't find my card · just faster to type"
+              className="w-full rounded-xl border border-border bg-surface-raised px-3 py-2 text-sm text-foreground placeholder:text-foreground-muted focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold resize-none"
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => finishFeedback(false)}
+                className="rounded-full border border-border px-5 py-2 text-sm font-medium text-foreground-muted hover:text-foreground hover:border-gold/40 transition-colors"
+              >
+                Skip
+              </button>
+              <button
+                type="button"
+                onClick={() => finishFeedback(true)}
+                className="rounded-full bg-gold px-5 py-2 text-sm font-semibold text-background hover:bg-gold-light transition-colors"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-4">
         <Link href="/inventory" className="text-foreground-muted hover:text-foreground transition-colors">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -477,10 +587,10 @@ export default function AddCardPage() {
 
           <div>
             <label className={labelClass()}>Search Card</label>
-            {/* Admin-only card scanner (beta): self-hides for non-admins. Emits the
-                same card shape as manual search, so it reuses handlePokemonSelect. */}
-            <CardScanner onSelect={handlePokemonSelect} />
-            <PokemonCardSearch onSelect={handlePokemonSelect} />
+            {/* Card scanner (GA). Wrappers tag the selection source (scan/search)
+                and scan-result rank for add telemetry. */}
+            <CardScanner onSelect={handleScanSelect} />
+            <PokemonCardSearch onSelect={handleSearchSelect} />
             {pokemonApiId && (
               <p className="mt-1.5 text-xs text-foreground-muted">
                 Card auto-filled — you can still adjust fields below.

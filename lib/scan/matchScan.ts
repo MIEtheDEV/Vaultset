@@ -70,9 +70,18 @@ export async function manualLookup(name: string, number: string): Promise<ScanMa
   };
 }
 
-export async function matchScan(text: string, lines: string[], numberHints: string[] = []): Promise<ScanMatch> {
+export async function matchScan(
+  text: string,
+  lines: string[],
+  numberHints: string[] = [],
+  nameHints: string[] = [],
+): Promise<ScanMatch> {
   const useLines = lines.length ? lines : text.split("\n");
-  const nameCandidates = text.length >= 3 ? extractNameCandidates(text, useLines) : [];
+  // Targeted top-banner name reads lead the full-text candidates — they recover
+  // stylized full-art names ("Empoleon") the full-card pass mangles ("leon").
+  const nameCandidates = [
+    ...new Set([...nameHints, ...(text.length >= 3 ? extractNameCandidates(text, useLines) : [])]),
+  ];
   const attackPhrases = text.length >= 3 ? extractAttackPhrases(text, useLines) : [];
   // The reliable collector number (drives ranking + float); the broad list is only
   // for cheap JustTCG probing. numberHints (targeted bottom-strip OCR, client-side)
@@ -94,7 +103,7 @@ export async function matchScan(text: string, lines: string[], numberHints: stri
   if (nameCandidates.length > 0 || attackPhrases.length > 0) {
     const pool = await scanSearchPokemon(nameCandidates, attackPhrases);
     poolSize = pool.length;
-    const ranked = rankCandidates(pool, text, numberCandidates[0] ?? null);
+    const ranked = rankCandidates(pool, text, numberCandidates[0] ?? null, nameHints);
     top = ranked.slice(0, 6).map((r) => ({
       name: r.card.name, set: r.card.set?.name ?? "", number: r.card.number, score: r.score,
     }));
@@ -114,7 +123,9 @@ export async function matchScan(text: string, lines: string[], numberHints: stri
     let hitNumber: string | null = null;
     if (jtName) {
       const seen = new Set(out.map((c) => `${c.name.toLowerCase()}|${c.number}`));
-      const tries: (string | undefined)[] = numberCandidates.length ? numberCandidates.slice(0, 4) : [undefined];
+      // Cap probes to conserve JustTCG quota now the scanner is GA. The targeted
+      // number hint leads numberCandidates, so the right number is usually tried first.
+      const tries: (string | undefined)[] = numberCandidates.length ? numberCandidates.slice(0, 2) : [undefined];
       for (const num of tries) {
         const jt = await searchJustTcg(jtName, num);
         let exactHit = false;

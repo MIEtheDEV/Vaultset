@@ -208,8 +208,10 @@ export function rankCandidates<T extends RankableCard>(
   candidates: T[],
   ocrText: string,
   wantNumber?: string | null,
+  nameHints: string[] = [],
 ): RankedCard<T>[] {
   const hay = tokens(ocrText);
+  const hintToks = nameHints.flatMap((n) => tokens(n));
   const want = wantNumber ? normalizeCardNumber(wantNumber) : null;
   return candidates
     .map((card) => {
@@ -221,17 +223,19 @@ export function rankCandidates<T extends RankableCard>(
       const atkScore = (card.attacks || []).reduce(
         (s, a) => s + (phrasePresent(hay, a.name) ? tokens(a.name).length : 0), 0,
       );
-      const nameHit = phrasePresent(hay, card.name) ? 1 : 0;
-      // Graded name similarity (best card-name token vs any OCR token). A near-miss
-      // like "charmelggy"→"charmeleon" (0.7) still nudges the right card up — the
-      // decisive tiebreak when an attack ("Steady Firebreathing") is shared by
-      // several Pokémon (Charmeleon/Crocalor/Charmander) and the name OCR'd badly.
-      let nameSim = 0;
+      // Name evidence from two sources: the full-card OCR text (weaker — the name
+      // often garbles on holo, "charmelggy"→charmeleon 0.7) and the targeted
+      // top-banner name hints (stronger/reliable — recovers "Empoleon" where the
+      // full text only got "leon", which matched the Leon trainer). Graded so a
+      // near-miss still breaks ties; the hint is weighted higher than the text.
+      let textSim = 0, hintSim = 0;
       for (const nt of tokens(card.name)) {
         if (nt.length < 3) continue;
-        for (const h of hay) { const s = sim(nt, h); if (s > nameSim) nameSim = s; }
+        for (const h of hay) { const s = sim(nt, h); if (s > textSim) textSim = s; }
+        for (const h of hintToks) { const s = sim(nt, h); if (s > hintSim) hintSim = s; }
       }
-      const nameScore = nameSim >= 0.6 ? nameSim * 6 : 0;
+      const nameHit = textSim >= 0.8 || hintSim >= 0.8 ? 1 : 0;
+      const nameScore = (hintSim >= 0.8 ? hintSim * 10 : 0) + (textSim >= 0.6 ? textSim * 6 : 0);
       // Bare HP/number matches are weak/coincidental, so they only count alongside
       // a name/attack match (an HP fluke once ranked Numel over the correct card).
       const idMatch = nameHit === 1 || atkScore > 0;

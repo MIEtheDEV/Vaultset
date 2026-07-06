@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { ocrImage } from "@/lib/scan/ocr";
 import { CardCropper } from "@/components/CardCropper";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
@@ -32,7 +33,7 @@ interface ScanDebug {
 }
 
 interface Props {
-  onSelect: (card: ScannedCard) => void;
+  onSelect: (card: ScannedCard, index: number) => void;
 }
 
 export function CardScanner({ onSelect }: Props) {
@@ -128,7 +129,7 @@ export function CardScanner({ onSelect }: Props) {
     setProgress(0);
     try {
       setStatus("reading");
-      const { text, lines, numberHints } = await ocrImage(blob, setProgress);
+      const { text, lines, nameHints, numberHints } = await ocrImage(blob, setProgress);
       setOcrText(text);
       if (!text.trim()) {
         setCandidates([]);
@@ -146,7 +147,7 @@ export function CardScanner({ onSelect }: Props) {
       const res = await fetch("/api/card-scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, lines, bytes: blob.size, image, numberHints }),
+        body: JSON.stringify({ text, lines, bytes: blob.size, image, nameHints, numberHints }),
       });
       if (!res.ok) throw new Error(res.status === 403 ? "Not authorized." : `Scan failed (${res.status}).`);
       const json = await res.json();
@@ -160,8 +161,8 @@ export function CardScanner({ onSelect }: Props) {
     }
   }
 
-  function pick(card: ScannedCard) {
-    onSelect(card);
+  function pick(card: ScannedCard, index: number) {
+    onSelect(card, index);
     setOpen(false);
     reset();
   }
@@ -181,7 +182,7 @@ export function CardScanner({ onSelect }: Props) {
             <circle cx="12" cy="13" r="4" />
           </svg>
           Scan a card
-          <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Beta · Admin</span>
+          <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Beta</span>
         </button>
       ) : (
         <div className="rounded-2xl border border-border bg-surface-raised p-4 space-y-3">
@@ -200,6 +201,14 @@ export function CardScanner({ onSelect }: Props) {
             onChange={handleFile}
             className="hidden"
           />
+
+          {status === "idle" && !preview && (
+            <ol className="space-y-1.5 text-xs text-foreground-muted">
+              <li><span className="font-semibold text-foreground">1. Focus &amp; light.</span> Hold the camera steady on a sharp, evenly-lit card — no glare on holo cards. The <span className="text-foreground">name and card number</span> must be clearly readable.</li>
+              <li><span className="font-semibold text-foreground">2. Frame the card.</span> Fit the whole card in the shot, then drag the crop corners to its edges — as little background as possible.</li>
+              <li><span className="font-semibold text-foreground">3. Scan &amp; wait.</span> Submit and allow up to ~20 seconds for a result (the first scan of a session takes a little longer to load).</li>
+            </ol>
+          )}
 
           {status === "cropping" && file ? (
             <CardCropper file={file} onCropped={runPipeline} onCancel={reset} />
@@ -248,7 +257,7 @@ export function CardScanner({ onSelect }: Props) {
                   <li key={card.id}>
                     <button
                       type="button"
-                      onClick={() => pick(card)}
+                      onClick={() => pick(card, i)}
                       className={`flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-raised transition-colors ${i === 0 && confident ? "bg-gold/5" : ""}`}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -305,7 +314,7 @@ export function CardScanner({ onSelect }: Props) {
 
           {(status === "done" || status === "error") && (ocrText || debug) && (
             <details className="mt-1 rounded-lg border border-border bg-surface/50 p-2">
-              <summary className="cursor-pointer text-[11px] font-medium text-foreground-muted">Diagnostics (admin)</summary>
+              <summary className="cursor-pointer text-[11px] font-medium text-foreground-muted">Scan details</summary>
               <div className="mt-2 space-y-2 text-[11px] text-foreground-muted">
                 {debug && (
                   <div>
@@ -331,6 +340,13 @@ export function CardScanner({ onSelect }: Props) {
           )}
           </>
           )}
+
+          <p className="border-t border-border/60 pt-2 text-[11px] leading-relaxed text-foreground-muted/80">
+            Beta — this feature is still being tested. If a scan gets the wrong printing, enter the
+            card number above before saving. You can also send feedback after adding the card, or reach
+            us anytime via our{" "}
+            <Link href="/contact" className="text-gold hover:text-gold-light transition-colors">contact page</Link>.
+          </p>
         </div>
       )}
     </div>
