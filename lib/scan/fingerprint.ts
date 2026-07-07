@@ -61,6 +61,13 @@ const STOPWORDS = new Set([
 // from crowding out the actual name in the candidate list.
 const MAX_NAME_LEN = 13;
 
+// "Evolves from X" names a *different* Pokémon, so these lines are dropped from
+// name/attack candidates. OCR routinely loses the leading capital ("Evolves" →
+// "volves"), which /evolv/ missed — letting "Pidgeotto" leak in and outrank the
+// actual "Pidgeot ex". Anchor on the stable "volv" core instead. No Pokémon name
+// contains "volv", so this can't exclude a real name.
+const EVOLVE_LINE = /volv/i;
+
 // Anchor: across every era the Pokémon name shares a top-band line with the HP
 // ("Blastoise 100 HP", "Pikachu 40 HP", "Mew … 180"). Pull the alpha tokens off
 // those lines; fall back to the longest tokens anywhere. OCR reads top-to-bottom,
@@ -69,7 +76,7 @@ const MAX_NAME_LEN = 13;
 export function extractNameCandidates(text: string, lines: string[]): string[] {
   const excluded = new Set<string>();
   lines.forEach((line) => {
-    if (/evolv/i.test(line)) tokens(line).forEach((t) => excluded.add(t));
+    if (EVOLVE_LINE.test(line)) tokens(line).forEach((t) => excluded.add(t));
   });
   const usable = (t: string) =>
     t.length >= 3 && t.length <= MAX_NAME_LEN && !STOPWORDS.has(t) && !excluded.has(t);
@@ -77,7 +84,7 @@ export function extractNameCandidates(text: string, lines: string[]): string[] {
   const out: string[] = [];
   const topCount = Math.max(3, Math.ceil(lines.length * 0.45));
   lines.slice(0, topCount).forEach((line) => {
-    if (/evolv/i.test(line)) return;
+    if (EVOLVE_LINE.test(line)) return;
     const hasHp = /\bhp\b/i.test(line);
     const num = /\b(\d{2,3})\b/.exec(line)?.[1];
     const lineTokens = tokens(line.replace(/\bhp\b/gi, " ").replace(/\d+/g, " ")).filter(usable);
@@ -107,7 +114,7 @@ export function extractAttackPhrases(text: string, lines: string[]): string[] {
   const singles: string[] = [];
 
   body.forEach((line) => {
-    if (/evolv/i.test(line)) return;
+    if (EVOLVE_LINE.test(line)) return;
     const words = tokens(line).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
     for (let i = 0; i < words.length - 1; i++) {
       if (words[i].length <= MAX_NAME_LEN && words[i + 1].length <= MAX_NAME_LEN) {
@@ -181,6 +188,7 @@ export interface RankableCard {
   name: string;
   number?: string;
   attacks?: { name: string }[];
+  abilities?: { name: string }[];
   hp?: string;
 }
 
@@ -189,13 +197,20 @@ export interface RankedCard<T extends RankableCard> {
   score: number;
   /** The Pokémon name actually appeared in the OCR (not just an attack/HP coincidence). */
   nameHit: boolean;
+  /** Most words matched within a single move (attack/ability). >=2 means a
+   *  distinctive multi-word move matched — strong identity evidence on its own. */
+  moveHit: number;
   /** Cards sharing this identity (same name+attacks) are indistinguishable by text. */
   identityKey: string;
 }
 
 function identityKey(c: RankableCard): string {
-  const atk = (c.attacks || []).map((a) => norm(a.name)).sort().join("|");
-  return `${norm(c.name)}#${atk}`;
+  // Attacks + abilities together define a card's text identity: they separate a
+  // Pokémon from its reprints' siblings (Empoleon vs Empoleon ex) and stay stable
+  // across reprints of the same card.
+  const moves = [...(c.attacks || []), ...(c.abilities || [])]
+    .map((a) => norm(a.name)).sort().join("|");
+  return `${norm(c.name)}#${moves}`;
 }
 
 /**
@@ -215,14 +230,20 @@ export function rankCandidates<T extends RankableCard>(
   const want = wantNumber ? normalizeCardNumber(wantNumber) : null;
   return candidates
     .map((card) => {
-      // Weight a matched attack by how many of its words matched. A distinctive
-      // multi-word attack ("Steady Firebreathing") is a far stronger identity
-      // signal than a 1-word fuzzy coincidence (a "Flare" attack matching the
-      // "Flame Pokémon" species line — which made every fire-type tie the correct
-      // card when the name OCR'd badly).
-      const atkScore = (card.attacks || []).reduce(
-        (s, a) => s + (phrasePresent(hay, a.name) ? tokens(a.name).length : 0), 0,
-      );
+      // Weight a matched move (attack OR ability) by how many of its words matched.
+      // A distinctive multi-word move ("Steady Firebreathing", "Emperor's Stance")
+      // is a far stronger identity signal than a 1-word fuzzy coincidence (a "Flare"
+      // attack matching the "Flame Pokémon" species line — which made every fire-type
+      // tie the correct card when the name OCR'd badly). Abilities count equally:
+      // some cards (Empoleon ex, Pidgeot ex) are identifiable only by their ability.
+      const moves = [...(card.attacks || []), ...(card.abilities || [])];
+      let moveScore = 0, moveHit = 0;
+      for (const a of moves) {
+        if (!phrasePresent(hay, a.name)) continue;
+        const w = tokens(a.name).length;
+        moveScore += w;
+        if (w > moveHit) moveHit = w; // widest single move matched (identity strength)
+      }
       // Name evidence from two sources: the full-card OCR text (weaker — the name
       // often garbles on holo, "charmelggy"→charmeleon 0.7) and the targeted
       // top-banner name hints (stronger/reliable — recovers "Empoleon" where the
@@ -238,11 +259,11 @@ export function rankCandidates<T extends RankableCard>(
       const nameScore = (hintSim >= 0.8 ? hintSim * 10 : 0) + (textSim >= 0.6 ? textSim * 6 : 0);
       // Bare HP/number matches are weak/coincidental, so they only count alongside
       // a name/attack match (an HP fluke once ranked Numel over the correct card).
-      const idMatch = nameHit === 1 || atkScore > 0;
+      const idMatch = nameHit === 1 || moveScore > 0;
       const hpHit = idMatch && card.hp && tokenPresent(hay, String(card.hp), 0.9) ? 1 : 0;
       const numHit = want && idMatch && card.number && normalizeCardNumber(card.number) === want ? 1 : 0;
-      const score = atkScore * 8 + nameScore + hpHit * 2 + numHit * 20;
-      return { card, score, nameHit: nameHit === 1, identityKey: identityKey(card) };
+      const score = moveScore * 8 + nameScore + hpHit * 2 + numHit * 20;
+      return { card, score, nameHit: nameHit === 1, moveHit, identityKey: identityKey(card) };
     })
     .sort((a, b) => b.score - a.score);
 }
@@ -268,11 +289,20 @@ export function resolveScan<T extends RankableCard>(ranked: RankedCard<T>[], lim
   const top = scored[0];
   const topIdentity = scored.filter((r) => r.identityKey === top.identityKey);
   const others = scored.filter((r) => r.identityKey !== top.identityKey);
-  const runnerUp = others[0];
-  // Confident only when the Pokémon NAME actually read (not an attack/HP fluke —
-  // that produced a confident *wrong* match, e.g. "Seel δ" for a Crobat) AND the
-  // top beats the best different-identity candidate clearly.
-  const confident = top.nameHit && (!runnerUp || top.score >= runnerUp.score + 10);
+  // Identity is confirmed when the Pokémon NAME actually read, OR a distinctive
+  // multi-word move (attack/ability) matched. A bare 1-word move or an HP/number
+  // coincidence is NOT enough — those produced confident *wrong* matches (a Crobat
+  // resolving to "Seel δ" off a single fuzzy word). A matched 2+ word move
+  // ("Emperor's Stance", "Steady Firebreathing") pins the card even when the
+  // stylized name OCRs to a fragment (Ampharos read only as "amph").
+  const idConfirmed = (r: RankedCard<T>) => r.nameHit || r.moveHit >= 2;
+  // Only a DIFFERENT Pokémon that is itself identity-confirmed can veto confidence.
+  // A coincidental HP/1-word hit is not a real rival (a fluke Mewtwo was wrongly
+  // holding Zacian back), and a same-name alternate printing is not a rival at all —
+  // that's just printing ambiguity: we're sure of the Pokémon, and the tie-set lets
+  // the user pick the exact print.
+  const rival = others.find((r) => norm(r.card.name) !== norm(top.card.name) && idConfirmed(r));
+  const confident = idConfirmed(top) && (!rival || top.score >= rival.score + 6);
   const ordered = [...topIdentity, ...others].slice(0, limit).map((r) => r.card);
   return { candidates: ordered, confident };
 }

@@ -24,6 +24,11 @@ export interface ScanMatch {
   debug: {
     nameCandidates: string[];
     numberCandidates: string[];
+    /** The reliable NNN/TTT collector number (null if none read) — logged
+     *  separately from the noisy numberCandidates blob to measure read rate. */
+    collectorNumber: string | null;
+    /** Client bottom-strip targeted OCR reads, as received. */
+    numberHints: string[];
     poolSize: number;
     justtcgAppended: number;
     top: ScanTopMatch[];
@@ -66,7 +71,11 @@ export async function manualLookup(name: string, number: string): Promise<ScanMa
   return {
     candidates: out,
     confident: out.length === 1,
-    debug: { nameCandidates: [clean], numberCandidates: [number], poolSize: out.length, justtcgAppended, top: [] },
+    debug: {
+      nameCandidates: [clean], numberCandidates: [number],
+      collectorNumber: null, numberHints: [],
+      poolSize: out.length, justtcgAppended, top: [],
+    },
   };
 }
 
@@ -154,6 +163,6 @@ export async function matchScan(
   return {
     candidates: out,
     confident,
-    debug: { nameCandidates, numberCandidates, poolSize, justtcgAppended, top },
+    debug: { nameCandidates, numberCandidates, collectorNumber, numberHints, poolSize, justtcgAppended, top },
   };
 }
