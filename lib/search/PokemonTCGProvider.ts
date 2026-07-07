@@ -44,20 +44,27 @@ export async function fetchPokemonCardDetail(id: string): Promise<PokemonCardDet
   }
 }
 
-// A scan candidate is a search result plus the body-text fields (attacks, hp)
-// the fingerprint ranker scores against. See lib/scan/fingerprint.ts.
+// A scan candidate is a search result plus the body-text fields (attacks,
+// abilities, hp) the fingerprint ranker scores against. Abilities matter as much
+// as attacks: some cards are defined by them (Empoleon ex → "Emperor's Stance",
+// Pidgeot ex → "Quick Search") and their Pokémon name OCRs badly on full-art, so
+// the ability text is often the only readable identity signal. See
+// lib/scan/fingerprint.ts.
 export interface ScanCandidate extends SearchResult {
   attacks?: { name: string }[];
+  abilities?: { name: string }[];
   hp?: string;
 }
 
 /**
  * Fingerprint retrieval for the card scanner. Unions two query families, deduped
- * by native id, returning cards enriched with attacks + hp so the ranker can score
- * by the discriminative body text:
+ * by native id, returning cards enriched with attacks + abilities + hp so the
+ * ranker can score by the discriminative body text:
  *   - `name:<cand>*` over OCR-derived name candidates
- *   - `attacks.name:...` over OCR-derived attack terms — this rescues cards whose
- *     Pokémon name OCRs badly (stylized foil) but whose attack text still reads.
+ *   - `attacks.name:...` / `abilities.name:...` over OCR-derived move terms — this
+ *     rescues cards whose Pokémon name OCRs badly (stylized foil) but whose attack
+ *     or ability text still reads. We can't tell an attack term from an ability
+ *     term at OCR time, so each move term probes both fields.
  * pokemontcg.io only (the free Tier-1 identity path — see lib/scan/).
  */
 export async function scanSearchPokemon(
@@ -67,7 +74,7 @@ export async function scanSearchPokemon(
   const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY
     ? { "X-Api-Key": process.env.POKEMON_TCG_API_KEY }
     : {};
-  const select = "id,name,number,rarity,subtypes,set,images,tcgplayer,attacks,hp";
+  const select = "id,name,number,rarity,subtypes,set,images,tcgplayer,attacks,abilities,hp";
 
   // Build ONE OR-combined Lucene query rather than a fetch per term. pokemontcg.io
   // rate-limits hard without an API key, so firing 12 requests per scan quickly
@@ -79,9 +86,22 @@ export async function scanSearchPokemon(
     if (term.length >= 3) clauses.push(`name:${term}*`);
   }
   for (const phrase of attackTerms.slice(0, 4)) {
-    const clean = phrase.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
-    if (clean.length < 4) continue;
-    clauses.push(clean.includes(" ") ? `attacks.name:"${clean}"` : `attacks.name:${clean}*`);
+    // Match each word as a prefix and AND them together, rather than a quoted
+    // phrase. A quoted "emperor's stance" only matches with the exact apostrophe
+    // (which OCR never gives) — stripping punctuation to "emperors stance" or
+    // "emperor s stance" matched nothing. Per-word wildcards AND'd
+    // (emperor* AND stance*) tolerate lost apostrophes, plurals, and OCR noise.
+    // Drop <3-char glue tokens (a possessive "s", "of", "to").
+    const words = phrase.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ")
+      .filter((w) => w.length >= 3);
+    if (words.length === 0) continue;
+    // A move term could be an attack OR an ability name (OCR can't tell), so probe
+    // both fields — Empoleon ex / Pidgeot ex are identifiable only via abilities.
+    const forField = (field: string) => words.length === 1
+      ? `${field}:${words[0]}*`
+      : `(${words.map((w) => `${field}:${w}*`).join(" AND ")})`;
+    clauses.push(forField("attacks.name"));
+    clauses.push(forField("abilities.name"));
   }
   if (clauses.length === 0) return [];
 
