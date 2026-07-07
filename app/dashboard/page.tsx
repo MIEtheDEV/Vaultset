@@ -12,6 +12,7 @@ import { InstallPwaCallout } from "@/components/InstallPwaCallout";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { isUserAdmin } from "@/lib/auth/admin";
 import { PortfolioChart } from "@/components/PortfolioChart";
+import { withLiveToday } from "@/lib/priceHistory";
 import { timeAgo } from "@/lib/timeAgo";
 import { BADGE_MAP, computeEarnedSlugs, awardBadges, type BadgeSlug } from "@/lib/badges";
 
@@ -375,7 +376,7 @@ export default async function DashboardPage() {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 15);
 
-  const portfolioHistory = Object.entries(
+  const portfolioSnapshots = Object.entries(
     (priceHistoryRaw ?? []).reduce<Record<string, number>>((acc, row) => {
       const qty = (row.collection_items as any)?.quantity ?? 1;
       acc[row.snapshotted_at] = (acc[row.snapshotted_at] ?? 0) + Number(row.market_price) * qty;
@@ -384,6 +385,10 @@ export default async function DashboardPage() {
   )
     .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }))
     .sort((a, b) => a.date.localeCompare(b.date));
+  // Snapshots are written once daily (02:00 UTC); a manual refresh or an add/edit
+  // moves the live value after that. Stamp the live "Market Value" onto today so the
+  // chart's headline matches the Market Value stat instead of lagging the snapshot.
+  const portfolioHistory = withLiveToday(portfolioSnapshots, collectionValue);
 
   const dashboardStats = [
     { ...stats[0], value: String(totalCards) },

@@ -4,6 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 import { PortfolioAnalyticsClient } from "@/components/PortfolioAnalyticsClient";
 import { ProUpsell } from "@/components/ProUpsell";
 import { isPro } from "@/lib/isPro";
+import { withLiveToday } from "@/lib/priceHistory";
 
 export const metadata: Metadata = {
   title: "Portfolio Analytics",
@@ -60,9 +61,11 @@ export default async function PortfolioAnalyticsPage() {
 
   const items = collectionData ?? [];
 
+  // "Market Value" = market_price × qty, cards only. No list_price fallback:
+  // list_price is the owner's asking price, not a market value, so it must not
+  // inflate this figure (keeps it identical to the dashboard + report definition).
   const totalMarketValue = items.reduce((sum, r) => {
-    const price = r.market_price ?? r.list_price;
-    return sum + (price != null ? Number(price) * (r.quantity ?? 1) : 0);
+    return sum + (r.market_price != null ? Number(r.market_price) * (r.quantity ?? 1) : 0);
   }, 0);
 
   const totalCostBasis = items.reduce((sum, r) => {
@@ -72,14 +75,13 @@ export default async function PortfolioAnalyticsPage() {
 
   const coveredMarketValue = items.reduce((sum, r) => {
     if (r.paid_price == null) return sum;
-    const price = r.market_price ?? r.list_price;
-    return sum + (price != null ? Number(price) * (r.quantity ?? 1) : 0);
+    return sum + (r.market_price != null ? Number(r.market_price) * (r.quantity ?? 1) : 0);
   }, 0);
 
   const cardsWithCostBasis = items.filter((r) => r.paid_price != null).length;
   const totalCards = items.length;
 
-  const portfolioHistory = Object.entries(
+  const portfolioSnapshots = Object.entries(
     (priceHistoryRaw ?? []).reduce<Record<string, number>>((acc, row) => {
       const qty = (row.collection_items as { quantity?: number } | null)?.quantity ?? 1;
       acc[row.snapshotted_at] =
@@ -89,6 +91,9 @@ export default async function PortfolioAnalyticsPage() {
   )
     .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }))
     .sort((a, b) => a.date.localeCompare(b.date));
+  // End the series at the live "Current Value" so the chart matches the stat
+  // (snapshots are daily; a refresh/edit moves the value after 02:00 UTC).
+  const portfolioHistory = withLiveToday(portfolioSnapshots, totalMarketValue);
 
   const cards = items.map((item) => {
     const card = Array.isArray(item.cards) ? item.cards[0] : item.cards;

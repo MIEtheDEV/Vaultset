@@ -233,9 +233,9 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
               <span className="ml-1 text-xs italic print:text-gray-400"> (cards + sealed products)</span>
             </span>
             <span>
-              Market Value:{" "}
+              Collection Value:{" "}
               <span className="font-semibold text-gold print:text-black">${combinedValue.toFixed(2)}</span>
-              <span className="ml-1 text-xs italic print:text-gray-400"> (TCGPlayer market price × qty; sealed products use list price)</span>
+              <span className="ml-1 text-xs italic print:text-gray-400"> (cards at market price × qty + sealed at list price)</span>
             </span>
             <span>
               Unrealized P/L:{" "}
