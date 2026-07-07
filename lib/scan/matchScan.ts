@@ -35,12 +35,28 @@ export interface ScanMatch {
   };
 }
 
+// Base name for cross-provider dedup. The same physical printing arrives from
+// pokemontcg.io and JustTCG with differently-spelled names ("Shuckle" vs
+// "Shuckle - 136/132" vs "Shuckle (Cosmos Holo)"), so a raw name compare fails to
+// collapse them. Strip JustTCG's " - <num>/<total>" / " - (variant)" suffix
+// (hyphen with surrounding spaces only, so "Shuckle-GX"/"Ho-Oh" survive), drop
+// parentheticals, and reduce to alphanumerics.
+function baseName(n: string): string {
+  return n.toLowerCase()
+    .split(/\s+[-–—]\s+/)[0]
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
 /**
  * Manual refine: the scanner identified the Pokémon but OCR couldn't read the
  * collector number (common on foils/promos), so the user types the number they
- * can see. JustTCG's number filter pulls the exact printing (promos/new cards
- * name-only search misses); pokemontcg.io fills in any native match. Verified:
- * ("Charmeleon","079") → the Cosmos Holo promo; ("Crobat","093") → ME04 093/086.
+ * can see. pokemontcg.io native match leads (richer data, native id, plugs into
+ * pricing/rarity); JustTCG's number filter then fills only what pokemontcg.io
+ * lacks (promos/new prints). Results are deduped across providers by base name +
+ * normalized number so the same printing shows once (and can be confident).
+ * Verified: ("Charmeleon","079") → the Cosmos Holo promo; ("Shuckle","136") →
+ * me1-136 (single, confident).
  */
 export async function manualLookup(name: string, number: string): Promise<ScanMatch> {
   const clean = name.trim();
@@ -48,24 +64,27 @@ export async function manualLookup(name: string, number: string): Promise<ScanMa
   const out: SearchResult[] = [];
   const seen = new Set<string>();
   let justtcgAppended = 0;
+  const keyOf = (n: string, num: string) => `${baseName(n)}|${normalizeCardNumber(num)}`;
 
   if (clean.length >= 2) {
-    for (const c of await searchJustTcg(clean, number)) {
-      const k = `${c.name.toLowerCase()}|${c.number}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push(c);
-      justtcgAppended++;
-    }
+    // Native pokemontcg.io first, filtered to the exact number — the preferred copy.
     for (const c of await scanSearchPokemon([clean])) {
       if (normalizeCardNumber(c.number) !== want) continue;
-      const k = `${c.name.toLowerCase()}|${c.number}`;
+      const k = keyOf(c.name, c.number);
       if (seen.has(k)) continue;
       seen.add(k);
       out.push({
         id: c.id, name: c.name, number: c.number, rarity: c.rarity,
         subtypes: c.subtypes, set: c.set, images: c.images, tcgplayer: c.tcgplayer ?? null,
       });
+    }
+    // JustTCG fills only the printings pokemontcg.io doesn't have.
+    for (const c of await searchJustTcg(clean, number)) {
+      const k = keyOf(c.name, c.number);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(c);
+      justtcgAppended++;
     }
   }
   return {
