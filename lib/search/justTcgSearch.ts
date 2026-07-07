@@ -1,5 +1,6 @@
 import type { SearchResult } from "./CardSearchProvider";
 import { variantsToPrices, type JustTcgVariant } from "@/lib/pricing/justtcgVariants";
+import { fetchWithTimeout } from "@/lib/http";
 
 const API_BASE = "https://api.justtcg.com/v1";
 
@@ -57,7 +58,7 @@ export async function searchJustTcg(query: string, number?: string): Promise<Sea
     // ignored), so obscure promos are unreachable by name alone. The number
     // filter narrows server-side and surfaces the exact card (e.g. ETB promos).
     if (number) params.set("number", number);
-    const res = await fetch(`${API_BASE}/cards?${params}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/cards?${params}`, {
       headers: { "x-api-key": key },
       next: { revalidate: 3600 },
     });
@@ -81,7 +82,7 @@ export async function getJustTcgById(productId: string): Promise<SearchResult | 
   if (!key) return null;
   try {
     const params = new URLSearchParams({ game: "pokemon", tcgplayerId: productId });
-    const res = await fetch(`${API_BASE}/cards?${params}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/cards?${params}`, {
       headers: { "x-api-key": key },
       next: { revalidate: 3600 },
     });

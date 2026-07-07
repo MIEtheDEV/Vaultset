@@ -10,6 +10,11 @@ import { matchScan, manualLookup } from "@/lib/scan/matchScan";
 // pipeline lives in lib/scan/matchScan so it can be replayed locally against real
 // logged OCR text (scripts/scan-replay.ts). See docs/card-scanning-research.md.
 
+// The POST cascades pokemontcg.io + up to two JustTCG probes; each upstream is
+// individually timeout-bounded (lib/http fetchWithTimeout), and this caps the
+// whole request so a slow provider can't hang past the platform default.
+export const maxDuration = 30;
+
 /** GET → { enabled }: any signed-in user may use the scanner (GA — no longer admin-gated). */
 export async function GET() {
   const supabase = await createClient();
