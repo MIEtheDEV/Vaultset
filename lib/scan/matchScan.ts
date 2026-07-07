@@ -48,6 +48,13 @@ function baseName(n: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
+/** Cross-provider dedup key: base name + normalized number. Collapses the same
+ *  physical printing arriving from pokemontcg.io and JustTCG (used by both the
+ *  manual-refine path and the auto-scan JustTCG merge). */
+function dedupKey(name: string, number: string): string {
+  return `${baseName(name)}|${normalizeCardNumber(number)}`;
+}
+
 /**
  * Manual refine: the scanner identified the Pokémon but OCR couldn't read the
  * collector number (common on foils/promos), so the user types the number they
@@ -64,13 +71,12 @@ export async function manualLookup(name: string, number: string): Promise<ScanMa
   const out: SearchResult[] = [];
   const seen = new Set<string>();
   let justtcgAppended = 0;
-  const keyOf = (n: string, num: string) => `${baseName(n)}|${normalizeCardNumber(num)}`;
 
   if (clean.length >= 2) {
     // Native pokemontcg.io first, filtered to the exact number — the preferred copy.
     for (const c of await scanSearchPokemon([clean])) {
       if (normalizeCardNumber(c.number) !== want) continue;
-      const k = keyOf(c.name, c.number);
+      const k = dedupKey(c.name, c.number);
       if (seen.has(k)) continue;
       seen.add(k);
       out.push({
@@ -80,7 +86,7 @@ export async function manualLookup(name: string, number: string): Promise<ScanMa
     }
     // JustTCG fills only the printings pokemontcg.io doesn't have.
     for (const c of await searchJustTcg(clean, number)) {
-      const k = keyOf(c.name, c.number);
+      const k = dedupKey(c.name, c.number);
       if (seen.has(k)) continue;
       seen.add(k);
       out.push(c);
@@ -150,7 +156,7 @@ export async function matchScan(
     const jtName = out[0]?.name ?? [...nameCandidates].sort((a, b) => b.length - a.length)[0];
     let hitNumber: string | null = null;
     if (jtName) {
-      const seen = new Set(out.map((c) => `${c.name.toLowerCase()}|${c.number}`));
+      const seen = new Set(out.map((c) => dedupKey(c.name, c.number)));
       // Cap probes to conserve JustTCG quota now the scanner is GA. The targeted
       // number hint leads numberCandidates, so the right number is usually tried first.
       const tries: (string | undefined)[] = numberCandidates.length ? numberCandidates.slice(0, 2) : [undefined];
@@ -158,7 +164,7 @@ export async function matchScan(
         const jt = await searchJustTcg(jtName, num);
         let exactHit = false;
         for (const c of jt) {
-          const k = `${c.name.toLowerCase()}|${c.number}`;
+          const k = dedupKey(c.name, c.number);
           if (!seen.has(k)) { seen.add(k); out.push(c); justtcgAppended++; }
           if (num && normalizeCardNumber(c.number) === normalizeCardNumber(num)) { exactHit = true; hitNumber = num; }
           if (out.length >= 14) break;
