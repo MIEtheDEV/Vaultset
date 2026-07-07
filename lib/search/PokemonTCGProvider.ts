@@ -313,6 +313,10 @@ export class PokemonTCGProvider extends CardSearchProvider {
       "ultra rare":                "ultra_rare",
       "illustration rare":         "illustration_rare",
       "special illustration rare": "special_illustration_rare",
+      // pokemontcg.io returns this one as ALL_CAPS_UNDERSCORE ("MEGA_ATTACK_RARE"),
+      // so its lowercased form is underscore-joined, not space-joined like the rest.
+      "mega_attack_rare":          "mega_attack_rare",
+      "mega attack rare":          "mega_attack_rare",
       "hyper rare":                "hyper_rare",
       "mega hyper rare":           "hyper_rare",
       "secret rare":               "secret_rare",

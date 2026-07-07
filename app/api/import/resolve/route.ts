@@ -45,6 +45,10 @@ function mapRarity(apiRarity: string): string {
     "ultra rare":                "ultra_rare",
     "illustration rare":         "illustration_rare",
     "special illustration rare": "special_illustration_rare",
+    // pokemontcg.io returns this as ALL_CAPS_UNDERSCORE ("MEGA_ATTACK_RARE") →
+    // lowercased form is underscore-joined, unlike the space-joined rest.
+    "mega_attack_rare":          "mega_attack_rare",
+    "mega attack rare":          "mega_attack_rare",
     "hyper rare":                "hyper_rare",
     "mega hyper rare":           "hyper_rare",
     "secret rare":               "secret_rare",

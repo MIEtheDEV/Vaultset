@@ -40,6 +40,14 @@ describe("PokemonRaritySystem", () => {
       expect(info?.finishKey).toBe("textured_holofoil");
     });
 
+    it("returns correct variant and finish for mega_attack_rare", () => {
+      const info = system.getVariantInfo("mega_attack_rare");
+      expect(info).not.toBeNull();
+      expect(info?.variantKey).toBe("mega_attack_rare");
+      expect(info?.finishKey).toBe("textured_holofoil");
+      expect(info?.variantLabel).toBe("Mega Attack Rare");
+    });
+
     it("returns null for common — finish is user-selectable", () => {
       expect(system.getVariantInfo("common")).toBeNull();
     });
@@ -164,6 +172,12 @@ describe("PokemonRaritySystem", () => {
       const modern = system.getRarityOptions()[0];
       const values = modern.options.map((o) => o.value);
       expect(values).toContain("hyper_rare");
+    });
+
+    it("modern group includes mega_attack_rare", () => {
+      const modern = system.getRarityOptions()[0];
+      const values = modern.options.map((o) => o.value);
+      expect(values).toContain("mega_attack_rare");
     });
 
     it("legacy group includes rare_holo_vmax", () => {
