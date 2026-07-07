@@ -77,6 +77,11 @@ export async function POST(request: Request) {
       ocr_char_count: text.length,
       name_candidates: debug.nameCandidates,
       extracted_number: debug.numberCandidates.length ? debug.numberCandidates.join(" ") : null,
+      // Logged distinctly so we can measure the number-read rate: reliable_number is
+      // the confident NNN/TTT read; number_hints is what the on-device bottom-strip
+      // OCR recovered. extracted_number stays the noisy union for continuity.
+      reliable_number: debug.collectorNumber,
+      number_hints: debug.numberHints.length ? debug.numberHints : null,
       pool_size: debug.poolSize,
       justtcg_appended: debug.justtcgAppended,
       confident,

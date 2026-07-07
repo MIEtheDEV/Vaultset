@@ -11,6 +11,8 @@ interface ScanRow {
   ocr_char_count: number | null;
   name_candidates: string[] | null;
   extracted_number: string | null;
+  reliable_number: string | null;
+  number_hints: string[] | null;
   pool_size: number | null;
   justtcg_appended: number | null;
   confident: boolean | null;
@@ -98,7 +100,11 @@ export default async function ScanDiagnosticsPage() {
                   <div>
                     <p className="font-semibold text-foreground mb-1">Name candidates</p>
                     <p className="text-foreground-muted break-words">{(r.name_candidates ?? []).join(", ") || "—"}</p>
-                    <p className="text-foreground-muted mt-0.5">number read: {r.extracted_number ?? "—"}</p>
+                    <p className="text-foreground-muted mt-0.5">
+                      number — reliable: <span className={r.reliable_number ? "text-green-400" : ""}>{r.reliable_number ?? "—"}</span>
+                      {" · "}hints: {(r.number_hints ?? []).join(", ") || "—"}
+                      {" · "}all: {r.extracted_number ?? "—"}
+                    </p>
                   </div>
 
                   {top.length > 0 && (
