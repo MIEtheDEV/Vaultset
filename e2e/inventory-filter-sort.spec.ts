@@ -16,6 +16,8 @@ async function addCard(page: any, name: string) {
   await page.getByPlaceholder("Charizard").fill(name);
   await page.getByRole("button", { name: "Near Mint", exact: true }).click();
   await page.getByRole("button", { name: "Add to Vault" }).click();
+  // Non-scan adds now open a "quick feedback?" modal before redirecting — dismiss it.
+  await page.getByRole("button", { name: "Skip" }).click();
   await expect(page).toHaveURL(/\/inventory$/, { timeout: 20000 });
 }
 
