@@ -77,6 +77,8 @@ test.describe("Collection Management", () => {
     await page.getByPlaceholder("Charizard").fill("Test Card");
     await page.getByRole("button", { name: "Near Mint", exact: true }).click();
     await page.getByRole("button", { name: "Add to Vault" }).click();
+    // Non-scan adds now open a "quick feedback?" modal before redirecting — dismiss it.
+    await page.getByRole("button", { name: "Skip" }).click();
 
     await expect(page).toHaveURL(/\/inventory$/, { timeout: 15000 });
   });
@@ -89,6 +91,8 @@ test.describe("Collection Management", () => {
     await page.getByRole("button", { name: "Mint", exact: true }).click();
     await page.getByPlaceholder("0.00").fill("5.00");
     await page.getByRole("button", { name: "Add to Vault" }).click();
+    // Non-scan adds now open a "quick feedback?" modal before redirecting — dismiss it.
+    await page.getByRole("button", { name: "Skip" }).click();
 
     await expect(page).toHaveURL(/\/inventory$/, { timeout: 15000 });
   });
@@ -100,6 +104,8 @@ test.describe("Collection Management", () => {
     await page.getByPlaceholder("Charizard").fill(cardName);
     await page.getByRole("button", { name: "Near Mint", exact: true }).click();
     await page.getByRole("button", { name: "Add to Vault" }).click();
+    // Non-scan adds now open a "quick feedback?" modal before redirecting — dismiss it.
+    await page.getByRole("button", { name: "Skip" }).click();
 
     await expect(page).toHaveURL(/\/inventory$/, { timeout: 15000 });
     await expect(page.getByText(cardName)).toBeVisible();
@@ -113,6 +119,8 @@ test.describe("Collection Management", () => {
     await page.getByPlaceholder("Charizard").fill(originalName);
     await page.getByRole("button", { name: "Near Mint", exact: true }).click();
     await page.getByRole("button", { name: "Add to Vault" }).click();
+    // Non-scan adds now open a "quick feedback?" modal before redirecting — dismiss it.
+    await page.getByRole("button", { name: "Skip" }).click();
     await expect(page).toHaveURL(/\/inventory$/, { timeout: 15000 });
 
     // Find the card tile by its container and click Edit
@@ -135,6 +143,8 @@ test.describe("Collection Management", () => {
     await page.getByPlaceholder("Charizard").fill(cardName);
     await page.getByRole("button", { name: "Near Mint", exact: true }).click();
     await page.getByRole("button", { name: "Add to Vault" }).click();
+    // Non-scan adds now open a "quick feedback?" modal before redirecting — dismiss it.
+    await page.getByRole("button", { name: "Skip" }).click();
     await expect(page).toHaveURL(/\/inventory$/, { timeout: 15000 });
 
     // Find the card tile and click Remove
