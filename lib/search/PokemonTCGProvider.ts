@@ -87,10 +87,22 @@ export async function scanSearchPokemon(
   // got us 429'd (empty pool → "couldn't identify"). One request per scan is far
   // more sustainable. Terms are sanitized so a clause can't 400 the whole query.
   const clauses: string[] = [];
+  const nameTerms = new Set<string>();
   for (const cand of nameCandidates.slice(0, 5)) {
     const term = cand.toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (term.length >= 3) clauses.push(`name:${term}*`);
+    if (term.length >= 3) nameTerms.add(term);
+    // OCR routinely reads a stray leading character off the card border, energy
+    // symbol, or a merged neighbouring glyph ("Raticate" → "dRaticate"), which
+    // defeats a start-anchored prefix (name:draticate* matches nothing). Also probe
+    // the term with its first character dropped so an inserted/garbled leading char
+    // still resolves. Length-guarded (>=5) so we don't broaden a short candidate
+    // into a giant prefix; deduped so a clean candidate isn't queried twice. A
+    // dropped variant that isn't a real name prefix simply matches nothing (cheap),
+    // and the ranker still requires a fuzzy name match, so this can't force a wrong
+    // confident hit.
+    if (term.length >= 5) nameTerms.add(term.slice(1));
   }
+  for (const term of nameTerms) clauses.push(`name:${term}*`);
   for (const phrase of attackTerms.slice(0, 4)) {
     // Match each word as a prefix and AND them together, rather than a quoted
     // phrase. A quoted "emperor's stance" only matches with the exact apostrophe
