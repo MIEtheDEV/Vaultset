@@ -75,7 +75,12 @@ export async function scanSearchPokemon(
   const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY
     ? { "X-Api-Key": process.env.POKEMON_TCG_API_KEY }
     : {};
-  const select = "id,name,number,rarity,subtypes,set,images,tcgplayer,attacks,abilities,hp";
+  // No `tcgplayer` here: it's the heaviest field (a nested price object per card)
+  // and multiplied across the pool it dominates the payload → slower response →
+  // more timeouts. The scan shortlist doesn't need prices; when the user picks a
+  // card the add flow lazily fetches its price (cache-first) via /api/card-price.
+  // images stays (the picker thumbnail has no fallback).
+  const select = "id,name,number,rarity,subtypes,set,images,attacks,abilities,hp";
 
   // Build ONE OR-combined Lucene query rather than a fetch per term. pokemontcg.io
   // rate-limits hard without an API key, so firing 12 requests per scan quickly
@@ -106,17 +111,32 @@ export async function scanSearchPokemon(
   }
   if (clauses.length === 0) return [];
 
-  const params = new URLSearchParams({ q: clauses.join(" OR "), pageSize: "250", select });
-  try {
-    const res = await fetchWithTimeout(`${BASE}/cards?${params}`, { headers, next: { revalidate: 3600 } });
-    if (!res.ok) return [];
-    const json = await res.json();
-    const byId = new Map<string, ScanCandidate>();
-    for (const c of (json.data ?? []) as ScanCandidate[]) if (!byId.has(c.id)) byId.set(c.id, c);
-    return [...byId.values()];
-  } catch {
-    return [];
+  // pageSize 120 (was 250): observed fingerprint pools top out ~100, so this only
+  // caps runaway result sets without truncating a real target — and a smaller cap
+  // bounds the worst-case payload.
+  const params = new URLSearchParams({ q: clauses.join(" OR "), pageSize: "120", select });
+  const url = `${BASE}/cards?${params}`;
+  // Retry once on timeout/network error. Keyless (and occasionally keyed)
+  // pokemontcg.io latency spikes erratically under burst — a single request can
+  // stall past the timeout while its neighbours return in <1s. When that abort hit
+  // the pool came back empty and the scan reported "couldn't identify" even though
+  // the card's name OCR'd perfectly. A fresh connection on the second attempt
+  // clears the stalled one. 8s/attempt (×2) stays within the route's 30s budget
+  // alongside the JustTCG probes. A non-OK response (429/4xx) is NOT retried —
+  // that won't clear on an immediate retry and would just burn the budget.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url, { headers, next: { revalidate: 3600 } }, 8000);
+      if (!res.ok) return [];
+      const json = await res.json();
+      const byId = new Map<string, ScanCandidate>();
+      for (const c of (json.data ?? []) as ScanCandidate[]) if (!byId.has(c.id)) byId.set(c.id, c);
+      return [...byId.values()];
+    } catch {
+      // timeout/network error — fall through to retry, then give up gracefully
+    }
   }
+  return [];
 }
 
 // Concrete implementation of CardSearchProvider for the Pokémon TCG API.
