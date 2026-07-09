@@ -54,6 +54,12 @@ const STOPWORDS = new Set([
   "put", "into", "play", "card", "cards", "turn", "damage", "each", "may", "for", "with",
   "ability", "attack", "poke", "body", "power", "rule", "level", "team", "item", "supporter",
   "gym", "special", "basic", "then", "search", "deck", "hand", "flip", "coin", "active",
+  // Form/era markers printed on the card but never the discriminative species name.
+  // "mega" is the worst offender: name:mega* matches 131 cards (> the 120 pool cap),
+  // so on any Mega-Evolution card it floods the pool with unrelated Mega/trainer
+  // cards and truncates the real target out of the returned window. The species name
+  // (Gengar, Charizard, …) carries identity, so dropping the marker only helps.
+  "mega", "gigantamax", "dynamax",
 ]);
 
 // A real Pokémon name is a single token of at most ~13 chars. Longer "tokens" are
