@@ -12,6 +12,17 @@ import { normalizeCardNumber } from "@/lib/search/cardNumber";
 export function norm(s: string): string {
   return (s || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 }
+// OCR frequently drops the space inside a two-word move name, gluing it into one
+// CamelCase token ("Quick Search" → "QuickSearch", read off the ability banner).
+// The individual words are the discriminative signal that retrieves the card by
+// attacks.name/abilities.name — and on stylized full-art cards where the Pokémon
+// name OCRs badly, that move text is often the ONLY reliable identity. Re-insert a
+// space at each lower→UPPER boundary so the words separate again. Run on raw text
+// BEFORE norm() lowercases everything. ("Pidgeot ex" scan: "QuickSearch" →
+// "Quick Search" → retrieves the exact Pidgeot ex the garbled "Ridgeot" name missed.)
+function splitGlued(s: string): string {
+  return (s || "").replace(/([a-z])([A-Z])/g, "$1 $2");
+}
 export function tokens(s: string): string[] {
   return norm(s).split(" ").filter((t) => t.length >= 2);
 }
@@ -62,6 +73,20 @@ const STOPWORDS = new Set([
   "mega", "gigantamax", "dynamax",
 ]);
 
+// Attack/ability-phrase extraction needs a NARROWER stop set than name extraction.
+// Many words that are never a Pokémon name ARE common, discriminative move words —
+// "Quick Search", "Energy Assist", "Power Blast", "Body Slam". Filtering them with
+// the full name STOPWORDS silently deleted the identity signal (Pidgeot ex's "Quick
+// Search" collapsed to just "quick"). Keep only grammatical glue + card-frame labels
+// here; retain move-content words (search, energy, power, body, deck, hand, coin,
+// flip, damage, active, item, special).
+const ATTACK_STOP = new Set([
+  "pokemon", "stage", "stages", "basic", "evolves", "evolve", "from", "weakness", "resistance",
+  "retreat", "trainer", "illus", "the", "and", "this", "your", "you", "when", "put", "into",
+  "play", "card", "cards", "turn", "each", "may", "for", "with", "then", "rule", "team",
+  "gym", "supporter", "ability", "attack", "that", "than", "mega", "gigantamax", "dynamax",
+]);
+
 // A real Pokémon name is a single token of at most ~13 chars. Longer "tokens" are
 // OCR run-on garbage (merged words with lost spaces) — capping length keeps them
 // from crowding out the actual name in the candidate list.
@@ -93,7 +118,7 @@ export function extractNameCandidates(text: string, lines: string[]): string[] {
     if (EVOLVE_LINE.test(line)) return;
     const hasHp = /\bhp\b/i.test(line);
     const num = /\b(\d{2,3})\b/.exec(line)?.[1];
-    const lineTokens = tokens(line.replace(/\bhp\b/gi, " ").replace(/\d+/g, " ")).filter(usable);
+    const lineTokens = tokens(splitGlued(line).replace(/\bhp\b/gi, " ").replace(/\d+/g, " ")).filter(usable);
     if (hasHp || (num && +num >= 20 && +num <= 340)) {
       // HP-anchored line — the name sits here (best signal).
       lineTokens.forEach((t) => out.push(t));
@@ -121,7 +146,7 @@ export function extractAttackPhrases(text: string, lines: string[]): string[] {
 
   body.forEach((line) => {
     if (EVOLVE_LINE.test(line)) return;
-    const words = tokens(line).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+    const words = tokens(splitGlued(line)).filter((w) => w.length >= 4 && !ATTACK_STOP.has(w));
     for (let i = 0; i < words.length - 1; i++) {
       if (words[i].length <= MAX_NAME_LEN && words[i + 1].length <= MAX_NAME_LEN) {
         phrases.push(`${words[i]} ${words[i + 1]}`);
