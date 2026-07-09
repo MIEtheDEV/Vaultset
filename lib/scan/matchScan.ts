@@ -176,12 +176,22 @@ export async function matchScan(
     // Float the exact printing to the top. Prefer the number that actually landed
     // an exact JustTCG hit; else the reliable collector number. (Not noisy broad
     // digits — those would float a wrong printing.)
+    //
+    // Restrict the float to printings of the SAME Pokémon as the fingerprint's top
+    // pick. The number's only job here is to disambiguate *which printing* of the
+    // identified card the user holds — never to change *which Pokémon* we chose. A
+    // bare collector number matches by coincidence across unrelated cards, and
+    // without this guard it promoted a different Pokémon that merely shared the
+    // number (a Pidgeot scan floated Ice Rider Calyrex V #111 to the top). Anchor on
+    // the fingerprint winner (out[0], already ranked by resolveScan) so only its
+    // same-name alternate printings can be reordered.
     const floatNum = hitNumber ?? collectorNumber;
-    if (floatNum) {
+    if (floatNum && out.length > 1) {
       const want = normalizeCardNumber(floatNum);
-      out.sort((a, b) =>
-        (normalizeCardNumber(b.number) === want ? 1 : 0) - (normalizeCardNumber(a.number) === want ? 1 : 0),
-      );
+      const anchor = baseName(out[0].name);
+      const floats = (c: SearchResult) =>
+        baseName(c.name) === anchor && normalizeCardNumber(c.number) === want ? 1 : 0;
+      out.sort((a, b) => floats(b) - floats(a));
     }
   }
 
