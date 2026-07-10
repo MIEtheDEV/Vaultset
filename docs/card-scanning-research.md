@@ -9,17 +9,22 @@ text-fingerprint pipeline below is retired. · **Last updated:** 2026-07-09
 > matching**, validated on the 52 stored real user scans at **52/52 top-1 exact printing** before
 > shipping. Flow: `components/CardScanner.tsx` (capture) → crop + perspective warp
 > (`components/CardCropper.tsx` + `lib/scan/perspective.ts`, unchanged — the warp is what makes
-> hashing work) → downscale to ~512px JPEG → `POST /api/card-scan` → `lib/scan/hashIndex.ts`
-> (dHash-256 + pHash-64 hamming match, `lib/scan/imageHash.ts`) against a prebuilt index of every
-> known card image (`scripts/build-scan-index.ts` → `scan-index/index.json.gz` in Supabase Storage;
-> sources: pokemontcg.io catalog + TCGdex gap sets + TCGplayer images from our `cards` table for
-> promos like MEP that pokemontcg.io lacks) → confidence gate (distance ≤125, margin ≥10 vs any
-> different-named card) → candidate tie-set → tap → `handlePokemonSelect`. Low-confidence falls
-> back to manual name+number lookup (`lib/scan/matchScan.ts`). $0 per scan; no OCR; tesseract.js
-> removed. **Regression harness:** `pnpm scan:replay` replays the labeled real-photo corpus
-> (`scripts/scan-ground-truth.json`) through the exact production matcher — run it after any
-> matcher change; confidently-wrong results are a hard fail. Rebuild the index after new set
-> releases with `pnpm scan:index` (incremental).
+> hashing work) → **client computes dHash-256 + pHash-64 on-device from canvas pixels**
+> (`lib/scan/perceptualHash.ts`, isomorphic pure-JS, no native deps) → `POST /api/card-scan` with
+> the hex hashes → server does a **pure-JS hamming compare** (`lib/scan/hashIndex.ts`,
+> `matchHashes`) against a prebuilt index of every known card image (`scripts/build-scan-index.ts`
+> → `scan-index/index.json.gz` in Supabase Storage; sources: pokemontcg.io catalog + TCGdex gap
+> sets + TCGplayer images from our `cards` table for promos like MEP that pokemontcg.io lacks) →
+> confidence gate (distance ≤125, margin ≥10 vs any different-named card) → candidate tie-set → tap
+> → `handlePokemonSelect`. Low-confidence falls back to manual name+number lookup
+> (`lib/scan/matchScan.ts`). **`sharp` is NOT on the request path** — it fails to load libvips on
+> Vercel's Lambda runtime, so hashing moved to the browser; `sharp` lives only in
+> `lib/scan/imageHash.ts` (node-only), used by the offline index builder + replay. $0 per scan; no
+> OCR; tesseract.js removed. **Regression harness:** `pnpm scan:replay` replays the labeled
+> real-photo corpus (`scripts/scan-ground-truth.json`) through the exact production matcher (same
+> isomorphic hasher) — run after any matcher change; confidently-wrong results are a hard fail.
+> Changing the hash algorithm requires a full index rebuild (`pnpm scan:index --full`) so client
+> and index hashes match.
 >
 > Everything below this line is the historical research + the OCR experiment record.
 

@@ -87,17 +87,23 @@ A cache-first, multi-tier pricing engine that follows the same provider+factory 
 
 ### Card Scanning (`lib/scan/`)
 
-Scan-to-add identifies a card photo by **perceptual-hash image matching** (no OCR): the client
+Scan-to-add identifies a card photo by **perceptual-hash image matching** (no OCR). The client
 crops + perspective-warps the photo (`components/CardCropper.tsx`, `lib/scan/perspective.ts`),
-downscales it, and POSTs to `/api/card-scan`; the server hashes it (`lib/scan/imageHash.ts`,
-dHash-256 + pHash-64) and matches against a prebuilt index of every known card image
-(`lib/scan/hashIndex.ts`, cached in-memory from `scan-index/index.json.gz` in Supabase Storage).
-Confidence gate: best distance ≤125 AND margin ≥10 vs any different-named card (same-name reprints
-form the tie-set the user taps). Fallback: manual name+number lookup (`lib/scan/matchScan.ts`).
+then **computes the perceptual hashes on-device from canvas pixels** (`lib/scan/perceptualHash.ts`
+— isomorphic pure-JS dHash-256 + pHash-64, no native deps) and POSTs the hex hashes to
+`/api/card-scan`. The server does a **pure-JS hamming compare** (`lib/scan/hashIndex.ts`,
+`matchHashes`) against a prebuilt index of every known card image, cached in-memory from
+`scan-index/index.json.gz` in Supabase Storage. **`sharp` is deliberately NOT on the request path**
+— it fails to load libvips on Vercel's Lambda runtime; it lives only in `lib/scan/imageHash.ts`
+(node-only), imported solely by the offline index builder + replay harness. Confidence gate: best
+distance ≤125 AND margin ≥10 vs any different-named card (same-name reprints form the tie-set the
+user taps). Fallback: manual name+number lookup (`lib/scan/matchScan.ts`).
 
-- **Index build:** `pnpm scan:index` (incremental; `--full` rebuilds). Sources: pokemontcg.io
-  catalog + TCGdex gap sets + TCGplayer CDN images from our `cards` table (covers promos like MEP
-  that pokemontcg.io lacks). Re-run after new set releases.
+- **Index build:** `pnpm scan:index` (incremental; `--full` rebuilds). Uses `sharp` (offline only)
+  to decode images, then the **same isomorphic hasher the browser uses** so hashes are comparable.
+  Sources: pokemontcg.io catalog + TCGdex gap sets + TCGplayer CDN images from our `cards` table
+  (covers promos like MEP that pokemontcg.io lacks). Re-run after new set releases. **If you change
+  the hashing algorithm, you must `--full` rebuild the index** (client + index hashes must match).
 - **Regression harness:** `pnpm scan:replay` replays the labeled corpus of real user scans
   (`scripts/scan-ground-truth.json`) through the exact production matcher — run after any matcher
   change; measured baseline is 52/52 top-1 and confidently-wrong results are a hard fail.
