@@ -115,7 +115,22 @@ export async function POST(request: Request) {
     // image scan — never for the GET button-gate or the manual-lookup path.
     const { matchImage } = await import("@/lib/scan/hashIndex");
     match = await matchImage(imageBuf);
-  } catch {
+  } catch (e) {
+    const msg = (e as Error)?.message ?? String(e);
+    const stack = (e as Error)?.stack ?? "";
+    console.error("[SCAN] matchImage failed:", msg, stack);
+    // Best-effort: persist the real error so a production failure is
+    // diagnosable remotely (read via scan_diagnostics where matched_via='error').
+    try {
+      const admin = createAdminClient();
+      await admin.from("scan_diagnostics").insert({
+        user_id: user.id,
+        matched_via: "error",
+        ocr_text: `${msg}\n${stack}`.slice(0, 4000),
+        image_bytes: typeof body.bytes === "number" ? body.bytes : imageBuf.length,
+        user_agent: request.headers.get("user-agent"),
+      });
+    } catch { /* logging is best-effort */ }
     return NextResponse.json({ error: "Could not read that image — try another photo." }, { status: 422 });
   }
 
