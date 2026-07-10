@@ -1,13 +1,16 @@
 /**
- * Download recent scan images locally so OCR can be tuned against real foils
- * without deploy/fail loops (the image-side counterpart to scan-replay.ts).
+ * Download recent (admin-only) scan images locally so the matcher can be tuned
+ * against real captures without deploy/fail loops (the image-side counterpart to
+ * scan-replay.ts). Prints each image path next to its hash-match result so a
+ * failing scan is easy to line up with what the matcher saw.
  *
  *   npx tsx scripts/pull-scan-images.ts [limit]
  *
- * Writes images to <tmp>/vaultset-scan-images/ and prints each file path next to
- * that scan's OCR name candidates + number, so failures are easy to line up.
+ * Writes images to <tmp>/vaultset-scan-images/.
  */
 export {};
+
+interface TopMatch { name?: string; number?: string; dist?: number }
 
 async function main() {
   try { process.loadEnvFile(".env.local"); } catch { /* env may already be present */ }
@@ -16,14 +19,14 @@ async function main() {
   const path = await import("path");
   const { createAdminClient } = await import("@/utils/supabase/admin");
 
-  const limit = Number(process.argv[2] ?? 10);
+  const limit = Number(process.argv[2] ?? 12);
   const outDir = path.join(os.tmpdir(), "vaultset-scan-images");
   fs.mkdirSync(outDir, { recursive: true });
 
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("scan_diagnostics")
-    .select("created_at, image_path, name_candidates, extracted_number")
+    .select("created_at, image_path, matched_via, match_distance, match_margin, confident, top_matches")
     .not("image_path", "is", null)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -34,11 +37,14 @@ async function main() {
     const p = row.image_path as string;
     const { data: blob, error: dlErr } = await admin.storage.from("scan-diagnostics").download(p);
     if (dlErr || !blob) { console.log(`skip ${p}: ${dlErr?.message ?? "no data"}`); continue; }
-    const buf = Buffer.from(await blob.arrayBuffer());
-    const local = path.join(outDir, p);
-    fs.writeFileSync(local, buf);
-    console.log(`${local}`);
-    console.log(`   ${row.created_at} · names: ${(row.name_candidates ?? []).join(", ") || "—"} · number: ${row.extracted_number ?? "—"}\n`);
+    fs.writeFileSync(path.join(outDir, p), Buffer.from(await blob.arrayBuffer()));
+    const top = ((row.top_matches ?? []) as TopMatch[])
+      .slice(0, 3)
+      .map((t) => `${t.name} #${t.number} (d=${t.dist})`)
+      .join("  |  ") || "—";
+    console.log(path.join(outDir, p));
+    console.log(`   ${row.created_at} · dist ${row.match_distance ?? "—"} margin ${row.match_margin ?? "—"} · ${row.confident ? "CONFIDENT" : "not confident"}`);
+    console.log(`   top: ${top}\n`);
   }
   process.exit(0);
 }

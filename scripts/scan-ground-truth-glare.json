@@ -1,0 +1,15 @@
+{
+  "_comment": "Glare/tilt stress set — REAL admin phone captures of holofoil full-art cards (stored in the scan-diagnostics bucket), labeled by eye 2026-07-10. The 'fail' rows are captures the current matcher gets WRONG (heavy foil glare + tilt); their true cards are all also in the clean scan-ground-truth.json set (same cards, harder captures), so they're definitely in the index — a controlled A/B. The 'guard' rows are glare captures the current matcher gets RIGHT; a fix must not regress them. Used by scripts/scan-replay.ts.",
+  "scans": [
+    { "file": "1783721743730-4u9z73.jpg", "name": "Ampharos", "number": "090", "note": "fail: tilt + foil glare" },
+    { "file": "1783721775436-ambanh.jpg", "name": "Shedinja", "number": "144", "note": "fail: heavy holo glare" },
+    { "file": "1783721703913-gxqqzj.jpg", "name": "Shuckle", "number": "136", "note": "fail: glare + held at angle" },
+    { "file": "1783721810354-k8lkzs.jpg", "name": "Raticate", "number": "099", "note": "fail: foil glare" },
+    { "file": "1783721676884-3w0drz.jpg", "name": "Paldean Wooper", "number": "102", "note": "fail: glare + held in fingers" },
+    { "file": "1783721857936-c7gzkj.jpg", "name": "Crobat", "number": "093", "note": "guard: passed d91" },
+    { "file": "1783721610686-exbtae.jpg", "name": "Empoleon ex", "number": "114", "note": "guard: passed d80" },
+    { "file": "1783721579254-kkjebs.jpg", "name": "Mega Gardevoir ex", "number": "159", "note": "guard: passed d77" },
+    { "file": "1783721651110-wraz1b.jpg", "name": "Xerneas", "number": "091", "note": "guard: passed d93" },
+    { "file": "1783647842086-wz73ev.jpg", "name": "Ampharos", "number": "090", "note": "guard: clean capture, passed d95" }
+  ]
+}

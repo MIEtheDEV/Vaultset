@@ -55,8 +55,19 @@ async function main() {
   const full = process.argv.includes("--full");
 
   const { gzipSync, gunzipSync } = await import("zlib");
+  const os = await import("os");
+  const fs = await import("fs");
+  const nodePath = await import("path");
   const { hashCatalogImage } = await import("@/lib/scan/imageHash");
   const { normalizeCardNumber } = await import("@/lib/search/cardNumber");
+
+  // Disk cache of downloaded catalog images, keyed by entry id. A first --full
+  // run downloads + caches everything (~15 min); re-running after a hashing-algo
+  // change then re-hashes from cache in a couple of minutes (no re-download),
+  // which makes tuning the perceptual hash fast.
+  const imgCacheDir = nodePath.join(os.tmpdir(), "vaultset-catalog-images");
+  fs.mkdirSync(imgCacheDir, { recursive: true });
+  const cachePathFor = (id: string) => nodePath.join(imgCacheDir, id.replace(/[^a-z0-9]/gi, "_"));
   const { createAdminClient } = await import("@/utils/supabase/admin");
   const admin = createAdminClient();
 
@@ -180,9 +191,16 @@ async function main() {
         if (i >= todo.length) return;
         const { meta, trim } = todo[i];
         try {
-          const res = await fetch(meta.img);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const buf = Buffer.from(await res.arrayBuffer());
+          const cacheFile = cachePathFor(meta.id);
+          let buf: Buffer;
+          if (fs.existsSync(cacheFile)) {
+            buf = fs.readFileSync(cacheFile);
+          } else {
+            const res = await fetch(meta.img);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            buf = Buffer.from(await res.arrayBuffer());
+            fs.writeFileSync(cacheFile, buf);
+          }
           const { d, p } = await hashCatalogImage(buf, trim);
           out.push({ ...meta, d, p });
           ok++;

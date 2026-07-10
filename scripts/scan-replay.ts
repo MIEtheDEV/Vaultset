@@ -12,7 +12,7 @@
  */
 export {};
 
-interface Truth { file: string; name: string; number: string; set: string }
+interface Truth { file: string; name: string; number: string; set?: string; note?: string }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -35,9 +35,14 @@ async function main() {
   const { hashScanVariants } = await import("@/lib/scan/imageHash");
   const { normalizeCardNumber } = await import("@/lib/search/cardNumber");
 
+  // Optional ground-truth file arg (default: the clean 52-card corpus).
+  // e.g. `pnpm scan:replay scan-ground-truth-glare.json`
+  const gtFile = process.argv[2] ?? "scan-ground-truth.json";
+  const isCleanSet = gtFile === "scan-ground-truth.json";
   const truths: Truth[] = JSON.parse(
-    fs.readFileSync(path.join(__dirname, "scan-ground-truth.json"), "utf8"),
+    fs.readFileSync(path.join(__dirname, gtFile), "utf8"),
   ).scans;
+  console.log(`corpus: ${gtFile} (${truths.length} scans)\n`);
 
   // Local corpus cache; download missing images from the diagnostics bucket.
   const cacheDir = path.join(os.tmpdir(), "vaultset-scan-corpus");
@@ -72,7 +77,7 @@ async function main() {
     if (m.confident && !isTop1) confidentWrong++;
     const tag = isTop1 ? "TOP1 ✓" : isTop5 ? "top5 ~" : "MISS ✗";
     const conf = m.confident ? " [confident]" : "";
-    console.log(`${tag}${conf}  ${t.name} #${t.number} (${t.set})  dist=${m.bestDistance} margin=${m.margin}` +
+    console.log(`${tag}${conf}  ${t.name} #${t.number} (${t.set ?? t.note ?? ""})  dist=${m.bestDistance} margin=${m.margin}` +
       (isTop1 ? "" : `  → got: ${m.top[0] ? `${m.top[0].name} #${m.top[0].number} (${m.top[0].setName})` : "nothing"}`));
     if (!isTop1) misses.push(t.file);
   }
@@ -81,16 +86,17 @@ async function main() {
   console.log(`\n=== top-1 ${top1}/${n} · top-5 ${top5}/${n} · confident ${confidentRight + confidentWrong}/${n} (${confidentWrong} WRONG) ===`);
   if (misses.length) console.log("misses:", misses.join(", "));
 
-  // Gates: confident-wrong is a hard fail; top-1 must stay at the measured bar.
+  // Gates: confident-wrong is always a hard fail. The clean corpus must also
+  // stay at 100% top-1; the glare stress set is diagnostic (report only).
   if (confidentWrong > 0) {
     console.error(`FAIL: ${confidentWrong} confidently-wrong scan(s) — never ship this.`);
     process.exit(1);
   }
-  if (top1 < n) {
-    console.error(`FAIL: top-1 ${top1}/${n} — the corpus previously scored ${n}/${n}.`);
+  if (isCleanSet && top1 < n) {
+    console.error(`FAIL: top-1 ${top1}/${n} — the clean corpus previously scored ${n}/${n}.`);
     process.exit(1);
   }
-  console.log("PASS");
+  console.log(isCleanSet ? "PASS" : "(stress set — diagnostic only)");
   process.exit(0);
 }
 
