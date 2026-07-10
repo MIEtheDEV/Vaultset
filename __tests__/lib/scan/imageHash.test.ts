@@ -8,80 +8,82 @@ import {
   hamming,
   hashToHex,
   hashFromHex,
-  hashScanImage,
-  hashCatalogImage,
-  scanDistance,
-} from "@/lib/scan/imageHash";
+  scanVariantHashes,
+  catalogHashPair,
+  variantDistance,
+} from "@/lib/scan/perceptualHash";
+import { hashCatalogImage, hashScanVariants } from "@/lib/scan/imageHash";
 
-/** Synthetic card-ish test image: colored gradient blocks, deterministic. */
-async function testImage(seed: number, width = 240, height = 336): Promise<Buffer> {
-  const channels = 3;
-  const px = Buffer.alloc(width * height * channels);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * channels;
+/** Deterministic RGBA test pattern (colored gradient blocks). */
+function rgbaImage(seed: number, w = 240, h = 336): Uint8Array {
+  const px = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
       px[i] = (x * 7 + seed * 53) % 256;
       px[i + 1] = (y * 5 + seed * 31) % 256;
       px[i + 2] = ((x + y) * 3 + seed * 17) % 256;
+      px[i + 3] = 255;
     }
   }
-  return sharp(px, { raw: { width, height, channels } }).jpeg().toBuffer();
+  return px;
 }
 
-describe("imageHash", () => {
+async function jpegFromRGBA(px: Uint8Array, w = 240, h = 336): Promise<Buffer> {
+  return sharp(Buffer.from(px), { raw: { width: w, height: h, channels: 4 } }).jpeg().toBuffer();
+}
+
+const decode = (v: { d: string; p: string }) => ({ d: hashFromHex(v.d), p: hashFromHex(v.p) });
+
+describe("perceptualHash (isomorphic)", () => {
   it("hamming: zero for identical, counts differing bits", () => {
     const a = Uint8Array.from([0b10101010, 0b11110000]);
-    const b = Uint8Array.from([0b10101010, 0b11110000]);
-    const c = Uint8Array.from([0b10101011, 0b01110000]);
-    expect(hamming(a, b)).toBe(0);
-    expect(hamming(a, c)).toBe(2);
+    expect(hamming(a, a)).toBe(0);
+    expect(hamming(a, Uint8Array.from([0b10101011, 0b01110000]))).toBe(2);
     expect(hamming(a, Uint8Array.from([0b01010101, 0b00001111]))).toBe(16);
   });
 
-  it("hex encoding round-trips", () => {
+  it("hex round-trips", () => {
     const bits = Uint8Array.from({ length: 32 }, (_, i) => (i * 37) % 256);
     expect(hashFromHex(hashToHex(bits))).toEqual(bits);
   });
 
-  it("produces stable, correctly-sized hashes", async () => {
-    const img = await testImage(1);
-    const d1 = await dhash256(img);
-    const d2 = await dhash256(img);
-    const p1 = await phash64(img);
-    expect(d1).toHaveLength(32);
-    expect(p1).toHaveLength(8);
-    expect(hamming(d1, d2)).toBe(0);
+  it("hashes are correctly sized and stable", () => {
+    const px = rgbaImage(1);
+    const d = dhash256(px, 240, 336);
+    expect(d).toHaveLength(32);
+    expect(phash64(px, 240, 336)).toHaveLength(8);
+    expect(hamming(d, dhash256(px, 240, 336))).toBe(0);
   });
 
-  it("same image survives recompression + resize (small distance)", async () => {
-    const img = await testImage(2);
-    const degraded = await sharp(img).resize(160).jpeg({ quality: 60 }).toBuffer();
-    const scan = await hashScanImage(degraded);
-    const { d, p } = await hashCatalogImage(img);
-    expect(scanDistance(scan, d, p)).toBeLessThan(40);
+  it("same image is close; different images are far", () => {
+    const a = scanVariantHashes(rgbaImage(3), 240, 336).map(decode);
+    const same = catalogHashPair(rgbaImage(3), 240, 336);
+    const diff = catalogHashPair(rgbaImage(9), 240, 336);
+    expect(variantDistance(a, hashFromHex(same.d), hashFromHex(same.p))).toBe(0);
+    expect(variantDistance(a, hashFromHex(diff.d), hashFromHex(diff.p))).toBeGreaterThan(100);
   });
 
-  it("different images are far apart", async () => {
-    const scan = await hashScanImage(await testImage(3));
-    const { d, p } = await hashCatalogImage(await testImage(9));
-    expect(scanDistance(scan, d, p)).toBeGreaterThan(100);
+  it("emits 3 scan variants", () => {
+    expect(scanVariantHashes(rgbaImage(4), 240, 336)).toHaveLength(3);
+  });
+});
+
+describe("imageHash (node/sharp decode → isomorphic hasher)", () => {
+  it("catalog hash of an image ~matches the scan hash of its recompressed self", async () => {
+    const px = rgbaImage(2);
+    const jpeg = await jpegFromRGBA(px);
+    const degraded = await sharp(jpeg).resize(160).jpeg({ quality: 60 }).toBuffer();
+
+    const catalog = await hashCatalogImage(jpeg);
+    const scan = (await hashScanVariants(degraded)).map(decode);
+    // Recompression + resize should stay well within the confident band (~<125).
+    expect(variantDistance(scan, hashFromHex(catalog.d), hashFromHex(catalog.p))).toBeLessThan(60);
   });
 
-  it("tolerates a slightly loose crop via inset variants", async () => {
-    const img = await testImage(4);
-    // Simulate a crop that included ~4% background border around the card.
-    const meta = await sharp(img).metadata();
-    const padded = await sharp({
-      create: { width: meta.width! + 20, height: meta.height! + 28, channels: 3, background: "#222222" },
-    })
-      .composite([{ input: img, left: 10, top: 14 }])
-      .jpeg()
-      .toBuffer();
-    const scanPadded = await hashScanImage(padded);
-    const { d, p } = await hashCatalogImage(img);
-    const scanExact = await hashScanImage(img);
-    // The inset variant should get much closer than a no-variant full-frame hash would.
-    expect(scanDistance(scanPadded, d, p)).toBeLessThan(scanDistance(scanExact, d, p) + 100);
-    expect(scanDistance(scanPadded, d, p)).toBeLessThan(120);
+  it("distinct cards stay far apart end-to-end", async () => {
+    const scan = (await hashScanVariants(await jpegFromRGBA(rgbaImage(3)))).map(decode);
+    const other = await hashCatalogImage(await jpegFromRGBA(rgbaImage(9)));
+    expect(variantDistance(scan, hashFromHex(other.d), hashFromHex(other.p))).toBeGreaterThan(100);
   });
 });

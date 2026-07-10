@@ -1,7 +1,7 @@
 /**
  * Regression-test the card-scan image matcher against the corpus of REAL user
  * phone scans — locally, no deploy. Runs each labeled scan photo through the
- * exact production matcher (lib/scan/hashIndex.matchImage) and scores it
+ * exact production matcher (lib/scan/hashIndex.matchHashes) and scores it
  * against scripts/scan-ground-truth.json.
  *
  *   pnpm scan:replay
@@ -31,7 +31,8 @@ async function main() {
   const os = await import("os");
   const path = await import("path");
   const { createAdminClient } = await import("@/utils/supabase/admin");
-  const { matchImage } = await import("@/lib/scan/hashIndex");
+  const { matchHashes } = await import("@/lib/scan/hashIndex");
+  const { hashScanVariants } = await import("@/lib/scan/imageHash");
   const { normalizeCardNumber } = await import("@/lib/search/cardNumber");
 
   const truths: Truth[] = JSON.parse(
@@ -57,7 +58,10 @@ async function main() {
   const misses: string[] = [];
   for (const t of truths) {
     const buf = fs.readFileSync(path.join(cacheDir, t.file));
-    const m = await matchImage(buf);
+    // Mirror the browser: decode+resize to the working edge (sharp here vs
+    // canvas in-app), compute the same isomorphic hashes, match server-side.
+    const variants = await hashScanVariants(buf);
+    const m = await matchHashes(variants);
     const hit = (c: { name: string; number: string }) =>
       nameMatches(t.name, c.name) && normalizeCardNumber(c.number) === normalizeCardNumber(t.number);
     const isTop1 = m.top.length > 0 && hit(m.top[0]);

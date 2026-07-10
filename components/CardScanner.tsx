@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CardCropper } from "@/components/CardCropper";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
+import { scanVariantHashes, type HashPair } from "@/lib/scan/perceptualHash";
 
-// Capture a card photo → crop/perspective-correct it → send the image to
-// /api/card-scan, which matches its perceptual hash against every known card
-// image and returns candidate printings → tap the right one. Emits the same
-// card shape the add form's manual search does, so it plugs straight into
+// Capture a card photo → crop/perspective-correct it → compute its perceptual
+// hashes ON-DEVICE (canvas, no native module) → send the hashes to
+// /api/card-scan, which compares them against every known card image and
+// returns candidate printings → tap the right one. Emits the same card shape
+// the add form's manual search does, so it plugs straight into
 // handlePokemonSelect. See docs/card-scanning-research.md.
 
 interface ScannedCard {
@@ -37,21 +39,29 @@ interface Props {
   onSelect: (card: ScannedCard, index: number) => void;
 }
 
-/** Downscale the cropped card image to what the matcher needs (~512px wide
- *  JPEG, ~50–100KB) so uploads are fast on mobile connections. */
-async function downscaleToDataUrl(blob: Blob, maxWidth = 512, quality = 0.82): Promise<string> {
+// Long edge the source is scaled to before hashing. Must match the index
+// builder's WORK_EDGE (lib/scan/imageHash.ts) so client and catalog hashes are
+// computed at the same working resolution.
+const WORK_EDGE = 256;
+
+/** Draw the cropped card onto a canvas (capped to WORK_EDGE long edge) and
+ *  return both its perceptual hash variants and a small JPEG for admin logging. */
+async function hashAndPreview(blob: Blob): Promise<{ hashes: HashPair[]; image: string; bytes: number }> {
   const bitmap = await createImageBitmap(blob);
-  const scale = Math.min(1, maxWidth / bitmap.width);
-  const w = Math.round(bitmap.width * scale);
-  const h = Math.round(bitmap.height * scale);
+  const scale = Math.min(1, WORK_EDGE / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Canvas unavailable");
   ctx.drawImage(bitmap, 0, 0, w, h);
   bitmap.close();
-  return canvas.toDataURL("image/jpeg", quality);
+  const { data } = ctx.getImageData(0, 0, w, h);
+  const hashes = scanVariantHashes(data, w, h);
+  const image = canvas.toDataURL("image/jpeg", 0.82);
+  return { hashes, image, bytes: blob.size };
 }
 
 export function CardScanner({ onSelect }: Props) {
@@ -140,11 +150,11 @@ export function CardScanner({ onSelect }: Props) {
     setPreview(URL.createObjectURL(blob));
     try {
       setStatus("matching");
-      const image = await downscaleToDataUrl(blob);
+      const { hashes, image, bytes } = await hashAndPreview(blob);
       const res = await fetch("/api/card-scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image, bytes: blob.size }),
+        body: JSON.stringify({ hashes, image, bytes }),
       });
       if (!res.ok) {
         const msg = res.status === 422

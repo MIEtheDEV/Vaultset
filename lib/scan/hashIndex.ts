@@ -1,16 +1,13 @@
 import { gunzipSync } from "zlib";
 import { createAdminClient } from "@/utils/supabase/admin";
-import {
-  hashScanImage,
-  hashFromHex,
-  scanDistance,
-  type ScanHashes,
-} from "@/lib/scan/imageHash";
+import { hashFromHex, variantDistance, type HashPair } from "@/lib/scan/perceptualHash";
 
-// Server-side scan matcher: downloads the prebuilt perceptual-hash index
+// Server-side scan matcher. Downloads the prebuilt perceptual-hash index
 // artifact (scripts/build-scan-index.ts → scan-index/index.json.gz), caches it
-// in module scope, and matches an uploaded card photo against every known card
-// by hamming distance. Backend-only (admin client) — never import client-side.
+// in module scope, and matches CLIENT-COMPUTED hashes against every known card
+// by hamming distance. Pure JS — NO sharp/libvips (which fails to load on
+// Vercel's Lambda runtime). The browser computes the scan's hashes from canvas
+// pixels; this module only compares hex. Backend-only (admin client).
 
 export interface HashIndexEntry {
   id: string;       // pokemontcg.io id | tcg:<productId> | tcgdex:<cardId>
@@ -30,19 +27,16 @@ export interface ScoredEntry extends HashIndexEntry {
 export interface ImageMatch {
   top: ScoredEntry[];
   confident: boolean;
-  /** Distance of the best match (lower = closer; ≤ ~120 is a real hit). */
   bestDistance: number | null;
-  /** Gap between the best match and the closest *different-named* card. */
   margin: number | null;
   indexSize: number;
   builtAt: string | null;
 }
 
-// Measured on the 52-scan real-photo corpus: true matches landed at combined
-// distance 53–120 while the best wrong candidate was ≥126. The gate accepts a
-// hit only when it's both absolutely close and clearly separated from every
-// different-named card (same-name alternate printings don't break confidence —
-// they're the tie-set the user picks from).
+// Measured on the 52-scan real-photo corpus: true matches land well under this
+// distance with a clear separation from every different-named card. The gate
+// accepts a hit only when it's both absolutely close and clearly separated;
+// same-name alternate printings don't break confidence — they're the tie-set.
 const CONFIDENT_MAX_DISTANCE = 125;
 const CONFIDENT_MIN_MARGIN = 10;
 const TOP_K = 8;
@@ -91,25 +85,24 @@ async function loadIndex(): Promise<LoadedIndex | null> {
 
 const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-/** Match a (perspective-corrected) card photo against the full card index. */
-export async function matchImage(image: Buffer): Promise<ImageMatch> {
+/** Match client-computed scan hashes (hex variant pairs) against the full index. */
+export async function matchHashes(variants: HashPair[]): Promise<ImageMatch> {
   const index = await loadIndex();
-  if (!index || index.entries.length === 0) {
-    return { top: [], confident: false, bestDistance: null, margin: null, indexSize: 0, builtAt: null };
+  if (!index || index.entries.length === 0 || variants.length === 0) {
+    return { top: [], confident: false, bestDistance: null, margin: null, indexSize: index?.entries.length ?? 0, builtAt: index?.builtAt ?? null };
   }
 
-  const scan: ScanHashes = await hashScanImage(image);
+  const decoded = variants.map((v) => ({ d: hashFromHex(v.d), p: hashFromHex(v.p) }));
 
   // Full linear scan: ~20k entries × 40-byte XOR/popcount is a few milliseconds.
   const scored: ScoredEntry[] = index.entries.map(({ meta, d, p }) => ({
     ...meta,
-    dist: scanDistance(scan, d, p),
+    dist: variantDistance(decoded, d, p),
   }));
   scored.sort((a, b) => a.dist - b.dist);
 
   const top = scored.slice(0, TOP_K);
   const best = top[0];
-  // Margin vs the closest card that isn't just another printing of the same name.
   const bestName = normName(best.name);
   const rival = scored.find((e) => normName(e.name) !== bestName);
   const margin = rival ? rival.dist - best.dist : null;

@@ -55,8 +55,7 @@ async function main() {
   const full = process.argv.includes("--full");
 
   const { gzipSync, gunzipSync } = await import("zlib");
-  const sharp = (await import("sharp")).default;
-  const { hashCatalogImage, hashToHex } = await import("@/lib/scan/imageHash");
+  const { hashCatalogImage } = await import("@/lib/scan/imageHash");
   const { normalizeCardNumber } = await import("@/lib/search/cardNumber");
   const { createAdminClient } = await import("@/utils/supabase/admin");
   const admin = createAdminClient();
@@ -183,10 +182,9 @@ async function main() {
         try {
           const res = await fetch(meta.img);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          let buf = Buffer.from(await res.arrayBuffer());
-          if (trim) buf = await sharp(buf).trim({ threshold: 25 }).toBuffer();
-          const { d, p } = await hashCatalogImage(buf);
-          out.push({ ...meta, d: hashToHex(d), p: hashToHex(p) });
+          const buf = Buffer.from(await res.arrayBuffer());
+          const { d, p } = await hashCatalogImage(buf, trim);
+          out.push({ ...meta, d, p });
           ok++;
         } catch (e) {
           fail++;

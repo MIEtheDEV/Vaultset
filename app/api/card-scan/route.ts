@@ -3,23 +3,38 @@ import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { isUserAdmin } from "@/lib/auth/admin";
 import { manualLookup } from "@/lib/scan/matchScan";
-// Type-only import — erased at compile time, so it does NOT pull in the
-// sharp-dependent matcher module. matchImage is dynamically imported inside
-// POST (below) so the GET handler that gates the scan button never loads sharp.
-import type { ScoredEntry } from "@/lib/scan/hashIndex";
+import { matchHashes, type ScoredEntry } from "@/lib/scan/hashIndex";
+import type { HashPair } from "@/lib/scan/perceptualHash";
 import { fetchPokemonCardsByIds } from "@/lib/search/PokemonTCGProvider";
 import { searchJustTcg, getJustTcgById } from "@/lib/search/justTcgSearch";
 import { normalizeCardNumber } from "@/lib/search/cardNumber";
 import type { SearchResult } from "@/lib/search/CardSearchProvider";
 
-// Card scanner. The browser crops + perspective-corrects the card photo and
-// POSTs the image here; matchImage() (lib/scan/hashIndex) matches its
-// perceptual hash against the prebuilt index of every known card image and
-// returns candidate printings. Free path — no OCR, no per-scan API spend on
-// the happy path. Measured 52/52 top-1 exact printing on the real-photo
-// corpus (scripts/scan-replay.ts replays that corpus against this exact
-// matcher locally — no deploy needed to test matching changes).
+// Card scanner. The browser crops + perspective-corrects the card photo AND
+// computes its perceptual hashes on-device (canvas — no native module), then
+// POSTs the hex hashes here; matchHashes() (lib/scan/hashIndex) compares them
+// against the prebuilt index of every known card image and returns candidate
+// printings. Pure-JS on the server — no sharp/libvips (which fails to load on
+// Vercel's Lambda runtime). Free path — no OCR, no per-scan API spend on the
+// happy path. Measured 52/52 top-1 exact printing on the real-photo corpus
+// (scripts/scan-replay.ts replays that corpus against this exact matcher
+// locally — no deploy needed to test matching changes).
 export const maxDuration = 15;
+
+/** Validate a client-sent variant-hash array: 1-4 pairs of hex strings of the
+ *  expected lengths (dHash-256 = 64 hex chars, pHash-64 = 16 hex chars). */
+function parseHashes(raw: unknown): HashPair[] | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 4) return null;
+  const out: HashPair[] = [];
+  for (const v of raw) {
+    if (!v || typeof v !== "object") return null;
+    const { d, p } = v as { d?: unknown; p?: unknown };
+    if (typeof d !== "string" || !/^[0-9a-f]{64}$/.test(d)) return null;
+    if (typeof p !== "string" || !/^[0-9a-f]{16}$/.test(p)) return null;
+    out.push({ d, p });
+  }
+  return out;
+}
 
 /** GET → { enabled }: any signed-in user may use the scanner. */
 export async function GET() {
@@ -77,8 +92,10 @@ async function toCandidates(top: ScoredEntry[]): Promise<{ candidates: SearchRes
   return { candidates: out, droppedTop };
 }
 
-/** POST { image, bytes? } → { candidates, confident, debug }.
- *  POST { name, number } → manual refine (unchanged fallback path). */
+/** POST { hashes, image?, bytes? } → { candidates, confident, debug }.
+ *  POST { name, number } → manual refine (unchanged fallback path).
+ *  `hashes` are computed on-device; `image` (optional) is stored for admin
+ *  diagnostics only and never processed server-side. */
 export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -86,7 +103,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { image?: string; bytes?: number; name?: string; number?: string };
+  let body: { hashes?: unknown; image?: string; bytes?: number; name?: string; number?: string };
   try {
     body = await request.json();
   } catch {
@@ -100,39 +117,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ candidates: m.candidates, confident: m.confident, debug: m.debug });
   }
 
-  if (typeof body.image !== "string" || !body.image.startsWith("data:")) {
-    return NextResponse.json({ error: "Missing image" }, { status: 400 });
-  }
-  const b64 = body.image.split(",")[1] ?? "";
-  const imageBuf = Buffer.from(b64, "base64");
-  if (imageBuf.length === 0 || imageBuf.length > 3_000_000) {
-    return NextResponse.json({ error: "Bad image" }, { status: 400 });
+  const hashes = parseHashes(body.hashes);
+  if (!hashes) {
+    return NextResponse.json({ error: "Missing or malformed scan hashes" }, { status: 400 });
   }
 
-  let match;
-  try {
-    // Lazy-loaded so the sharp native module only initializes on an actual
-    // image scan — never for the GET button-gate or the manual-lookup path.
-    const { matchImage } = await import("@/lib/scan/hashIndex");
-    match = await matchImage(imageBuf);
-  } catch (e) {
-    const msg = (e as Error)?.message ?? String(e);
-    const stack = (e as Error)?.stack ?? "";
-    console.error("[SCAN] matchImage failed:", msg, stack);
-    // Best-effort: persist the real error so a production failure is
-    // diagnosable remotely (read via scan_diagnostics where matched_via='error').
-    try {
-      const admin = createAdminClient();
-      await admin.from("scan_diagnostics").insert({
-        user_id: user.id,
-        matched_via: "error",
-        ocr_text: `${msg}\n${stack}`.slice(0, 4000),
-        image_bytes: typeof body.bytes === "number" ? body.bytes : imageBuf.length,
-        user_agent: request.headers.get("user-agent"),
-      });
-    } catch { /* logging is best-effort */ }
-    return NextResponse.json({ error: "Could not read that image — try another photo." }, { status: 422 });
+  // Optional cropped image — ADMIN diagnostics only. Stored as-is (never decoded
+  // server-side); bounded so a bad client can't push large payloads.
+  let imageBuf: Buffer | null = null;
+  if (typeof body.image === "string" && body.image.startsWith("data:")) {
+    const buf = Buffer.from(body.image.split(",")[1] ?? "", "base64");
+    if (buf.length > 0 && buf.length < 3_000_000) imageBuf = buf;
   }
+
+  const match = await matchHashes(hashes);
 
   const { candidates, droppedTop } = match.top.length
     ? await toCandidates(match.top)
@@ -156,7 +154,7 @@ export async function POST(request: Request) {
     const isAdmin = await isUserAdmin(user.id);
 
     let imagePath: string | null = null;
-    if (isAdmin) {
+    if (isAdmin && imageBuf) {
       const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
       const { error: upErr } = await admin.storage
         .from("scan-diagnostics")
@@ -173,7 +171,7 @@ export async function POST(request: Request) {
       confident,
       top_matches: debug.top,
       result_candidates: candidates.map((c) => ({ id: c.id, name: c.name, set: c.set?.name ?? "", number: c.number })),
-      image_bytes: typeof body.bytes === "number" ? body.bytes : imageBuf.length,
+      image_bytes: typeof body.bytes === "number" ? body.bytes : (imageBuf?.length ?? null),
       image_path: imagePath,
       user_agent: request.headers.get("user-agent"),
     });
