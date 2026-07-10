@@ -85,6 +85,25 @@ A cache-first, multi-tier pricing engine that follows the same provider+factory 
 - **Condition pricing:** for **raw** cards, `getMarketPrice` uses JustTCG's real per-condition prices when present (`card_prices.condition_prices`, `{finish:{condition:price}}`), falling back to NM market × a condition multiplier when not.
 - **Graded pricing (`lib/pricing/gradedPrices.ts`):** for **graded** cards, `getMarketPrice` uses real slab medians (eBay USD, PSA/BGS/CGC/ACE/SGC/TAG, sample ≥ 2) from **cardmarket-api-tcg** (RapidAPI, `TCGGO_RAPID_API_KEY`), keyed by `tcgid` = our `pokemon_api_id` (exact lookup, no fuzzy matching). Stored in its own `card_graded_prices` table, **lazy + 24h-cached**, budget-guarded at 100/day (`price_api_usage` provider `tcggo`). Falls back to the grade multiplier for half-grades, thin samples, uncovered graders, or non-pokemontcg.io cards. Fetched only when a graded item references the card (`ensureGradedPrices`); `readGradedPrices` is the no-fetch path used during propagation.
 
+### Card Scanning (`lib/scan/`)
+
+Scan-to-add identifies a card photo by **perceptual-hash image matching** (no OCR): the client
+crops + perspective-warps the photo (`components/CardCropper.tsx`, `lib/scan/perspective.ts`),
+downscales it, and POSTs to `/api/card-scan`; the server hashes it (`lib/scan/imageHash.ts`,
+dHash-256 + pHash-64) and matches against a prebuilt index of every known card image
+(`lib/scan/hashIndex.ts`, cached in-memory from `scan-index/index.json.gz` in Supabase Storage).
+Confidence gate: best distance ≤125 AND margin ≥10 vs any different-named card (same-name reprints
+form the tie-set the user taps). Fallback: manual name+number lookup (`lib/scan/matchScan.ts`).
+
+- **Index build:** `pnpm scan:index` (incremental; `--full` rebuilds). Sources: pokemontcg.io
+  catalog + TCGdex gap sets + TCGplayer CDN images from our `cards` table (covers promos like MEP
+  that pokemontcg.io lacks). Re-run after new set releases.
+- **Regression harness:** `pnpm scan:replay` replays the labeled corpus of real user scans
+  (`scripts/scan-ground-truth.json`) through the exact production matcher — run after any matcher
+  change; measured baseline is 52/52 top-1 and confidently-wrong results are a hard fail.
+- Diagnostics land in `scan_diagnostics` (`match_distance`, `match_margin`, `matched_via`);
+  admin scans also store the cropped photo for corpus growth. Viewer: `/admin/scan-diagnostics`.
+
 ### Authentication & Middleware
 
 `proxy.ts` is the Next.js middleware file (exports `proxy` function + `config` matcher). It:

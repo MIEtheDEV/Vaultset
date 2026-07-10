@@ -1,17 +1,27 @@
 # Card Scanning — Research & Feasibility
 
-**Status:** Free Tier-1 scanner **built behind an admin flag** (beta) · **Last updated:** 2026-07-05
+**Status:** **Overhauled to perceptual-hash image matching (2026-07-09)** — the OCR
+text-fingerprint pipeline below is retired. · **Last updated:** 2026-07-09
 
-> **Implementation (2026-07-05):** the free Tier-1 identity scanner is live for admins only
-> (`profiles.is_admin`). Flow: `components/CardScanner.tsx` (capture via file/camera `<input>`) →
-> **crop guide + perspective correction** (`components/CardCropper.tsx` — drag 4 corners; warp to a
-> flat card rect via `lib/scan/perspective.ts`, pure-JS homography + bilinear, $0) → on-device OCR
-> (`lib/scan/ocr.ts`, tesseract.js, lazy-loaded, $0) → `POST /api/card-scan` (admin-gated;
-> `lib/scan/fingerprint.ts` extraction + ranking, `scanSearchPokemon` in
-> `lib/search/PokemonTCGProvider.ts`) → candidate tie-set → tap → existing `handlePokemonSelect`
-> on `/inventory/add`. No paid API. The cropper rectifies angled/cluttered phone shots toward the
-> clean-scan best case OCR reads well; "Use full photo" skips it. Set-symbol matching, multi-frame
-> voting, and Ximilar Tier-2 remain future upgrades (§4–§5). Not yet real-world tested on phone photos.
+> **Implementation (2026-07-09, current):** the OCR pipeline shipped 2026-07-05 failed in the real
+> world (74 scans: 35% confident, 24% zero results, several confidently WRONG — tesseract on phone
+> photos emits garbage no matcher can recover). Replaced end-to-end with **perceptual-hash image
+> matching**, validated on the 52 stored real user scans at **52/52 top-1 exact printing** before
+> shipping. Flow: `components/CardScanner.tsx` (capture) → crop + perspective warp
+> (`components/CardCropper.tsx` + `lib/scan/perspective.ts`, unchanged — the warp is what makes
+> hashing work) → downscale to ~512px JPEG → `POST /api/card-scan` → `lib/scan/hashIndex.ts`
+> (dHash-256 + pHash-64 hamming match, `lib/scan/imageHash.ts`) against a prebuilt index of every
+> known card image (`scripts/build-scan-index.ts` → `scan-index/index.json.gz` in Supabase Storage;
+> sources: pokemontcg.io catalog + TCGdex gap sets + TCGplayer images from our `cards` table for
+> promos like MEP that pokemontcg.io lacks) → confidence gate (distance ≤125, margin ≥10 vs any
+> different-named card) → candidate tie-set → tap → `handlePokemonSelect`. Low-confidence falls
+> back to manual name+number lookup (`lib/scan/matchScan.ts`). $0 per scan; no OCR; tesseract.js
+> removed. **Regression harness:** `pnpm scan:replay` replays the labeled real-photo corpus
+> (`scripts/scan-ground-truth.json`) through the exact production matcher — run it after any
+> matcher change; confidently-wrong results are a hard fail. Rebuild the index after new set
+> releases with `pnpm scan:index` (incremental).
+>
+> Everything below this line is the historical research + the OCR experiment record.
 
 Exploration of a "scan your card" feature: point a camera at a physical card and add it to
 inventory instead of typing a search. This doc captures the provider landscape, two measured OCR

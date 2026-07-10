@@ -2,25 +2,25 @@ import { createAdminClient } from "@/utils/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-interface TopMatch { name: string; set: string; number: string; score: number }
+// Hash-era top match (dist) — older rows carry the OCR-era shape (score) instead.
+interface TopMatch { id?: string; name: string; set: string; number: string; dist?: number; score?: number }
 interface ResultCard { id: string; name: string; set: string; number: string }
 interface ScanRow {
   id: string;
   created_at: string;
-  ocr_text: string | null;
-  ocr_char_count: number | null;
-  name_candidates: string[] | null;
-  extracted_number: string | null;
-  reliable_number: string | null;
-  number_hints: string[] | null;
+  matched_via: string | null;
+  match_distance: number | null;
+  match_margin: number | null;
   pool_size: number | null;
-  justtcg_appended: number | null;
   confident: boolean | null;
   top_matches: TopMatch[] | null;
   result_candidates: ResultCard[] | null;
   image_bytes: number | null;
   image_path: string | null;
   user_agent: string | null;
+  // OCR-era columns, kept for historical rows
+  ocr_text: string | null;
+  name_candidates: string[] | null;
 }
 
 function when(iso: string) {
@@ -52,9 +52,9 @@ export default async function ScanDiagnosticsPage() {
       <div>
         <h2 className="text-xl font-semibold text-foreground">Scan Diagnostics</h2>
         <p className="mt-0.5 text-sm text-foreground-muted">
-          Last {rows.length} card-scanner attempts. Each row is one scan — expand to see the raw OCR
-          text and matching. Use this to tell OCR-quality failures (garbled text) from matching
-          failures (good text, wrong/no candidates).
+          Last {rows.length} card-scanner attempts. Each row is one scan — expand to see the match
+          distances and candidates. Distance ≤ ~120 is a real hit; a small margin means a
+          look-alike card was close (tune thresholds against these rows).
         </p>
       </div>
 
@@ -67,6 +67,7 @@ export default async function ScanDiagnosticsPage() {
           {rows.map((r) => {
             const results = r.result_candidates ?? [];
             const top = r.top_matches ?? [];
+            const isHash = r.matched_via === "hash" || top.some((t) => typeof t.dist === "number");
             return (
               <details key={r.id} className="rounded-2xl border border-border bg-surface p-4">
                 <summary className="cursor-pointer list-none">
@@ -79,40 +80,32 @@ export default async function ScanDiagnosticsPage() {
                     </span>
                     {r.confident && <span className="rounded-full bg-gold/15 px-2 py-0.5 text-xs font-medium text-gold">confident</span>}
                     <span className="text-xs text-foreground-muted">
-                      {r.ocr_char_count ?? 0} chars · pool {r.pool_size ?? 0}
-                      {r.justtcg_appended ? ` · +${r.justtcg_appended} JustTCG` : ""}
+                      {isHash
+                        ? `dist ${r.match_distance ?? "—"} · margin ${r.match_margin ?? "—"} · index ${r.pool_size ?? 0}`
+                        : `ocr-era · pool ${r.pool_size ?? 0}`}
                       {r.image_bytes ? ` · ${Math.round(r.image_bytes / 1024)}KB` : ""}
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-foreground-muted truncate">
-                    candidates: {(r.name_candidates ?? []).join(", ") || "—"}
+                    top: {top.slice(0, 3).map((t) => `${t.name} #${t.number}`).join(", ") || "—"}
                   </p>
                 </summary>
 
                 <div className="mt-3 space-y-3 border-t border-border pt-3 text-xs">
                   {r.image_path && signed.get(r.image_path) && (
                     <div>
-                      <p className="font-semibold text-foreground mb-1">Scanned image (what OCR saw)</p>
+                      <p className="font-semibold text-foreground mb-1">Scanned image (what the matcher saw)</p>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={signed.get(r.image_path)} alt="Scanned card" className="h-64 w-auto rounded-lg border border-border" />
                     </div>
                   )}
-                  <div>
-                    <p className="font-semibold text-foreground mb-1">Name candidates</p>
-                    <p className="text-foreground-muted break-words">{(r.name_candidates ?? []).join(", ") || "—"}</p>
-                    <p className="text-foreground-muted mt-0.5">
-                      number — reliable: <span className={r.reliable_number ? "text-green-400" : ""}>{r.reliable_number ?? "—"}</span>
-                      {" · "}hints: {(r.number_hints ?? []).join(", ") || "—"}
-                      {" · "}all: {r.extracted_number ?? "—"}
-                    </p>
-                  </div>
 
                   {top.length > 0 && (
                     <div>
-                      <p className="font-semibold text-foreground mb-1">Top ranked (pokemontcg.io)</p>
+                      <p className="font-semibold text-foreground mb-1">{isHash ? "Closest matches (distance)" : "Top ranked (OCR-era score)"}</p>
                       <div className="space-y-0.5 text-foreground-muted">
                         {top.map((t, i) => (
-                          <p key={i} className="truncate">{t.score} · {t.name} · {t.set} #{t.number}</p>
+                          <p key={i} className="truncate">{t.dist ?? t.score} · {t.name} · {t.set} #{t.number}</p>
                         ))}
                       </div>
                     </div>
@@ -129,12 +122,14 @@ export default async function ScanDiagnosticsPage() {
                     </div>
                   )}
 
-                  <div>
-                    <p className="font-semibold text-foreground mb-1">Raw OCR text</p>
-                    <pre className="whitespace-pre-wrap break-words rounded-lg bg-surface-raised p-2 text-foreground-muted max-h-64 overflow-auto">
-                      {r.ocr_text || "(nothing read)"}
-                    </pre>
-                  </div>
+                  {!isHash && (
+                    <div>
+                      <p className="font-semibold text-foreground mb-1">Raw OCR text (legacy scan)</p>
+                      <pre className="whitespace-pre-wrap break-words rounded-lg bg-surface-raised p-2 text-foreground-muted max-h-64 overflow-auto">
+                        {r.ocr_text || "(nothing read)"}
+                      </pre>
+                    </div>
+                  )}
 
                   {r.user_agent && (
                     <p className="text-foreground-muted/60 break-words">{r.user_agent}</p>

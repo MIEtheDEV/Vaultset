@@ -1,37 +1,22 @@
-import { scanSearchPokemon, type ScanCandidate } from "@/lib/search/PokemonTCGProvider";
+import { scanSearchPokemon } from "@/lib/search/PokemonTCGProvider";
 import type { SearchResult } from "@/lib/search/CardSearchProvider";
 import { searchJustTcg } from "@/lib/search/justTcgSearch";
 import { normalizeCardNumber } from "@/lib/search/cardNumber";
-import {
-  extractNameCandidates,
-  extractAttackPhrases,
-  extractNumbers,
-  extractCollectorNumber,
-  rankCandidates,
-  resolveScan,
-} from "@/lib/scan/fingerprint";
 
-// The whole scan-matching pipeline as one pure(ish) function: OCR text in →
-// ranked candidate printings out. Extracted from the API route so it can be
-// replayed against real logged OCR text locally (scripts/scan-replay.ts) —
-// no deploy needed to test matching changes.
-
-export interface ScanTopMatch { name: string; set: string; number: string; score: number }
+// Manual name+number lookup — the scanner's fallback tier for photos the
+// perceptual-hash matcher (lib/scan/hashIndex) can't confidently place: the
+// user types the card name and collector number they can see. (The OCR
+// text-fingerprint pipeline that used to live here was retired in favor of
+// image matching — see docs/card-scanning-research.md.)
 
 export interface ScanMatch {
   candidates: SearchResult[];
   confident: boolean;
   debug: {
-    nameCandidates: string[];
-    numberCandidates: string[];
-    /** The reliable NNN/TTT collector number (null if none read) — logged
-     *  separately from the noisy numberCandidates blob to measure read rate. */
-    collectorNumber: string | null;
-    /** Client bottom-strip targeted OCR reads, as received. */
-    numberHints: string[];
-    poolSize: number;
+    matchedVia: "manual";
+    name: string;
+    number: string;
     justtcgAppended: number;
-    top: ScanTopMatch[];
   };
 }
 
@@ -49,16 +34,14 @@ function baseName(n: string): string {
 }
 
 /** Cross-provider dedup key: base name + normalized number. Collapses the same
- *  physical printing arriving from pokemontcg.io and JustTCG (used by both the
- *  manual-refine path and the auto-scan JustTCG merge). */
+ *  physical printing arriving from pokemontcg.io and JustTCG. */
 function dedupKey(name: string, number: string): string {
   return `${baseName(name)}|${normalizeCardNumber(number)}`;
 }
 
 /**
- * Manual refine: the scanner identified the Pokémon but OCR couldn't read the
- * collector number (common on foils/promos), so the user types the number they
- * can see. pokemontcg.io native match leads (richer data, native id, plugs into
+ * Manual refine: the user types the card name + collector number they can see.
+ * pokemontcg.io native match leads (richer data, native id, plugs into
  * pricing/rarity); JustTCG's number filter then fills only what pokemontcg.io
  * lacks (promos/new prints). Results are deduped across providers by base name +
  * normalized number so the same printing shows once (and can be confident).
@@ -96,108 +79,6 @@ export async function manualLookup(name: string, number: string): Promise<ScanMa
   return {
     candidates: out,
     confident: out.length === 1,
-    debug: {
-      nameCandidates: [clean], numberCandidates: [number],
-      collectorNumber: null, numberHints: [],
-      poolSize: out.length, justtcgAppended, top: [],
-    },
-  };
-}
-
-export async function matchScan(
-  text: string,
-  lines: string[],
-  numberHints: string[] = [],
-  nameHints: string[] = [],
-): Promise<ScanMatch> {
-  const useLines = lines.length ? lines : text.split("\n");
-  // Targeted top-banner name reads lead the full-text candidates — they recover
-  // stylized full-art names ("Empoleon") the full-card pass mangles ("leon").
-  const nameCandidates = [
-    ...new Set([...nameHints, ...(text.length >= 3 ? extractNameCandidates(text, useLines) : [])]),
-  ];
-  const attackPhrases = text.length >= 3 ? extractAttackPhrases(text, useLines) : [];
-  // The reliable collector number (drives ranking + float); the broad list is only
-  // for cheap JustTCG probing. numberHints (targeted bottom-strip OCR, client-side)
-  // are the most reliable, so they lead; then the NNN/TTT collector number from the
-  // full text; then broad standalone digits. Deduped, best-guess first.
-  const collectorNumber = text.length >= 3 ? extractCollectorNumber(text, useLines) : null;
-  const numberCandidates = [
-    ...new Set(
-      [...numberHints, collectorNumber, ...(text.length >= 3 ? extractNumbers(text, useLines) : [])].filter(Boolean),
-    ),
-  ] as string[];
-
-  let top: ScanTopMatch[] = [];
-  let out: SearchResult[] = [];
-  let confident = false;
-  let justtcgAppended = 0;
-  let poolSize = 0;
-
-  if (nameCandidates.length > 0 || attackPhrases.length > 0) {
-    const pool = await scanSearchPokemon(nameCandidates, attackPhrases);
-    poolSize = pool.length;
-    const ranked = rankCandidates(pool, text, numberCandidates[0] ?? null, nameHints);
-    top = ranked.slice(0, 6).map((r) => ({
-      name: r.card.name, set: r.card.set?.name ?? "", number: r.card.number, score: r.score,
-    }));
-    const resolved = resolveScan(ranked, 8);
-    confident = resolved.confident;
-    out = resolved.candidates.map((c: ScanCandidate) => ({
-      id: c.id, name: c.name, number: c.number, rarity: c.rarity,
-      subtypes: c.subtypes, set: c.set, images: c.images, tcgplayer: c.tcgplayer ?? null,
-    }));
-
-    // Probe JustTCG with the clean matched name + each candidate number; foils
-    // rarely give a clean name AND number in one scan, so try a few numbers and
-    // stop as soon as one lands exactly. Surfaces promos/new prints name-only misses.
-    // Prefer the clean matched name; if nothing matched, fall back to the LONGEST
-    // OCR name candidate (a real name like "crobat" beats junk like "ale").
-    const jtName = out[0]?.name ?? [...nameCandidates].sort((a, b) => b.length - a.length)[0];
-    let hitNumber: string | null = null;
-    if (jtName) {
-      const seen = new Set(out.map((c) => dedupKey(c.name, c.number)));
-      // Cap probes to conserve JustTCG quota now the scanner is GA. The targeted
-      // number hint leads numberCandidates, so the right number is usually tried first.
-      const tries: (string | undefined)[] = numberCandidates.length ? numberCandidates.slice(0, 2) : [undefined];
-      for (const num of tries) {
-        const jt = await searchJustTcg(jtName, num);
-        let exactHit = false;
-        for (const c of jt) {
-          const k = dedupKey(c.name, c.number);
-          if (!seen.has(k)) { seen.add(k); out.push(c); justtcgAppended++; }
-          if (num && normalizeCardNumber(c.number) === normalizeCardNumber(num)) { exactHit = true; hitNumber = num; }
-          if (out.length >= 14) break;
-        }
-        if (exactHit || out.length >= 14) break;
-      }
-    }
-
-    // Float the exact printing to the top. Prefer the number that actually landed
-    // an exact JustTCG hit; else the reliable collector number. (Not noisy broad
-    // digits — those would float a wrong printing.)
-    //
-    // Restrict the float to printings of the SAME Pokémon as the fingerprint's top
-    // pick. The number's only job here is to disambiguate *which printing* of the
-    // identified card the user holds — never to change *which Pokémon* we chose. A
-    // bare collector number matches by coincidence across unrelated cards, and
-    // without this guard it promoted a different Pokémon that merely shared the
-    // number (a Pidgeot scan floated Ice Rider Calyrex V #111 to the top). Anchor on
-    // the fingerprint winner (out[0], already ranked by resolveScan) so only its
-    // same-name alternate printings can be reordered.
-    const floatNum = hitNumber ?? collectorNumber;
-    if (floatNum && out.length > 1) {
-      const want = normalizeCardNumber(floatNum);
-      const anchor = baseName(out[0].name);
-      const floats = (c: SearchResult) =>
-        baseName(c.name) === anchor && normalizeCardNumber(c.number) === want ? 1 : 0;
-      out.sort((a, b) => floats(b) - floats(a));
-    }
-  }
-
-  return {
-    candidates: out,
-    confident,
-    debug: { nameCandidates, numberCandidates, collectorNumber, numberHints, poolSize, justtcgAppended, top },
+    debug: { matchedVia: "manual", name: clean, number, justtcgAppended },
   };
 }

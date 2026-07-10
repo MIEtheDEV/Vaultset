@@ -151,6 +151,36 @@ export async function scanSearchPokemon(
   return [];
 }
 
+/**
+ * Batch-fetch full search results by native pokemontcg.io id (scan candidates).
+ * One request for the whole shortlist; includes tcgplayer prices + images so a
+ * picked card plugs straight into the add flow. Non-native ids (tcg:/manual: —
+ * a colon is a Lucene field separator that 400s the query) are ignored.
+ */
+export async function fetchPokemonCardsByIds(ids: string[]): Promise<SearchResult[]> {
+  const native = ids.filter((id) => !id.includes(":"));
+  if (native.length === 0) return [];
+  const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY
+    ? { "X-Api-Key": process.env.POKEMON_TCG_API_KEY }
+    : {};
+  const params = new URLSearchParams({
+    q: native.map((id) => `id:${id}`).join(" OR "),
+    pageSize: String(native.length),
+    select: "id,name,number,rarity,subtypes,set,images,tcgplayer",
+  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetchWithTimeout(`${BASE}/cards?${params}`, { headers, next: { revalidate: 3600 } }, 8000);
+      if (!res.ok) return [];
+      const json = await res.json();
+      return (json.data ?? []) as SearchResult[];
+    } catch {
+      // timeout/network — retry once on a fresh connection, then give up
+    }
+  }
+  return [];
+}
+
 // Concrete implementation of CardSearchProvider for the Pokémon TCG API.
 // All Pokémon-specific HTTP logic and field mapping lives here.
 export class PokemonTCGProvider extends CardSearchProvider {

@@ -2,14 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ocrImage } from "@/lib/scan/ocr";
 import { CardCropper } from "@/components/CardCropper";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
 
-// Admin-only, beta. Capture a card photo → OCR its body text on-device → fingerprint
-// match to the card DB → tap the right printing. Emits the same card shape the add
-// form's manual search does, so it plugs straight into handlePokemonSelect.
-// Free Tier-1 identity path — see docs/card-scanning-research.md.
+// Capture a card photo → crop/perspective-correct it → send the image to
+// /api/card-scan, which matches its perceptual hash against every known card
+// image and returns candidate printings → tap the right one. Emits the same
+// card shape the add form's manual search does, so it plugs straight into
+// handlePokemonSelect. See docs/card-scanning-research.md.
 
 interface ScannedCard {
   id: string;
@@ -22,41 +22,55 @@ interface ScannedCard {
   tcgplayer?: TcgPlayerData | null;
 }
 
-type Status = "idle" | "cropping" | "reading" | "matching" | "done" | "error";
+type Status = "idle" | "cropping" | "matching" | "done" | "error";
 
 interface ScanDebug {
-  nameCandidates: string[];
-  numberCandidates: string[];
-  collectorNumber: string | null;
-  numberHints: string[];
-  poolSize: number;
-  justtcgAppended: number;
-  top: { name: string; set: string; number: string; score: number }[];
+  matchedVia?: string;
+  bestDistance?: number | null;
+  margin?: number | null;
+  indexSize?: number;
+  indexBuiltAt?: string | null;
+  top?: { id: string; name: string; set: string; number: string; dist: number }[];
 }
 
 interface Props {
   onSelect: (card: ScannedCard, index: number) => void;
 }
 
+/** Downscale the cropped card image to what the matcher needs (~512px wide
+ *  JPEG, ~50–100KB) so uploads are fast on mobile connections. */
+async function downscaleToDataUrl(blob: Blob, maxWidth = 512, quality = 0.82): Promise<string> {
+  const bitmap = await createImageBitmap(blob);
+  const scale = Math.min(1, maxWidth / bitmap.width);
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas unavailable");
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
 export function CardScanner({ onSelect }: Props) {
   const [enabled, setEnabled] = useState(false);
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
-  const [progress, setProgress] = useState(0);
   const [candidates, setCandidates] = useState<ScannedCard[]>([]);
   const [confident, setConfident] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [ocrText, setOcrText] = useState("");
   const [debug, setDebug] = useState<ScanDebug | null>(null);
   const [manualName, setManualName] = useState("");
   const [manualNum, setManualNum] = useState("");
   const [manualBusy, setManualBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // UI gate: only render for admins. The /api/card-scan POST enforces this
-  // authoritatively too, so this is just to hide the entry point.
+  // UI gate: only render for signed-in users. The POST enforces this
+  // authoritatively too; this just hides the entry point.
   useEffect(() => {
     let alive = true;
     fetch("/api/card-scan")
@@ -70,12 +84,10 @@ export function CardScanner({ onSelect }: Props) {
 
   function reset() {
     setStatus("idle");
-    setProgress(0);
     setCandidates([]);
     setConfident(false);
     setErrorMsg("");
     setFile(null);
-    setOcrText("");
     setDebug(null);
     setManualName("");
     setManualNum("");
@@ -83,9 +95,8 @@ export function CardScanner({ onSelect }: Props) {
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  // Manual refine: OCR identified the Pokémon but couldn't read the (foil/tiny)
-  // collector number — the user types the number they can see to pull the exact
-  // printing (JustTCG's number filter finds promos/new prints OCR-only misses).
+  // Manual refine: the matcher couldn't confidently place the photo (or matched
+  // the wrong printing) — the user types the name/number they can see.
   async function manualFind() {
     const name = (manualName || candidates[0]?.name || "").trim();
     const number = manualNum.trim();
@@ -102,7 +113,7 @@ export function CardScanner({ onSelect }: Props) {
       const json = await res.json();
       setCandidates(json.candidates ?? []);
       setConfident(!!json.confident);
-      setDebug(json.debug ?? null);
+      setStatus("done");
     } catch (err) {
       setErrorMsg((err as Error).message || "Lookup failed.");
     } finally {
@@ -111,14 +122,13 @@ export function CardScanner({ onSelect }: Props) {
   }
 
   // A photo was captured — hand it to the cropper first (crop guide + perspective
-  // correction) before OCR, so angled/cluttered phone shots get rectified.
+  // correction). The warp is what makes image matching reliable on angled shots.
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
     setCandidates([]);
     setConfident(false);
     setErrorMsg("");
-    setProgress(0);
     if (preview) { URL.revokeObjectURL(preview); setPreview(null); }
     setFile(f);
     setStatus("cropping");
@@ -128,30 +138,20 @@ export function CardScanner({ onSelect }: Props) {
   async function runPipeline(blob: Blob) {
     if (preview) URL.revokeObjectURL(preview);
     setPreview(URL.createObjectURL(blob));
-    setProgress(0);
     try {
-      setStatus("reading");
-      const { text, lines, nameHints, numberHints } = await ocrImage(blob, setProgress);
-      setOcrText(text);
-      if (!text.trim()) {
-        setCandidates([]);
-        setStatus("done");
-        return;
-      }
       setStatus("matching");
-      // Include the cropped image (data URL) so it can be logged for OCR tuning.
-      const image = await new Promise<string>((resolve) => {
-        const r = new FileReader();
-        r.onloadend = () => resolve(typeof r.result === "string" ? r.result : "");
-        r.onerror = () => resolve("");
-        r.readAsDataURL(blob);
-      });
+      const image = await downscaleToDataUrl(blob);
       const res = await fetch("/api/card-scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, lines, bytes: blob.size, image, nameHints, numberHints }),
+        body: JSON.stringify({ image, bytes: blob.size }),
       });
-      if (!res.ok) throw new Error(res.status === 403 ? "Not authorized." : `Scan failed (${res.status}).`);
+      if (!res.ok) {
+        const msg = res.status === 422
+          ? "Couldn't read that image — try another photo."
+          : res.status === 403 ? "Not authorized." : `Scan failed (${res.status}).`;
+        throw new Error(msg);
+      }
       const json = await res.json();
       setCandidates(json.candidates ?? []);
       setConfident(!!json.confident);
@@ -206,9 +206,9 @@ export function CardScanner({ onSelect }: Props) {
 
           {status === "idle" && !preview && (
             <ol className="space-y-1.5 text-xs text-foreground-muted">
-              <li><span className="font-semibold text-foreground">1. Focus &amp; light.</span> Hold the camera steady on a sharp, evenly-lit card — no glare on holo cards. The <span className="text-foreground">name and card number</span> must be clearly readable.</li>
-              <li><span className="font-semibold text-foreground">2. Frame the card.</span> Fit the whole card in the shot, then drag the crop corners to its edges — as little background as possible.</li>
-              <li><span className="font-semibold text-foreground">3. Scan &amp; wait.</span> Submit and allow up to ~20 seconds for a result (the first scan of a session takes a little longer to load).</li>
+              <li><span className="font-semibold text-foreground">1. Fit the whole card</span> in the shot — front side, any angle is fine.</li>
+              <li><span className="font-semibold text-foreground">2. Drag the crop corners</span> to the card&apos;s edges — as little background as possible.</li>
+              <li><span className="font-semibold text-foreground">3. Scan.</span> We match the photo against every known card and show the printing.</li>
             </ol>
           )}
 
@@ -226,15 +226,12 @@ export function CardScanner({ onSelect }: Props) {
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                disabled={status === "reading" || status === "matching"}
+                disabled={status === "matching"}
                 className="rounded-full bg-gold px-4 py-2 text-xs font-semibold text-background hover:bg-gold-light disabled:opacity-60 transition-colors"
               >
                 {preview ? "Retake / choose another" : "Take photo or upload"}
               </button>
 
-              {status === "reading" && (
-                <p className="text-xs text-foreground-muted">Reading card… {progress}%</p>
-              )}
               {status === "matching" && (
                 <p className="text-xs text-foreground-muted">Matching…</p>
               )}
@@ -243,7 +240,7 @@ export function CardScanner({ onSelect }: Props) {
               )}
               {status === "idle" && !preview && (
                 <p className="text-xs text-foreground-muted">
-                  Point at the card’s name &amp; attacks. We identify the card; you confirm the exact printing.
+                  Snap the card, line up the corners, and we&apos;ll identify the exact printing.
                 </p>
               )}
             </div>
@@ -279,14 +276,15 @@ export function CardScanner({ onSelect }: Props) {
 
           {status === "done" && candidates.length === 0 && (
             <p className="text-xs text-foreground-muted">
-              Couldn’t identify the card. Try a sharper, straight-on photo — or use the search below.
+              Couldn&apos;t identify the card. Try retaking with the corners lined up on the card&apos;s
+              edges — or type the card&apos;s name and number below.
             </p>
           )}
 
           {status === "done" && (
             <div className="rounded-lg border border-border/60 bg-surface/40 p-2 space-y-1.5">
               <p className="text-[11px] text-foreground-muted">
-                Wrong printing (e.g. a foil/promo)? Type the card number you can see:
+                Wrong or missing printing (e.g. a foil/promo)? Type the card&apos;s name and number:
               </p>
               <div className="flex gap-2">
                 <input
@@ -314,30 +312,21 @@ export function CardScanner({ onSelect }: Props) {
             </div>
           )}
 
-          {(status === "done" || status === "error") && (ocrText || debug) && (
+          {(status === "done" || status === "error") && debug && (
             <details className="mt-1 rounded-lg border border-border bg-surface/50 p-2">
               <summary className="cursor-pointer text-[11px] font-medium text-foreground-muted">Scan details</summary>
               <div className="mt-2 space-y-2 text-[11px] text-foreground-muted">
-                {debug && (
+                <p>
+                  distance {debug.bestDistance ?? "—"} · margin {debug.margin ?? "—"} · index {debug.indexSize ?? "—"} cards
+                </p>
+                {debug.top && debug.top.length > 0 && (
                   <div>
-                    <p className="font-semibold text-foreground">Name candidates</p>
-                    <p className="break-words">{debug.nameCandidates.join(", ") || "—"}</p>
-                    <p className="mt-0.5">number (reliable): {debug.collectorNumber || "—"} · hints: {debug.numberHints?.join(", ") || "—"}</p>
-                    <p className="mt-0.5">numbers: {debug.numberCandidates.join(", ") || "—"} · pool {debug.poolSize} · JustTCG appended {debug.justtcgAppended}</p>
-                  </div>
-                )}
-                {debug && debug.top.length > 0 && (
-                  <div>
-                    <p className="font-semibold text-foreground">Top matches (score)</p>
+                    <p className="font-semibold text-foreground">Closest matches (distance)</p>
                     {debug.top.map((t, i) => (
-                      <p key={i} className="truncate">{t.score} · {t.name} · {t.set} #{t.number}</p>
+                      <p key={i} className="truncate">{t.dist} · {t.name} · {t.set} #{t.number}</p>
                     ))}
                   </div>
                 )}
-                <div>
-                  <p className="font-semibold text-foreground">OCR text</p>
-                  <pre className="whitespace-pre-wrap break-words max-h-40 overflow-auto rounded bg-background/50 p-1.5">{ocrText || "—"}</pre>
-                </div>
               </div>
             </details>
           )}
