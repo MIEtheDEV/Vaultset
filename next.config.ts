@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // sharp is a native module used server-side by the card scanner's image
+  // hashing (lib/scan/imageHash). It must NOT be bundled — bundling breaks its
+  // native binaries on Vercel's serverless runtime, which fails the whole
+  // /api/card-scan route module (including its GET handler that gates the scan
+  // button). Keep it external so the prebuilt binary loads at runtime.
+  serverExternalPackages: ["sharp"],
   images: {
     remotePatterns: [
       {

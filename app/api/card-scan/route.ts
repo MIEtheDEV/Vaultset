@@ -3,7 +3,10 @@ import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { isUserAdmin } from "@/lib/auth/admin";
 import { manualLookup } from "@/lib/scan/matchScan";
-import { matchImage, type ScoredEntry } from "@/lib/scan/hashIndex";
+// Type-only import — erased at compile time, so it does NOT pull in the
+// sharp-dependent matcher module. matchImage is dynamically imported inside
+// POST (below) so the GET handler that gates the scan button never loads sharp.
+import type { ScoredEntry } from "@/lib/scan/hashIndex";
 import { fetchPokemonCardsByIds } from "@/lib/search/PokemonTCGProvider";
 import { searchJustTcg, getJustTcgById } from "@/lib/search/justTcgSearch";
 import { normalizeCardNumber } from "@/lib/search/cardNumber";
@@ -108,6 +111,9 @@ export async function POST(request: Request) {
 
   let match;
   try {
+    // Lazy-loaded so the sharp native module only initializes on an actual
+    // image scan — never for the GET button-gate or the manual-lookup path.
+    const { matchImage } = await import("@/lib/scan/hashIndex");
     match = await matchImage(imageBuf);
   } catch {
     return NextResponse.json({ error: "Could not read that image — try another photo." }, { status: 422 });
