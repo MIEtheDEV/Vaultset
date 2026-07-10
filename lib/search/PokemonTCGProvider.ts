@@ -153,9 +153,11 @@ export async function scanSearchPokemon(
 
 /**
  * Batch-fetch full search results by native pokemontcg.io id (scan candidates).
- * One request for the whole shortlist; includes tcgplayer prices + images so a
- * picked card plugs straight into the add flow. Non-native ids (tcg:/manual: —
- * a colon is a Lucene field separator that 400s the query) are ignored.
+ * One request for the whole shortlist; adds rarity (drives the add form's
+ * variant/finish default) + tcgplayer prices. Best-effort enrichment: a single
+ * 8s-bounded attempt (NO retry — the retry could push the scan route past its
+ * maxDuration and 504; the caller falls back to index metadata on []). Non-native
+ * ids (tcg:/manual: — a colon 400s the Lucene query) are ignored.
  */
 export async function fetchPokemonCardsByIds(ids: string[]): Promise<SearchResult[]> {
   const native = ids.filter((id) => !id.includes(":"));
@@ -168,17 +170,14 @@ export async function fetchPokemonCardsByIds(ids: string[]): Promise<SearchResul
     pageSize: String(native.length),
     select: "id,name,number,rarity,subtypes,set,images,tcgplayer",
   });
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await fetchWithTimeout(`${BASE}/cards?${params}`, { headers, next: { revalidate: 3600 } }, 8000);
-      if (!res.ok) return [];
-      const json = await res.json();
-      return (json.data ?? []) as SearchResult[];
-    } catch {
-      // timeout/network — retry once on a fresh connection, then give up
-    }
+  try {
+    const res = await fetchWithTimeout(`${BASE}/cards?${params}`, { headers, next: { revalidate: 3600 } }, 8000);
+    if (!res.ok) return [];
+    const json = await res.json();
+    return (json.data ?? []) as SearchResult[];
+  } catch {
+    return []; // timeout/network — caller degrades to index metadata
   }
-  return [];
 }
 
 // Concrete implementation of CardSearchProvider for the Pokémon TCG API.

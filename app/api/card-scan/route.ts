@@ -6,7 +6,7 @@ import { manualLookup } from "@/lib/scan/matchScan";
 import { matchHashes, type ScoredEntry } from "@/lib/scan/hashIndex";
 import type { HashPair } from "@/lib/scan/perceptualHash";
 import { fetchPokemonCardsByIds } from "@/lib/search/PokemonTCGProvider";
-import { searchJustTcg, getJustTcgById } from "@/lib/search/justTcgSearch";
+import { searchJustTcg } from "@/lib/search/justTcgSearch";
 import { normalizeCardNumber } from "@/lib/search/cardNumber";
 import type { SearchResult } from "@/lib/search/CardSearchProvider";
 
@@ -43,51 +43,58 @@ export async function GET() {
   return NextResponse.json({ enabled: !!user });
 }
 
+/** A tappable candidate straight from index metadata — complete enough to
+ *  display and to pick (the add flow resolves prices lazily on select via
+ *  /api/card-price, and re-fetches full details by id). Used for native +
+ *  `tcg:` entries so the hot path needs no external call for them. */
+function fromIndex(entry: ScoredEntry): SearchResult {
+  return {
+    id: entry.id,
+    name: entry.name,
+    number: entry.number,
+    set: { id: entry.id.includes(":") ? "" : entry.setId, name: entry.setName },
+    images: { small: entry.img, large: entry.img },
+    tcgplayer: null,
+  } as SearchResult;
+}
+
 /** Map matched index entries → SearchResult candidates the add flow understands.
- *  Native ids are batch-fetched (prices + rarity); tcg:/tcgdex: gap entries are
- *  resolved through JustTCG so they carry a storable `tcg:` id and prices. */
+ *  Bounded so a scan can't exceed the route's maxDuration (the cause of the
+ *  earlier 504s): the ONLY external calls are one best-effort pokemontcg.io
+ *  batch (native rarity/prices, 8s) and, rarely, per-`tcgdex:` JustTCG lookups —
+ *  and they all run CONCURRENTLY, so total latency is the slowest single call,
+ *  not their sum. `tcg:` entries (promos already in our catalog) and native
+ *  entries render from index metadata; prices load on select. */
 async function toCandidates(top: ScoredEntry[]): Promise<{ candidates: SearchResult[]; droppedTop: boolean }> {
-  const native = await fetchPokemonCardsByIds(top.map((e) => e.id));
-  const byId = new Map(native.map((c) => [c.id, c]));
+  // tcgdex: match keys aren't storable — resolve each to a JustTCG (tcg:) card.
+  const tcgdex = top.filter((e) => e.id.startsWith("tcgdex:"));
+  const [native, tcgdexResolved] = await Promise.all([
+    fetchPokemonCardsByIds(top.map((e) => e.id)),
+    Promise.all(
+      tcgdex.map(async (e) => {
+        const jt = await searchJustTcg(e.name, e.number);
+        return {
+          id: e.id,
+          card: jt.find((c) => normalizeCardNumber(c.number) === normalizeCardNumber(e.number)) ?? null,
+        };
+      }),
+    ),
+  ]);
+  const nativeById = new Map(native.map((c) => [c.id, c]));
+  const tcgdexById = new Map(tcgdexResolved.map((r) => [r.id, r.card]));
 
   const out: SearchResult[] = [];
   let droppedTop = false;
   for (const [i, entry] of top.entries()) {
-    if (!entry.id.includes(":")) {
-      const full = byId.get(entry.id);
-      if (full) {
-        out.push(full);
-      } else {
-        // Batch fetch missed (upstream hiccup) — fall back to index metadata so
-        // the candidate still renders; the add flow re-fetches details by id.
-        out.push({
-          id: entry.id, name: entry.name, number: entry.number,
-          set: { id: entry.setId, name: entry.setName },
-          images: { small: entry.img, large: entry.img }, tcgplayer: null,
-        } as SearchResult);
-      }
+    if (entry.id.startsWith("tcgdex:")) {
+      const resolved = tcgdexById.get(entry.id);
+      if (resolved) out.push(resolved);
+      else if (i === 0) droppedTop = true; // top match unresolvable → not confident
       continue;
     }
-    if (entry.id.startsWith("tcg:")) {
-      const viaJustTcg = await getJustTcgById(entry.id.slice(4));
-      out.push(
-        viaJustTcg ?? ({
-          id: entry.id, name: entry.name, number: entry.number,
-          set: { id: "", name: entry.setName },
-          images: { small: entry.img, large: entry.img }, tcgplayer: null,
-        } as SearchResult),
-      );
-      continue;
-    }
-    // tcgdex: match keys aren't storable ids — resolve to a JustTCG (tcg:) card
-    // by name+number. Unresolvable entries are dropped from the shortlist.
-    const jt = await searchJustTcg(entry.name, entry.number);
-    const exact = jt.find((c) => normalizeCardNumber(c.number) === normalizeCardNumber(entry.number));
-    if (exact) {
-      out.push(exact);
-    } else if (i === 0) {
-      droppedTop = true;
-    }
+    // Native: prefer the enriched copy (rarity + prices) when the batch returned
+    // in time; otherwise the index metadata is a complete, pickable fallback.
+    out.push(nativeById.get(entry.id) ?? fromIndex(entry));
   }
   return { candidates: out, droppedTop };
 }
