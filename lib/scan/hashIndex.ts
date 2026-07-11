@@ -28,6 +28,10 @@ export interface ImageMatch {
   top: ScoredEntry[];
   confident: boolean;
   bestDistance: number | null;
+  /** Distance to the winning card using only the FIRST frame's variants — lets
+   *  us measure how much the multi-frame burst helped (single-frame would be
+   *  this; multi-frame got bestDistance). */
+  bestDistanceFirstFrame: number | null;
   margin: number | null;
   indexSize: number;
   builtAt: string | null;
@@ -89,20 +93,22 @@ const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 export async function matchHashes(variants: HashPair[]): Promise<ImageMatch> {
   const index = await loadIndex();
   if (!index || index.entries.length === 0 || variants.length === 0) {
-    return { top: [], confident: false, bestDistance: null, margin: null, indexSize: index?.entries.length ?? 0, builtAt: index?.builtAt ?? null };
+    return { top: [], confident: false, bestDistance: null, bestDistanceFirstFrame: null, margin: null, indexSize: index?.entries.length ?? 0, builtAt: index?.builtAt ?? null };
   }
 
   const decoded = variants.map((v) => ({ d: hashFromHex(v.d), p: hashFromHex(v.p) }));
+  const firstFrame = decoded.slice(0, 3); // the first captured frame's crop variants
 
   // Full linear scan: ~20k entries × 40-byte XOR/popcount is a few milliseconds.
-  const scored: ScoredEntry[] = index.entries.map(({ meta, d, p }) => ({
-    ...meta,
-    dist: variantDistance(decoded, d, p),
-  }));
+  const scored: ScoredEntry[] = index.entries.map((e) => ({ ...e.meta, dist: variantDistance(decoded, e.d, e.p) }));
   scored.sort((a, b) => a.dist - b.dist);
 
   const top = scored.slice(0, TOP_K);
   const best = top[0];
+  // First-frame-only distance to the winning card, to quantify the burst benefit.
+  const winner = index.entries.find((e) => e.meta.id === best.id) ?? null;
+  const bestDistanceFirstFrame = winner ? variantDistance(firstFrame, winner.d, winner.p) : null;
+
   const bestName = normName(best.name);
   const rival = scored.find((e) => normName(e.name) !== bestName);
   const margin = rival ? rival.dist - best.dist : null;
@@ -113,6 +119,7 @@ export async function matchHashes(variants: HashPair[]): Promise<ImageMatch> {
     top,
     confident,
     bestDistance: best.dist,
+    bestDistanceFirstFrame,
     margin,
     indexSize: index.entries.length,
     builtAt: index.builtAt,

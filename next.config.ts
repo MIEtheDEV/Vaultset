@@ -42,7 +42,9 @@ const nextConfig: NextConfig = {
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "X-Frame-Options", value: "SAMEORIGIN" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-      { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+      // camera=(self) so the card scanner can open a live camera stream
+      // (getUserMedia) for burst capture; mic/geolocation stay disabled.
+      { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
     ];
     return [{ source: "/:path*", headers: securityHeaders }];
   },

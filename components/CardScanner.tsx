@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CardCropper } from "@/components/CardCropper";
+import { CardCameraCapture } from "@/components/CardCameraCapture";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
 import { scanVariantHashes, type HashPair } from "@/lib/scan/perceptualHash";
 
@@ -24,11 +25,13 @@ interface ScannedCard {
   tcgplayer?: TcgPlayerData | null;
 }
 
-type Status = "idle" | "cropping" | "matching" | "done" | "error";
+type Status = "idle" | "camera" | "cropping" | "matching" | "done" | "error";
 
 interface ScanDebug {
   matchedVia?: string;
   bestDistance?: number | null;
+  bestDistanceFirstFrame?: number | null;
+  nFrames?: number;
   margin?: number | null;
   indexSize?: number;
   indexBuiltAt?: string | null;
@@ -144,13 +147,11 @@ export function CardScanner({ onSelect }: Props) {
     setStatus("cropping");
   }
 
-  // Runs on the rectified (or full) image the cropper hands back.
-  async function runPipeline(blob: Blob) {
-    if (preview) URL.revokeObjectURL(preview);
-    setPreview(URL.createObjectURL(blob));
+  // Shared submit: on-device hashes → server match. Used by both the camera
+  // burst and the upload/crop fallback.
+  async function submitHashes(hashes: HashPair[], image: string, bytes: number) {
     try {
       setStatus("matching");
-      const { hashes, image, bytes } = await hashAndPreview(blob);
       const res = await fetch("/api/card-scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -167,6 +168,32 @@ export function CardScanner({ onSelect }: Props) {
       setConfident(!!json.confident);
       setDebug(json.debug ?? null);
       setStatus("done");
+    } catch (err) {
+      setErrorMsg((err as Error).message || "Something went wrong.");
+      setStatus("error");
+    }
+  }
+
+  // Camera burst finished — show its middle frame as the preview, then match.
+  function handleCameraCaptured(hashes: HashPair[], previewDataUrl: string, bytes: number) {
+    if (preview) { URL.revokeObjectURL(preview); }
+    setPreview(previewDataUrl || null);
+    void submitHashes(hashes, previewDataUrl, bytes);
+  }
+
+  // Camera couldn't open / was denied — fall back to the upload+crop flow.
+  function handleCameraUnavailable(reason: string) {
+    setErrorMsg(`${reason} You can upload a photo instead.`);
+    setStatus("idle");
+  }
+
+  // Runs on the rectified (or full) image the cropper hands back.
+  async function runPipeline(blob: Blob) {
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(URL.createObjectURL(blob));
+    try {
+      const { hashes, image, bytes } = await hashAndPreview(blob);
+      await submitHashes(hashes, image, bytes);
     } catch (err) {
       setErrorMsg((err as Error).message || "Something went wrong.");
       setStatus("error");
@@ -216,13 +243,19 @@ export function CardScanner({ onSelect }: Props) {
 
           {status === "idle" && !preview && (
             <ol className="space-y-1.5 text-xs text-foreground-muted">
-              <li><span className="font-semibold text-foreground">1. Fit the whole card</span> in the shot — front side, any angle is fine.</li>
-              <li><span className="font-semibold text-foreground">2. Drag the crop corners</span> to the card&apos;s edges — as little background as possible.</li>
-              <li><span className="font-semibold text-foreground">3. Scan.</span> We match the photo against every known card and show the printing.</li>
+              <li><span className="font-semibold text-foreground">1. Use the camera</span> and fill the card-shaped guide with the card, front side up.</li>
+              <li><span className="font-semibold text-foreground">2. Hold steady &amp; tap Capture.</span> We grab a few frames to see past holo glare — angle slightly if there&apos;s a reflection.</li>
+              <li><span className="font-semibold text-foreground">3. Confirm.</span> We match it against every known card and show the printing.</li>
             </ol>
           )}
 
-          {status === "cropping" && file ? (
+          {status === "camera" ? (
+            <CardCameraCapture
+              onCaptured={handleCameraCaptured}
+              onUnavailable={handleCameraUnavailable}
+              onCancel={reset}
+            />
+          ) : status === "cropping" && file ? (
             <CardCropper file={file} onCropped={runPipeline} onCancel={reset} />
           ) : (
           <>
@@ -233,14 +266,24 @@ export function CardScanner({ onSelect }: Props) {
             ) : null}
 
             <div className="min-w-0 flex-1 space-y-2">
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={status === "matching"}
-                className="rounded-full bg-gold px-4 py-2 text-xs font-semibold text-background hover:bg-gold-light disabled:opacity-60 transition-colors"
-              >
-                {preview ? "Retake / choose another" : "Take photo or upload"}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setErrorMsg(""); setStatus("camera"); }}
+                  disabled={status === "matching"}
+                  className="rounded-full bg-gold px-4 py-2 text-xs font-semibold text-background hover:bg-gold-light disabled:opacity-60 transition-colors"
+                >
+                  {preview ? "Scan another (camera)" : "Scan with camera"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={status === "matching"}
+                  className="rounded-full border border-border px-4 py-2 text-xs font-medium text-foreground-muted hover:text-foreground hover:border-gold/40 disabled:opacity-60 transition-colors"
+                >
+                  Upload a photo
+                </button>
+              </div>
 
               {status === "matching" && (
                 <p className="text-xs text-foreground-muted">Matching…</p>
@@ -250,7 +293,7 @@ export function CardScanner({ onSelect }: Props) {
               )}
               {status === "idle" && !preview && (
                 <p className="text-xs text-foreground-muted">
-                  Snap the card, line up the corners, and we&apos;ll identify the exact printing.
+                  Fill the guide with the card and we&apos;ll identify the exact printing.
                 </p>
               )}
             </div>
@@ -328,6 +371,12 @@ export function CardScanner({ onSelect }: Props) {
               <div className="mt-2 space-y-2 text-[11px] text-foreground-muted">
                 <p>
                   distance {debug.bestDistance ?? "—"} · margin {debug.margin ?? "—"} · index {debug.indexSize ?? "—"} cards
+                </p>
+                <p>
+                  frames {debug.nFrames ?? "—"} · 1-frame distance {debug.bestDistanceFirstFrame ?? "—"}
+                  {typeof debug.bestDistance === "number" && typeof debug.bestDistanceFirstFrame === "number"
+                    ? ` (burst helped by ${debug.bestDistanceFirstFrame - debug.bestDistance})`
+                    : ""}
                 </p>
                 {debug.top && debug.top.length > 0 && (
                   <div>

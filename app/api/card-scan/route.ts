@@ -21,10 +21,12 @@ import type { SearchResult } from "@/lib/search/CardSearchProvider";
 // locally — no deploy needed to test matching changes).
 export const maxDuration = 15;
 
-/** Validate a client-sent variant-hash array: 1-4 pairs of hex strings of the
- *  expected lengths (dHash-256 = 64 hex chars, pHash-64 = 16 hex chars). */
+/** Validate a client-sent variant-hash array: hex-string pairs (dHash-256 = 64
+ *  hex chars, pHash-64 = 16 hex chars). Up to 24 to accommodate a multi-frame
+ *  burst (up to 8 frames × 3 crop variants); matchHashes takes the best over
+ *  all of them, so more frames just means a better shot at beating glare. */
 function parseHashes(raw: unknown): HashPair[] | null {
-  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 4) return null;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 24) return null;
   const out: HashPair[] = [];
   for (const v of raw) {
     if (!v || typeof v !== "object") return null;
@@ -145,9 +147,13 @@ export async function POST(request: Request) {
   // Never report confidence in a card we couldn't resolve to a storable id.
   const confident = match.confident && !droppedTop && candidates.length > 0;
 
+  // ~3 crop variants per captured frame.
+  const nFrames = Math.max(1, Math.round(hashes.length / 3));
   const debug = {
     matchedVia: "hash" as const,
     bestDistance: match.bestDistance,
+    bestDistanceFirstFrame: match.bestDistanceFirstFrame,
+    nFrames,
     margin: match.margin,
     indexSize: match.indexSize,
     indexBuiltAt: match.builtAt,
@@ -174,6 +180,8 @@ export async function POST(request: Request) {
       matched_via: "hash",
       match_distance: match.bestDistance,
       match_margin: match.margin,
+      n_frames: nFrames,
+      single_frame_distance: match.bestDistanceFirstFrame,
       pool_size: match.indexSize,
       confident,
       top_matches: debug.top,
