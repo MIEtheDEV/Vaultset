@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { isUserAdmin } from "@/lib/auth/admin";
 import { manualLookup } from "@/lib/scan/matchScan";
 import { matchHashes, type ScoredEntry } from "@/lib/scan/hashIndex";
 import type { HashPair } from "@/lib/scan/perceptualHash";
@@ -160,14 +159,20 @@ export async function POST(request: Request) {
     top: match.top.map((e) => ({ id: e.id, name: e.name, set: e.setName, number: e.number, dist: e.dist })),
   };
 
-  // Persist a diagnostics row (+ the cropped image for admins) so real-world
-  // failures stay reviewable and thresholds can be tuned against real photos.
+  // Persist a diagnostics row (+ the cropped image) so real-world failures stay
+  // reviewable and thresholds can be tuned against real photos.
+  //
+  // TEMPORARY (beta accuracy audit, 2026-07-11): image capture is ungated to
+  // ALL signed-in users (normally admin-only for privacy) so the owner can
+  // review the complete real-user capture set and verify accuracy. Images go to
+  // the PRIVATE `scan-diagnostics` bucket (admin-only signed URLs). RE-GATE this
+  // to admins before broader launch — restore `if (isAdmin && imageBuf)` and the
+  // isUserAdmin check.
   try {
     const admin = createAdminClient();
-    const isAdmin = await isUserAdmin(user.id);
 
     let imagePath: string | null = null;
-    if (isAdmin && imageBuf) {
+    if (imageBuf) {
       const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
       const { error: upErr } = await admin.storage
         .from("scan-diagnostics")
