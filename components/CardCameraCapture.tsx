@@ -15,10 +15,10 @@ import { scanVariantHashes, type HashPair } from "@/lib/scan/perceptualHash";
 // and the pixel crop line up without fragile coordinate math. Falls back to the
 // upload/crop flow (onUnavailable) when the camera can't be opened.
 
-const CARD_W = 5, CARD_H = 7;   // trading-card aspect
-const FRAME_MARGIN = 0.92;      // crop rect fills ~92% of the frame's limiting dimension
-const BURST = 6;                // frames per capture
-const BURST_INTERVAL_MS = 180;
+const CARD_W = 5, CARD_H = 7;   // trading-card aspect (2.5" × 3.5")
+const FRAME_MARGIN = 0.92;      // crop/guide width as a fraction of the frame width
+const BURST = 10;               // frames per capture — more frames = more chances to
+const BURST_INTERVAL_MS = 170;  // catch a low-glare frame (the deciding factor in testing)
 
 interface Props {
   onCaptured: (hashes: HashPair[], previewDataUrl: string, bytes: number) => void;
@@ -120,7 +120,7 @@ export function CardCameraCapture({ onCaptured, onUnavailable, onCancel }: Props
         return;
       }
       // Cap defensively (server accepts a bounded number of hash pairs).
-      onCaptured(all.slice(0, 24), preview, bytes);
+      onCaptured(all.slice(0, 36), preview, bytes);
     } finally {
       setCapturing(false);
     }
@@ -129,15 +129,19 @@ export function CardCameraCapture({ onCaptured, onUnavailable, onCancel }: Props
   return (
     <div className="space-y-3">
       <p className="text-xs text-foreground-muted">
-        Fill the frame with the card, hold steady, and tap Capture. Angle slightly to dodge glare on holo cards.
+        Lay the card flat on a table, fill the frame with it, and tap Capture. Holo cards read best
+        flat under even light — tilt slightly if you see a reflection.
       </p>
       <div className="relative mx-auto w-full max-w-[340px] overflow-hidden rounded-lg bg-black">
         <video ref={videoRef} playsInline muted className="block w-full h-auto" />
-        {/* Card-shaped guide — matches the centered card-aspect crop in grabFrame. */}
+        {/* Card-shaped guide — matches the centered card-aspect crop in grabFrame.
+            Anchored on WIDTH (height follows the 5:7 card ratio) so the box stays
+            correctly proportioned on portrait phone video, where forcing height
+            broke the aspect and made the guide too tall. */}
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div
             className="rounded-lg border-2 border-gold/90 shadow-[0_0_0_2000px_rgba(0,0,0,0.35)]"
-            style={{ aspectRatio: "5 / 7", height: "92%", maxWidth: "92%" }}
+            style={{ aspectRatio: "5 / 7", width: "92%", maxHeight: "92%" }}
           />
         </div>
       </div>

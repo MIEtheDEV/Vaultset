@@ -22,11 +22,11 @@ import type { SearchResult } from "@/lib/search/CardSearchProvider";
 export const maxDuration = 15;
 
 /** Validate a client-sent variant-hash array: hex-string pairs (dHash-256 = 64
- *  hex chars, pHash-64 = 16 hex chars). Up to 24 to accommodate a multi-frame
- *  burst (up to 8 frames × 3 crop variants); matchHashes takes the best over
+ *  hex chars, pHash-64 = 16 hex chars). Up to 36 to accommodate a multi-frame
+ *  burst (up to 12 frames × 3 crop variants); matchHashes takes the best over
  *  all of them, so more frames just means a better shot at beating glare. */
 function parseHashes(raw: unknown): HashPair[] | null {
-  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 24) return null;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 36) return null;
   const out: HashPair[] = [];
   for (const v of raw) {
     if (!v || typeof v !== "object") return null;

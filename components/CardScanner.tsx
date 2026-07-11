@@ -243,8 +243,8 @@ export function CardScanner({ onSelect }: Props) {
 
           {status === "idle" && !preview && (
             <ol className="space-y-1.5 text-xs text-foreground-muted">
-              <li><span className="font-semibold text-foreground">1. Use the camera</span> and fill the card-shaped guide with the card, front side up.</li>
-              <li><span className="font-semibold text-foreground">2. Hold steady &amp; tap Capture.</span> We grab a few frames to see past holo glare — angle slightly if there&apos;s a reflection.</li>
+              <li><span className="font-semibold text-foreground">1. Lay the card flat</span> on a table, front side up, under even light.</li>
+              <li><span className="font-semibold text-foreground">2. Fill the guide &amp; tap Capture.</span> We grab several frames to see past holo glare — tilt slightly if you spot a reflection.</li>
               <li><span className="font-semibold text-foreground">3. Confirm.</span> We match it against every known card and show the printing.</li>
             </ol>
           )}
