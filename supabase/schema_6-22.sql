@@ -3152,6 +3152,77 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
 
 
+-- ============================================================================
+-- Master Sets feature (added 2026-07-18; applied to production via MCP).
+-- Appended manually — regenerate with `supabase db dump` to normalize ordering.
+-- ============================================================================
+
+-- Shared, service-role-written per-set checklist powering master-set completion.
+CREATE TABLE IF NOT EXISTS "public"."set_cards" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "set_code" "text" NOT NULL,
+    "set_name" "text" NOT NULL,
+    "card_number" "text" NOT NULL,
+    "card_number_raw" "text",
+    "name" "text" NOT NULL,
+    "rarity" "text",
+    "image_url" "text",
+    "finishes" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    "pokemon_api_id" "text",
+    "tcgplayer_id" "text",
+    "source" "text",
+    "variant_fidelity" "text" DEFAULT 'derived'::"text" NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "set_cards_variant_fidelity_check" CHECK (("variant_fidelity" = ANY (ARRAY['derived'::"text", 'partial'::"text"]))),
+    CONSTRAINT "set_cards_unique_set_number" UNIQUE ("set_code", "card_number"),
+    CONSTRAINT "set_cards_pkey" PRIMARY KEY ("id")
+);
+ALTER TABLE "public"."set_cards" OWNER TO "postgres";
+CREATE INDEX IF NOT EXISTS "set_cards_set_code_idx" ON "public"."set_cards" USING "btree" ("set_code");
+CREATE INDEX IF NOT EXISTS "set_cards_pokemon_api_id_idx" ON "public"."set_cards" USING "btree" ("pokemon_api_id");
+ALTER TABLE "public"."set_cards" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Set cards are publicly readable" ON "public"."set_cards" FOR SELECT USING (true);
+CREATE POLICY "Service role can manage set cards" ON "public"."set_cards" USING (("auth"."role"() = 'service_role'::"text")) WITH CHECK (("auth"."role"() = 'service_role'::"text"));
+GRANT ALL ON TABLE "public"."set_cards" TO "anon", "authenticated", "service_role";
+
+-- Per-user record of completed (set, tier) — powers badges, profile, and the
+-- Pro marketplace completion signals. One row per completed tier.
+CREATE TABLE IF NOT EXISTS "public"."user_set_completions" (
+    "user_id" "uuid" NOT NULL,
+    "set_code" "text" NOT NULL,
+    "tier" "text" NOT NULL,
+    "completed_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "user_set_completions_tier_check" CHECK (("tier" = ANY (ARRAY['complete'::"text", 'master'::"text"]))),
+    CONSTRAINT "user_set_completions_pkey" PRIMARY KEY ("user_id", "set_code", "tier")
+);
+ALTER TABLE "public"."user_set_completions" OWNER TO "postgres";
+ALTER TABLE ONLY "public"."user_set_completions"
+    ADD CONSTRAINT "user_set_completions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS "user_set_completions_user_idx" ON "public"."user_set_completions" USING "btree" ("user_id");
+ALTER TABLE "public"."user_set_completions" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Set completions are publicly readable" ON "public"."user_set_completions" FOR SELECT USING (true);
+CREATE POLICY "Users record their own set completions" ON "public"."user_set_completions" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+GRANT ALL ON TABLE "public"."user_set_completions" TO "anon", "authenticated", "service_role";
+
+-- Grouped per-set totals (complete = card count, master = Σ finishes) for the index.
+CREATE OR REPLACE FUNCTION "public"."set_completion_totals"()
+RETURNS TABLE("set_code" "text", "set_name" "text", "complete_total" bigint, "master_total" bigint, "has_partial" boolean)
+LANGUAGE "sql" STABLE SECURITY DEFINER
+SET "search_path" TO 'public'
+AS $$
+  select
+    set_code,
+    min(set_name) as set_name,
+    count(*) as complete_total,
+    coalesce(sum(cardinality(finishes)), 0) as master_total,
+    bool_or(variant_fidelity = 'partial') as has_partial
+  from public.set_cards
+  group by set_code;
+$$;
+ALTER FUNCTION "public"."set_completion_totals"() OWNER TO "postgres";
+GRANT ALL ON FUNCTION "public"."set_completion_totals"() TO "anon", "authenticated", "service_role";
+
+
 
 
 

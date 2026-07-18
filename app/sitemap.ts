@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { distinctSetCodes, distinctRarities, distinctSpecies, distinctListedSetCodes, distinctListedSpecies } from "@/lib/hubs/hubQueries";
+import { distinctSetCardCodes, distinctRarities, distinctSpecies, distinctListedSetCodes, distinctListedSpecies } from "@/lib/hubs/hubQueries";
 
 // Rebuilt daily; the hub enumerators read the daily-cached catalog snapshot, so
 // this stays cheap. (Well under the 50k-URL sitemap cap today; if the catalog
@@ -16,6 +16,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/marketplace`,             lastModified: now, changeFrequency: "daily",   priority: 0.9 },
     { url: `${base}/card-data`,               lastModified: now, changeFrequency: "daily",   priority: 0.8 },
     { url: `${base}/sets`,                    lastModified: now, changeFrequency: "daily",   priority: 0.8 },
+    { url: `${base}/pokemon-master-set-tracker`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
     { url: `${base}/most-valuable-pokemon-cards`, lastModified: now, changeFrequency: "daily", priority: 0.7 },
     { url: `${base}/community`,               lastModified: now, changeFrequency: "weekly",  priority: 0.6 },
     { url: `${base}/pricing`,                 lastModified: now, changeFrequency: "monthly", priority: 0.5 },
@@ -31,7 +32,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const [{ data: profiles }, { data: pricedCards }, setCodes, rarities, species, listedSets, listedSpecies] = await Promise.all([
       supabase.from("profiles").select("username, created_at").eq("banned", false),
       supabase.from("card_prices").select("card_api_id, updated_at"),
-      distinctSetCodes(),
+      distinctSetCardCodes(),
       distinctRarities(),
       distinctSpecies(),
       distinctListedSetCodes(),

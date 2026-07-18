@@ -11,6 +11,7 @@ import { InstallAppButton } from "@/components/InstallAppButton";
 const navLinks = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Inventory", href: "/inventory" },
+  { label: "Master Sets", href: "/masterset" },
   { label: "Marketplace", href: "/marketplace" },
   { label: "Cards", href: "/card-data" },
   { label: "Community", href: "/community" },

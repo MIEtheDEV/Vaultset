@@ -27,15 +27,16 @@ export const metadata: Metadata = {
     ],
   },
   title: {
-    default: "Vaultset — The Ultimate Trading Card Platform",
+    default: "Track, Value & Trade Your Pokémon Card Collection — Vaultset",
     template: "%s — Vaultset",
   },
   description:
-    "Manage your collection, track live market values, buy and sell cards, and connect with a passionate community. Vaultset is the all-in-one platform for trading card collectors.",
+    "Free Pokémon TCG collection tracker, card inventory manager & master set tracker. Track your cards, follow live market prices, and buy, sell & trade with collectors.",
   keywords: [
-    "trading cards", "TCG", "card collection", "Pokemon cards", "MTG",
-    "buy sell trade cards", "card market", "card inventory", "Pokemon TCG marketplace",
-    "trading card collector platform",
+    "pokemon card collection tracker", "pokémon tcg collection tracker", "master set tracker",
+    "pokemon master set", "card inventory", "trading card platform", "trading card collection manager",
+    "pokemon card portfolio tracker", "tcg collection app", "trading cards", "buy sell trade pokemon cards",
+    "pokemon tcg marketplace",
   ],
   robots: {
     index: true,
@@ -43,20 +44,20 @@ export const metadata: Metadata = {
     googleBot: { index: true, follow: true },
   },
   openGraph: {
-    title: "Vaultset — The Ultimate Trading Card Platform",
+    title: "Track, Value & Trade Your Pokémon Card Collection — Vaultset",
     description:
-      "Manage your collection, track live market values, buy and sell cards, and connect with a passionate community.",
+      "Free Pokémon TCG collection tracker, card inventory & master set tracker. Follow live market prices and buy, sell & trade with collectors.",
     url: "https://www.vaultset.app",
     type: "website",
     siteName: "Vaultset",
-    images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Vaultset — The Ultimate Trading Card Platform" }],
+    images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Vaultset — Pokémon TCG collection tracker, master set tracker & marketplace" }],
   },
   twitter: {
     card: "summary_large_image",
     site: "@vaultsetapp",
-    title: "Vaultset — The Ultimate Trading Card Platform",
+    title: "Track, Value & Trade Your Pokémon Card Collection — Vaultset",
     description:
-      "Manage your collection, track live market values, buy and sell cards, and connect with a passionate community.",
+      "Free Pokémon TCG collection tracker, card inventory & master set tracker. Follow live market prices and buy, sell & trade with collectors.",
     images: ["/opengraph-image"],
   },
 };

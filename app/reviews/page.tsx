@@ -3,7 +3,7 @@ import Link from "next/link";
 import { createAdminClient } from "@/utils/supabase/admin";
 
 export const metadata: Metadata = {
-  title: "Collector Reviews — Vaultset",
+  title: "Collector Reviews",
   alternates: { canonical: "/reviews" },
   description: "See what Pokémon TCG collectors are saying about Vaultset — the free collection tracker, marketplace, and community platform.",
 };

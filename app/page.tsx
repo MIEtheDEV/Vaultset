@@ -21,6 +21,11 @@ const features: { title: string; description: string; icon: ReactNode; install?:
     icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /><path d="M7 8h4M7 11h2" /><rect x="14" y="7" width="4" height="5" rx="1" /></svg>),
   },
   {
+    title: "Master Set Tracker",
+    description: "See every card in a set — dimmed until you own it, full-color once you do. Track Complete Set (one of each card) and Master Set (every finish, including reverse holos and secret rares), with live progress bars and completion achievements.",
+    icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M15 4v16M3 12h18" /></svg>),
+  },
+  {
     title: "Live Market Prices",
     description: "TCGPlayer market data synced daily. See exactly what you paid vs. current market value, with P&L calculated across every card in your vault.",
     icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>),
@@ -76,6 +81,15 @@ const faqs: { q: string; a: string; link?: { href: string; label: string }; inst
   {
     q: "How do I know what my Pokémon card collection is worth?",
     a: "Vaultset syncs TCGPlayer market prices daily. Your dashboard shows total collection value, individual card market prices, and P&L against what you paid — all updated automatically.",
+  },
+  {
+    q: "What is a Pokémon master set?",
+    a: "A master set is the goal of owning every variant of every card in a set — not just one of each card number, but each finish too: the regular card, its reverse holo, special reverse-holo patterns, and the secret rares numbered above the base set. It's a step beyond a \"complete set\" (one of each card). Vaultset tracks both tiers per set.",
+  },
+  {
+    q: "Can I track master set completion on Vaultset?",
+    a: "Yes. Every Pokémon set has a dedicated page showing all of its cards — dimmed until you own them, full-color once they're in your collection. A live progress bar tracks both Complete Set (one of each card) and Master Set (every finish), and you earn achievements when you finish a set. As you add cards to your inventory, the checklist fills in automatically.",
+    link: { href: "/pokemon-master-set-tracker", label: "Learn about master set tracking" },
   },
   {
     q: "Can I buy and sell Pokémon cards on Vaultset?",
@@ -202,6 +216,9 @@ export default async function Home() {
     { value: formatCount(supportedGames),   label: "Supported Games" },
   ];
 
+  const siteDescription =
+    "The free Pokémon TCG collection tracker, card inventory manager, and master set tracker. Track your cards, monitor live market prices, complete your master sets, and buy, sell, and trade with other collectors.";
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@graph": [
@@ -210,7 +227,15 @@ export default async function Home() {
         "@id": "https://www.vaultset.app/#website",
         name: "Vaultset",
         url: "https://www.vaultset.app",
-        description: "The free Pokémon TCG collection tracker. Manage your inventory, track live market prices, and buy, sell, and trade cards with other collectors.",
+        description: siteDescription,
+        potentialAction: {
+          "@type": "SearchAction",
+          target: {
+            "@type": "EntryPoint",
+            urlTemplate: "https://www.vaultset.app/card-data?q={search_term_string}",
+          },
+          "query-input": "required name=search_term_string",
+        },
       },
       {
         "@type": "Organization",
@@ -218,8 +243,36 @@ export default async function Home() {
         name: "Vaultset",
         url: "https://www.vaultset.app",
         logo: { "@type": "ImageObject", url: "https://www.vaultset.app/img/icon.png" },
-        description: "The free Pokémon TCG collection tracker. Manage your inventory, track live market prices, and buy, sell, and trade cards with other collectors.",
+        description: siteDescription,
         sameAs: ["https://twitter.com/vaultsetapp"],
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://www.vaultset.app/#app",
+        name: "Vaultset",
+        url: "https://www.vaultset.app",
+        applicationCategory: "BusinessApplication",
+        operatingSystem: "Web, iOS, Android",
+        description: siteDescription,
+        offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+        featureList: [
+          "Pokémon card collection tracker",
+          "Card inventory management (raw and graded)",
+          "Master set and complete set tracking",
+          "Live TCGPlayer market prices and portfolio value",
+          "Collector marketplace — buy, sell, and trade",
+          "Trade matching and wishlist",
+          "Sealed product and pack-reveal tracking",
+        ],
+        ...(reviewCount > 0
+          ? {
+              aggregateRating: {
+                "@type": "AggregateRating",
+                ratingValue: reviewAverage.toFixed(1),
+                reviewCount,
+              },
+            }
+          : {}),
       },
       {
         "@type": "FAQPage",
@@ -248,6 +301,7 @@ export default async function Home() {
           </div>
           <div className="hidden min-[1200px]:flex items-center gap-8 text-sm text-foreground-muted">
             <Link href="#how-it-works" className="hover:text-foreground transition-colors">How it works</Link>
+            <Link href="#master-sets" className="hover:text-foreground transition-colors">Master Sets</Link>
             <Link href="#features" className="hover:text-foreground transition-colors">Features</Link>
             <Link href="#card-search" className="hover:text-foreground transition-colors">Card Search</Link>
             {/* Marketplace & Community require an account; show them only to signed-in users on the homepage. */}
@@ -294,13 +348,18 @@ export default async function Home() {
             </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.15]">
-              <RotatingHeadline />
+              Track, value &amp; trade your Pokémon card collection
             </h1>
 
+            <div className="text-lg sm:text-xl font-medium text-gold/90 leading-snug min-h-[1.75rem]">
+              <RotatingHeadline />
+            </div>
+
             <p className="text-lg text-foreground-muted leading-relaxed max-w-lg">
-              Vaultset is the free Pokémon TCG platform built for serious collectors.
-              Track your inventory, monitor live market prices, and buy, sell, and trade
-              directly with other collectors — all in one place.
+              Vaultset is the free Pokémon TCG collection tracker, card inventory manager,
+              and marketplace built for serious collectors. Track every card, monitor live
+              market prices, complete your master sets, and buy, sell, and trade directly
+              with other collectors — all in one place.
             </p>
 
             <div className="flex flex-wrap gap-4">
@@ -379,6 +438,76 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* Master Sets spotlight */}
+      <section id="master-sets" className="relative py-28 border-t border-border bg-surface overflow-hidden scroll-mt-16">
+        <div
+          className="absolute top-0 right-0 w-[700px] h-[500px] rounded-full blur-3xl pointer-events-none"
+          style={{ background: "radial-gradient(ellipse, rgba(232,184,75,0.07) 0%, transparent 70%)" }}
+        />
+        <div className="relative mx-auto max-w-7xl px-6 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          <div className="space-y-6">
+            <span className="inline-flex items-center gap-2 rounded-full border border-gold/20 bg-gold/5 px-3 py-1 text-xs font-medium text-gold">
+              Master Set Tracker
+            </span>
+            <h2 className="text-4xl font-bold tracking-tight leading-tight">
+              Complete your master sets
+            </h2>
+            <p className="text-foreground-muted text-lg leading-relaxed">
+              Open any Pokémon set and see every card at once — dimmed until you own it, full-color
+              once it&apos;s in your collection. As you add cards, your checklist fills in
+              automatically and a live progress bar tracks how close you are.
+            </p>
+            <ul className="space-y-3">
+              <li className="flex gap-3">
+                <span className="mt-1 text-gold" aria-hidden>✓</span>
+                <span className="text-sm text-foreground-muted"><span className="text-foreground font-medium">Complete Set</span> — one of every card, including the secret rares numbered above the base set.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="mt-1 text-gold" aria-hidden>✓</span>
+                <span className="text-sm text-foreground-muted"><span className="text-foreground font-medium">Master Set</span> — every finish of every card: normal, reverse holo, and special holo variants.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="mt-1 text-gold" aria-hidden>✓</span>
+                <span className="text-sm text-foreground-muted">Earn <span className="text-foreground font-medium">achievements</span> when you complete a set, and filter by needed, captured, or rarity.</span>
+              </li>
+            </ul>
+            <div className="flex flex-wrap gap-4 pt-2">
+              <Link href="/register" className="rounded-full bg-gold px-6 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
+                Start tracking free
+              </Link>
+              <Link href="/sets" className="rounded-full border border-border px-6 py-3 font-semibold text-foreground hover:border-gold/40 hover:bg-surface-raised transition-colors">
+                Browse every set
+              </Link>
+            </div>
+          </div>
+
+          {/* Visual mockup: dimmed → bright checklist grid with a progress bar */}
+          <div className="rounded-2xl border border-border bg-surface-raised p-5 shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold text-foreground">Surging Sparks</span>
+              <span className="text-xs text-foreground-muted tabular-nums">142 / 252 · 56%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-background mb-5">
+              <div className="h-full rounded-full bg-gold" style={{ width: "56%" }} />
+            </div>
+            <div className="grid grid-cols-4 gap-2.5" aria-hidden>
+              {[1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0].map((owned, i) => (
+                <div
+                  key={i}
+                  className={`relative aspect-[2.5/3.5] rounded-lg border ${
+                    owned ? "border-gold/40 bg-gold/10" : "border-border bg-background opacity-40"
+                  }`}
+                >
+                  {owned === 1 && (
+                    <span className="absolute top-1 right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-gold text-background text-[8px] font-bold">✓</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
       <section id="features" className="py-28 border-t border-border bg-surface">
         <div className="mx-auto max-w-7xl px-6">
@@ -443,6 +572,7 @@ export default async function Home() {
               <tbody className="divide-y divide-border">
                 {[
                   ["Live market prices",    true,  false, "Partial"],
+                  ["Master set tracking",   true,  false, "Partial"],
                   ["Built-in marketplace",  true,  false, false],
                   ["Trade matching",        true,  false, false],
                   ["Pack reveal sharing",   true,  false, false],

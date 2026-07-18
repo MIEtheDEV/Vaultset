@@ -32,15 +32,34 @@ function marketValue(prices: unknown): number | null {
   );
 }
 
+// PostgREST clamps every response to the project's max-rows (~1000 here) — even
+// with a high .limit() or a wide .range() — so any fetch-all must page through in
+// chunks ≤ that cap. Pass a query factory that applies .range(from,to); we walk
+// pages until one comes back short. Requires a stable .order() on a unique column
+// so pages don't overlap or skip.
+async function paginate<T>(
+  makeQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null }>,
+): Promise<T[]> {
+  const PAGE = 1000;
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data } = await makeQuery(from, from + PAGE - 1);
+    if (!data?.length) break;
+    out.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
 async function buildCatalog(): Promise<CatalogCard[]> {
   const admin = createAdminClient();
-  const [{ data: cards }, { data: prices }] = await Promise.all([
-    admin.from("cards").select("id, name, set_name, set_code, card_number, image_url, game_data").limit(20000),
-    admin.from("card_prices").select("card_api_id, prices").limit(20000),
+  const [cards, prices] = await Promise.all([
+    paginate((f, t) => admin.from("cards").select("id, name, set_name, set_code, card_number, image_url, game_data").order("id").range(f, t)),
+    paginate((f, t) => admin.from("card_prices").select("card_api_id, prices").order("card_api_id").range(f, t)),
   ]);
-  const priceMap = new Map((prices ?? []).map((p) => [p.card_api_id as string, p.prices]));
+  const priceMap = new Map(prices.map((p) => [p.card_api_id as string, p.prices]));
   const seen = new Map<string, CatalogCard>();
-  for (const c of cards ?? []) {
+  for (const c of cards) {
     const gd = (c.game_data ?? {}) as Record<string, unknown>;
     const apiId = priceApiId(gd, c.id as string);
     if (!apiId || apiId.startsWith("manual:") || seen.has(apiId)) continue;
@@ -68,24 +87,74 @@ export const getCatalog = unstable_cache(buildCatalog, ["seo-catalog", "v2"], {
 
 const byValueDesc = (a: CatalogCard, b: CatalogCard) => (b.value ?? -1) - (a.value ?? -1);
 
-export interface SetSummary { setCode: string; setName: string; count: number; sample: string | null; topValue: number }
+// ── Set hubs: sourced from the complete `set_cards` checklist (not the catalog) ──
+// The catalog above only holds cards users have added/searched, so it undercounts
+// sets and omits ones nobody has touched. The set hubs read `set_cards` (the full
+// pokemontcg.io-built checklist) instead.
+//
+// Deliberately NOT a single fetch-all snapshot like getCatalog: set_cards is ~18k
+// rows (~4MB), which exceeds both PostgREST's single-response row cap AND Next's
+// 2MB unstable_cache entry limit. So the index uses a server-side aggregate (RPC,
+// 156 rows) and each set page does a bounded per-set query (≤255 rows). Both are
+// cap-safe; the per-set reads are tiny, indexed, build-time only (pages are ISR),
+// and never hit the DB on user requests.
 
-export async function getSetsIndex(): Promise<SetSummary[]> {
-  const cat = await getCatalog();
-  const bySet = new Map<string, SetSummary>();
-  for (const c of cat) {
-    if (!c.setCode) continue;
-    const e = bySet.get(c.setCode) ?? { setCode: c.setCode, setName: c.setName, count: 0, sample: null, topValue: 0 };
-    e.count++;
-    if (!e.sample && c.image) e.sample = c.image;
-    if ((c.value ?? 0) > e.topValue) e.topValue = c.value ?? 0;
-    bySet.set(c.setCode, e);
-  }
-  return [...bySet.values()].sort((a, b) => b.count - a.count);
+export interface SetSummary { setCode: string; setName: string; count: number }
+
+async function buildSetHubIndex(): Promise<SetSummary[]> {
+  const admin = createAdminClient();
+  // One grouped row per set_code (server-side count) — small + cap-safe.
+  const { data } = await admin.rpc("set_completion_totals");
+  return ((data ?? []) as { set_code: string; set_name: string; complete_total: number }[]).map((r) => ({
+    setCode: r.set_code,
+    setName: r.set_name,
+    count: Number(r.complete_total),
+  }));
 }
 
-export async function getSetCards(setCode: string): Promise<CatalogCard[]> {
-  return (await getCatalog()).filter((c) => c.setCode === setCode).sort(byValueDesc);
+/** Every set with its full card count — daily-cached. Backs the /sets index. */
+export const getSetHubIndex = unstable_cache(buildSetHubIndex, ["seo-set-hub", "v1"], {
+  revalidate: 86400,
+  tags: ["seo-set-hub"],
+});
+
+// Natural collector-number order: numeric cards ascending, then non-numeric
+// (TG/GG/SV promos) lexically after them.
+const byCardNumber = (a: CatalogCard, b: CatalogCard) => {
+  const na = parseInt(a.number ?? "", 10), nb = parseInt(b.number ?? "", 10);
+  const aNum = !Number.isNaN(na), bNum = !Number.isNaN(nb);
+  if (aNum && bNum) return na - nb || (a.number ?? "").localeCompare(b.number ?? "");
+  if (aNum) return -1;
+  if (bNum) return 1;
+  return (a.number ?? "").localeCompare(b.number ?? "");
+};
+
+/** The full card checklist for a set (with market value where we have it), by number. */
+export async function getSetChecklist(setCode: string): Promise<CatalogCard[]> {
+  const admin = createAdminClient();
+  const { data: rows } = await admin
+    .from("set_cards")
+    .select("pokemon_api_id, name, set_code, set_name, card_number, image_url, rarity")
+    .eq("set_code", setCode);
+  // Only cards with a native pokemontcg.io id can link to a /card-data page.
+  const cards = (rows ?? []).filter((r) => r.pokemon_api_id);
+  const apiIds = cards.map((r) => r.pokemon_api_id as string);
+  const { data: prices } = apiIds.length
+    ? await admin.from("card_prices").select("card_api_id, prices").in("card_api_id", apiIds)
+    : { data: [] as { card_api_id: string; prices: unknown }[] };
+  const priceMap = new Map((prices ?? []).map((p) => [p.card_api_id as string, p.prices]));
+  return cards
+    .map((r) => ({
+      apiId: r.pokemon_api_id as string,
+      name: r.name as string,
+      setCode: (r.set_code as string) ?? null,
+      setName: (r.set_name as string) ?? "",
+      number: (r.card_number as string) ?? null,
+      image: (r.image_url as string) ?? null,
+      rarity: (r.rarity as string) ?? null,
+      value: marketValue(priceMap.get(r.pokemon_api_id as string)),
+    }))
+    .sort(byCardNumber);
 }
 
 export async function getRarityCards(rarityKey: string): Promise<CatalogCard[]> {
@@ -100,8 +169,9 @@ export async function getMostValuable(limit = 100): Promise<CatalogCard[]> {
   return (await getCatalog()).filter((c) => c.value != null).sort(byValueDesc).slice(0, limit);
 }
 
-export async function distinctSetCodes(): Promise<string[]> {
-  return [...new Set((await getCatalog()).map((c) => c.setCode).filter((s): s is string => !!s))];
+/** Set codes with a full checklist — for /sets/[setCode] static params + sitemap. */
+export async function distinctSetCardCodes(): Promise<string[]> {
+  return (await getSetHubIndex()).map((s) => s.setCode);
 }
 export async function distinctRarities(): Promise<string[]> {
   return [...new Set((await getCatalog()).map((c) => c.rarity).filter((r): r is string => !!r))];
@@ -120,13 +190,16 @@ export interface ListedCard extends CatalogCard {
 
 async function buildListedCatalog(): Promise<ListedCard[]> {
   const admin = createAdminClient();
-  const { data: items } = await admin
-    .from("collection_items")
-    .select("card_id, for_sale, for_trade, list_price, user_id")
-    .or("for_sale.eq.true,for_trade.eq.true")
-    .eq("on_hold", false)
-    .limit(20000);
-  if (!items?.length) return [];
+  const items = await paginate((f, t) =>
+    admin
+      .from("collection_items")
+      .select("id, card_id, for_sale, for_trade, list_price, user_id")
+      .or("for_sale.eq.true,for_trade.eq.true")
+      .eq("on_hold", false)
+      .order("id")
+      .range(f, t),
+  );
+  if (!items.length) return [];
 
   const cardIds = [...new Set(items.map((i) => i.card_id as string))];
   const sellerIds = [...new Set(items.map((i) => i.user_id as string))];

@@ -110,6 +110,28 @@ user taps). Fallback: manual name+number lookup (`lib/scan/matchScan.ts`).
 - Diagnostics land in `scan_diagnostics` (`match_distance`, `match_margin`, `matched_via`);
   admin scans also store the cropped photo for corpus growth. Viewer: `/admin/scan-diagnostics`.
 
+### Master Sets (`lib/sets/`, `app/masterset/`)
+
+Per-set completion tracking with a variant-aware **Master Set** tier (every finish of every
+card) alongside a **Complete Set** tier (one of each card number).
+
+- **Catalog:** a shared, service-role-written `set_cards` table (one row per `set_code +
+  card_number`, with a derived `finishes text[]` and a `variant_fidelity` flag), built by
+  `pnpm sets:index` (`scripts/build-set-cards.ts`) from pokemontcg.io per-set card lists +
+  a gap-fill sweep of our own `cards` table. **Re-run after each new set release.** This
+  cache-table approach is what makes the feature reliable (an earlier per-user live-fetch
+  version was reverted for incompleteness — see `docs/docs.md`).
+- **Finish derivation (`lib/sets/setCardFinishes.ts`):** per-card legit finishes from
+  `tcgplayer.prices` keys + the rarity→finish lock from `PokemonRaritySystem`. SV-era (2023+)
+  and price-less cards are flagged `partial` (special Poké Ball / Master Ball reverses aren't
+  enumerable from free data); the UI says so rather than undercounting silently.
+- **Completion (`lib/sets/masterset.ts`):** ownership matched on normalized `card_number`
+  within a set (`set_code`, with a set-name→code fallback — **not** `pokemon_api_id`).
+  `getMasterSetView` (per-set), `getSetCompletionSummaries` (index, via the
+  `set_completion_totals()` RPC), `getListingSetSignal` (Pro marketplace signal).
+- **Achievements:** `set_finisher` / `master_setter` badges awarded lazily on set-page view
+  (`lib/sets/setCompletion.ts`); completions recorded in `user_set_completions`.
+
 ### Authentication & Middleware
 
 `proxy.ts` is the Next.js middleware file (exports `proxy` function + `config` matcher). It:
