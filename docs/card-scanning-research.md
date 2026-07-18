@@ -1,32 +1,16 @@
-# Card Scanning — Research & Feasibility
+# Card Scanning — Research Archive (retired OCR approach)
 
-**Status:** **Overhauled to perceptual-hash image matching (2026-07-09)** — the OCR
-text-fingerprint pipeline below is retired. · **Last updated:** 2026-07-09
-
-> **Implementation (2026-07-09, current):** the OCR pipeline shipped 2026-07-05 failed in the real
-> world (74 scans: 35% confident, 24% zero results, several confidently WRONG — tesseract on phone
-> photos emits garbage no matcher can recover). Replaced end-to-end with **perceptual-hash image
-> matching**, validated on the 52 stored real user scans at **52/52 top-1 exact printing** before
-> shipping. Flow: `components/CardScanner.tsx` (capture) → crop + perspective warp
-> (`components/CardCropper.tsx` + `lib/scan/perspective.ts`, unchanged — the warp is what makes
-> hashing work) → **client computes dHash-256 + pHash-64 on-device from canvas pixels**
-> (`lib/scan/perceptualHash.ts`, isomorphic pure-JS, no native deps) → `POST /api/card-scan` with
-> the hex hashes → server does a **pure-JS hamming compare** (`lib/scan/hashIndex.ts`,
-> `matchHashes`) against a prebuilt index of every known card image (`scripts/build-scan-index.ts`
-> → `scan-index/index.json.gz` in Supabase Storage; sources: pokemontcg.io catalog + TCGdex gap
-> sets + TCGplayer images from our `cards` table for promos like MEP that pokemontcg.io lacks) →
-> confidence gate (distance ≤125, margin ≥10 vs any different-named card) → candidate tie-set → tap
-> → `handlePokemonSelect`. Low-confidence falls back to manual name+number lookup
-> (`lib/scan/matchScan.ts`). **`sharp` is NOT on the request path** — it fails to load libvips on
-> Vercel's Lambda runtime, so hashing moved to the browser; `sharp` lives only in
-> `lib/scan/imageHash.ts` (node-only), used by the offline index builder + replay. $0 per scan; no
-> OCR; tesseract.js removed. **Regression harness:** `pnpm scan:replay` replays the labeled
-> real-photo corpus (`scripts/scan-ground-truth.json`) through the exact production matcher (same
-> isomorphic hasher) — run after any matcher change; confidently-wrong results are a hard fail.
-> Changing the hash algorithm requires a full index rebuild (`pnpm scan:index --full`) so client
-> and index hashes match.
+> **⚠️ Historical.** This document is the research + experiment record for the **retired OCR
+> text-fingerprint** scanning approach. The feature that actually shipped uses **perceptual-hash
+> image matching**, not OCR.
 >
-> Everything below this line is the historical research + the OCR experiment record.
+> **For the current, live implementation, see [`CLAUDE.md`](../CLAUDE.md) → *Card Scanning* and
+> [`docs.md`](./docs.md) → *Card Scanning (scan-to-add)*.** Those are the source of truth.
+>
+> Kept here only for the reasoning trail: why OCR was tried, how it was measured, and why it was
+> abandoned (74 real scans: 35% confident, 24% zero results, several confidently wrong).
+
+---
 
 Exploration of a "scan your card" feature: point a camera at a physical card and add it to
 inventory instead of typing a search. This doc captures the provider landscape, two measured OCR

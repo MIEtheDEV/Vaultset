@@ -1,14 +1,12 @@
 # Vaultset — Setup & Maintenance Guide
 
-## Live Application
+**Hosted:** [https://www.vaultset.app](https://www.vaultset.app)
 
-**Hosted URL:** [https://www.vaultset.app](https://www.vaultset.app)
+This file covers **setup and maintenance only**. For everything else:
 
----
-
-## Repository
-
-**GitLab:** [https://gitlab.com/wgu-gitlab-environment/student-repos/MIEtheDEV/vaultset](https://gitlab.com/wgu-gitlab-environment/student-repos/MIEtheDEV/vaultset)
+- **Architecture, providers, pricing/scan internals** → [`CLAUDE.md`](./CLAUDE.md)
+- **System design, data model, flows, user guide** → [`docs/docs.md`](./docs/docs.md)
+- **Roadmap & feature status** → [`TODO.md`](./TODO.md)
 
 ---
 
@@ -42,11 +40,13 @@ E2E_TEST_PASSWORD=
 
 Keys are in the Supabase dashboard under **Settings → API**. The service role key is used only by `utils/supabase/admin.ts` for server-side admin operations (e.g. avatar storage).
 
+**Optional feature keys** (pricing tiers, web-push VAPID keys, push dispatch secret, etc.) are each optional — an absent key disables its feature. See the full annotated list in [`CLAUDE.md`](./CLAUDE.md) → *Environment Setup*.
+
 ---
 
 ## 3. Database Setup
 
-The database schema is managed directly in Supabase. There are no local migration files. To set up the database on a new project, restore from a schema dump of the live database (see section 7).
+The database schema is managed directly in Supabase. There are no local migration files. To set up the database on a new project, restore from a schema dump of the live database (see section 6).
 
 ### Required Postgres Function
 
@@ -129,43 +129,7 @@ pnpm test:e2e:ui       # Playwright debug UI
 
 ---
 
-## 5. Project Structure
-
-```
-app/
-  (auth)/             # Login, register, forgot/update password
-  api/                # API routes (pokemon-cards, pokemon-sets, account, avatar, report)
-  auth/callback/      # Supabase post-login redirect handler
-  account/            # Account settings
-  community/          # Collector directory
-  dashboard/          # Main dashboard and report
-  inventory/          # Card inventory and sealed products
-  marketplace/        # Marketplace listings and detail view
-  messages/           # Inbox and message threads
-  profile/[username]/ # Public collector profiles
-  wishlist/           # Wishlist management and add form
-components/           # Shared React components
-lib/
-  search/             # Polymorphic card search (CardSearchProvider, PokemonTCGProvider)
-  rarity/             # Polymorphic rarity systems (RaritySystem, PokemonRaritySystem)
-  avatarColors.ts     # Avatar color palette and resolution
-  moderation.ts       # User content moderation (checkText)
-  products.ts         # Sealed product type definitions
-  wishlistMatches.ts  # WishlistMatch type and dedupeMatches helper
-utils/supabase/
-  client.ts           # Browser Supabase client (Client Components)
-  server.ts           # SSR Supabase client (Server Components, API routes)
-  admin.ts            # Service-role client for admin operations
-proxy.ts              # Next.js middleware: session refresh + route protection
-__tests__/lib/        # Jest unit tests mirroring lib/ structure
-e2e/                  # Playwright E2E specs
-public/
-  img/                # Static images (promo.png, etc.)
-```
-
----
-
-## 6. Supabase Auth Configuration
+## 5. Supabase Auth Configuration
 
 In the Supabase dashboard, ensure the following are configured under **Authentication → URL Configuration**:
 
@@ -176,7 +140,7 @@ The auth callback route is handled at `app/auth/callback/route.ts`.
 
 ---
 
-## 7. Recreating the Database from Scratch
+## 6. Recreating the Database from Scratch
 
 To export the current live schema:
 

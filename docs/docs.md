@@ -34,17 +34,23 @@ graph TD
 
     subgraph External[External APIs]
         TCG[Pokemon TCG API]
+        JTCG[JustTCG - search + pricing gap-filler]
+        GRADE[cardmarket-api-tcg - graded slab medians]
     end
 
     RC -->|supabase-js| AUTH
     RC -->|supabase-js| DB
     RC -->|supabase-js| RT
     RC -->|fetch| AR
+    RC -->|on-device hashes| AR
     SC -->|SSR client| DB
     SC -->|SSR client| AUTH
     SA -->|SSR client| DB
     AR -->|CardSearchProvider| TCG
+    AR -->|search + price gap-filler| JTCG
+    AR -->|graded prices| GRADE
     AR -->|admin client| ST
+    AR -->|scan hash index| ST
     CB -->|exchangeCodeForSession| AUTH
     MW -->|getSession cookie check| AUTH
     CRON -->|snapshot_price_history()| DB
@@ -83,7 +89,7 @@ graph TD
 | `/dashboard` | Auth | Collection stats, portfolio chart, watchlist, wishlist, following feed |
 | `/dashboard/report` | Auth | Printable collection P&L report |
 | `/inventory` | Auth | Card collection CRUD with bulk select/edit |
-| `/inventory/add` | Auth | Add card form |
+| `/inventory/add` | Auth | Add card form — includes **scan-to-add** (camera capture → image match) |
 | `/inventory/[id]/edit` | Auth | Edit/delete card |
 | `/inventory/import` | Auth | Bulk CSV import with column mapping |
 | `/inventory/products` | Auth | Sealed product management |
@@ -109,6 +115,7 @@ graph TD
 | `/support` | Public | Donation options (Ko-fi, PayPal, Stripe) |
 | `/support/thank-you` | Public | Post-donation thank-you redirect |
 | `/admin/analytics` | Admin | Admin dashboard — reports, user management |
+| `/admin/scan-diagnostics` | Admin | Scan match diagnostics (distance/margin/matched-via, stored crops) |
 
 ---
 
@@ -442,7 +449,10 @@ All tables enforce RLS. Users read/write only their own data. Marketplace listin
 ### Admin Client for Privileged Writes
 Operations that span multiple users (offer acceptance, cancellation, inventory transfer) use the service-role client from `utils/supabase/admin.ts` to bypass RLS safely within server actions.
 
-> **Security review:** Known vulnerabilities and hardening recommendations (admin authorization, RLS column-level writes, offer-item ownership) are tracked in [`security-audit.md`](./security-audit.md).
+> **Security review:** A security audit (admin authorization, RLS column-level writes, offer-item
+> ownership) was performed and its fixes applied in-app. Re-run the review before releases with the
+> `/security-review` skill on the pending diff; paywall-enforcement specifics live in
+> [`marketing-strategy.md`](./marketing-strategy.md) §3.
 
 ### Card Search
 Search merges two catalogs via `/api/pokemon-cards`:
@@ -458,6 +468,35 @@ A cache-first, multi-tier engine (`lib/pricing/`) keeps market values current wi
 - **Graded pricing:** real eBay slab medians (PSA/BGS/CGC/ACE/SGC/TAG, sample ≥ 2) from cardmarket-api-tcg keyed by tcgid, cached in `card_graded_prices` (24h, 100/day budget); falls back to the grade multiplier.
 - **Entry points:** `/api/market-refresh` (bulk, manual, 24h-limited), `/api/card-price` (lazy single-card on detail view), and the per-card `refreshItemMarketValue` action. A `MarketValueChip` shows the source + freshness.
 - **Env:** `JUSTTCG_API_KEY`, `TCGGO_RAPID_API_KEY`, `POKEMON_TCG_API_KEY` (all optional; an unconfigured source is skipped).
+
+### Card Scanning (scan-to-add)
+
+Scan-to-add identifies a card photo by **perceptual-hash image matching** (no OCR), then feeds the
+same `SearchResult` the manual search produces into the existing add-card flow. Entered from
+`/inventory/add` via `components/CardScanner.tsx`.
+
+- **On-device hashing.** The client crops + perspective-warps the photo (`components/CardCropper.tsx`
+  + `lib/scan/perspective.ts`) and computes the perceptual hashes from canvas pixels
+  (`lib/scan/perceptualHash.ts` — isomorphic pure-JS dHash-256 + pHash-64, no native deps), then
+  POSTs the hex hashes to `/api/card-scan`.
+- **Server match.** A pure-JS hamming compare (`lib/scan/hashIndex.ts`, `matchHashes`) runs against a
+  prebuilt index of every known card image, cached in-memory from `scan-index/index.json.gz` in
+  Supabase Storage. Confidence gate: best distance ≤ 125 **and** margin ≥ 10 vs any different-named
+  card. Same-name reprints form the tie-set the user taps; low confidence falls back to manual
+  name+number lookup (`lib/scan/matchScan.ts`).
+- **`sharp` is deliberately off the request path** — it fails to load libvips on Vercel's Lambda
+  runtime, so it lives only in the offline index builder + replay harness (`lib/scan/imageHash.ts`,
+  node-only).
+- **Index build:** `pnpm scan:index` (incremental; `--full` rebuilds — required after any hash-algo
+  change so client and index hashes match). Sources: pokemontcg.io + TCGdex gap sets + TCGplayer CDN
+  images from the `cards` table (covers promos pokemontcg.io lacks).
+- **Regression harness:** `pnpm scan:replay` replays the labeled real-scan corpus
+  (`scripts/scan-ground-truth.json`) through the exact production matcher — run after any matcher
+  change; confidently-wrong results are a hard fail.
+- **Diagnostics:** land in `scan_diagnostics` (`match_distance`, `match_margin`, `matched_via`);
+  admin scans also store the cropped photo for corpus growth. Viewer: `/admin/scan-diagnostics`.
+- **History:** the original OCR text-fingerprint approach was retired after real-world failure; the
+  experiment record lives in [`card-scanning-research.md`](./card-scanning-research.md).
 
 ---
 
@@ -516,6 +555,12 @@ Split into **Cards** and **Products**.
 2. Search by card name and select the correct result
 3. Set condition, quantity, paid price, list price, for sale/trade toggles, and grading info
 4. Click **Save**
+
+**Scan a card** — on the Add Card page, use **Scan** to identify a card from a photo instead of
+typing. Point the camera at the card, line it up in the guide, and the app matches it against the
+card database by image. If several same-name reprints match, tap the correct printing; if the match
+isn't confident, it falls back to a name-prefilled manual search. Then set condition/quantity/price
+and save as usual.
 
 **Bulk import** — Inventory → Import CSV. Upload a CSV, map columns, preview, and import in bulk.
 
