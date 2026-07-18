@@ -143,9 +143,13 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
   // from the catalog source, so any searched card has a page.
   const { representative: cardRow, ids: cardIds } = await resolveCards(admin, id);
   let card: CardView | null = cardRow ? normalizeCard(cardRow) : null;
+  // For a card resolved live from the catalog (no cached price row), the resolve
+  // response already carries a market price + TCGplayer url — keep them as a
+  // display fallback so anonymous/crawler views aren't blank. No extra API call.
+  let resolvedSr: SearchResult | null = null;
   if (!card) {
-    const sr = await resolveCardById(id);
-    if (sr) card = fromSearchResult(sr, id);
+    resolvedSr = await resolveCardById(id);
+    if (resolvedSr) card = fromSearchResult(resolvedSr, id);
   }
   if (!card) notFound();
 
@@ -189,7 +193,12 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
   const marketFromPrices =
     pricesObj.holofoil?.market ?? pricesObj.normal?.market ??
     Object.values(pricesObj).map((p) => p?.market).find((m) => m != null) ?? null;
-  const current = stats?.current ?? marketFromPrices ?? null;
+  // Fallback to the just-resolved catalog price when nothing is cached yet.
+  const srPrices = (resolvedSr?.tcgplayer?.prices ?? {}) as Record<string, { market?: number | null }>;
+  const fallbackMarket =
+    srPrices.holofoil?.market ?? srPrices.normal?.market ?? srPrices.reverseHolofoil?.market ??
+    Object.values(srPrices).map((p) => p?.market).find((m) => m != null) ?? null;
+  const current = stats?.current ?? marketFromPrices ?? fallbackMarket ?? null;
 
   const valueHistory: PricePoint[] = mergeDailySeries(historyPoints, [], current);
   const change24h = apiDailyChange(stats?.change24hrPct, current);
@@ -290,7 +299,7 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
   const showVariant = !!variantLabel && variantLabel !== rarityLabel;
   const isPromo = !!gd.is_promo;
   const isEx = !!gd.is_ex;
-  const tcgUrl = (priceRow as any)?.tcgplayer_url as string | null;
+  const tcgUrl = ((priceRow as any)?.tcgplayer_url as string | null) ?? resolvedSr?.tcgplayer?.url ?? null;
   const updatedAt = (priceRow as any)?.updated_at as string | null;
   const gradedEntries = Object.entries(graded ?? {});
 
