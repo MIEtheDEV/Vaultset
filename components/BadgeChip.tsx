@@ -437,6 +437,25 @@ const BADGE_ICONS: Record<string, React.ReactNode> = {
       <rect x="3" y="14" width="7" height="7" rx="1" />
     </>
   ),
+
+  // ── SET COMPLETION ───────────────────────────────────────────────────────────
+  set_finisher: (
+    // filled binder grid (a completed page of cards) with a check
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <line x1="9" y1="4" x2="9" y2="20" />
+      <line x1="15" y1="4" x2="15" y2="20" />
+      <line x1="3" y1="12" x2="21" y2="12" />
+    </>
+  ),
+  master_setter: (
+    // crown atop a star — mastery of a full set
+    <>
+      <polygon points="12,2 14,7 19,7 15,10.5 16.5,15.5 12,12.5 7.5,15.5 9,10.5 5,7 10,7" />
+      <path d="M4 20h16" />
+      <path d="M6 20v-3l3 1.5L12 15l3 3.5 3-1.5v3" />
+    </>
+  ),
 };
 
 export function BadgeChip({

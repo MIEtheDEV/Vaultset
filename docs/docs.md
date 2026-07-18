@@ -693,20 +693,40 @@ Donations are not tax-deductible.
 
 ---
 
-## Deferred / Future Work
+## Master Sets
 
-### Complete Set & Master Set Collections
+**Status:** Shipped (2026-07-18). Per-set completion tracking at `/masterset`, with a
+variant-aware "Master Set" tier alongside the "Complete Set" tier.
 
-**Status:** Deferred — blocked on a better card catalog data source.
+**Data source (the fix for the earlier revert):** A shared, service-role-written
+`set_cards` cache table (one row per `set_code + card_number`), built by
+`pnpm sets:index` (`scripts/build-set-cards.ts`) from pokemontcg.io per-set card lists
+plus a gap-fill sweep of our own `cards` table. This replaces the earlier per-user live
+pokemontcg.io fetch that was reverted for being incomplete on newer sets. Re-run
+`pnpm sets:index` after each new set release (or `--set <code>` for one set). A cron job
+to automate this is a future nicety.
 
-**What was built (then reverted):** Two new collection types that pulled a full set checklist from the pokemontcg.io free API and let users track which cards they own vs. are missing. Schema work was partially implemented (`required_finish` column, widened unique constraint, extended type check).
+**Variant denominator:** Per-card legit finishes are derived in `lib/sets/setCardFinishes.ts`
+from `tcgplayer.prices` keys (normal / reverse / holo) plus the rarity→finish lock from
+`PokemonRaritySystem` (relabeling holo → textured/gold for full-art/secret/hyper rares).
+SV-era sets (2023+) and cards with no price data are flagged `variant_fidelity = 'partial'`
+because special-pattern reverse holos (Poké Ball / Master Ball) aren't enumerable from free
+data — the UI surfaces this so master-set totals aren't silently undercounted.
 
-**Why reverted:** The pokemontcg.io free tier returns incomplete data for newer sets (e.g. only a fraction of cards indexed), making the feature unreliable. Ownership cross-referencing by `pokemon_api_id` also breaks for cards added before pokemontcg.io indexed the set.
+**Ownership matching:** By normalized `card_number` within a set (`set_code`, falling back
+to a set-name→code map for older rows with no `set_code`) — resilient, not keyed on
+`pokemon_api_id`. A copy with no recorded `finish` counts toward the card's base finish.
 
-**What's needed to re-implement properly:**
-- A comprehensive, up-to-date card catalog API (TCGPlayer, own DB seeded from official checklists, or paid pokemontcg.io tier)
-- A shared `set_cards` cache table so card lists aren't duplicated per-user
-- A cron job to update `set_cards` when new sets release
-- Ownership matched by `set_name + card_number` as the primary key (not `pokemon_api_id`) for resilience
+**Surfaces:**
+- `app/masterset/page.tsx` — index: every set with the viewer's Complete + Master progress.
+- `app/masterset/[setCode]/page.tsx` + `components/masterset/MasterSetGrid.tsx` — the set
+  grid (dimmed until owned), Complete↔Master toggle, Needed/Captured + rarity filters,
+  progress bar, per-finish chips in Master mode.
+- **Achievements:** `set_finisher` + `master_setter` badges (`lib/badges.ts`), awarded lazily
+  on set-page view (`lib/sets/setCompletion.ts`) mirroring the dashboard's award+notify flow;
+  every completion recorded in `user_set_completions`.
+- **Pro marketplace signal:** on a listing, Pro viewers see whether the card is Needed for /
+  Completes their set (`getListingSetSignal`, rendered in `app/marketplace/[id]/page.tsx`).
 
-**Schema state:** The forward changes were reverted and are **not** present in the current snapshot (`supabase/schema_6-22.sql`) — `required_finish`, the widened unique constraint, and the extended type check would all need to be re-added when this is picked back up.
+**Schema:** `set_cards`, `user_set_completions`, and the `set_completion_totals()` function
+are live in production and appended to `supabase/schema_6-22.sql`.

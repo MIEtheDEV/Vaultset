@@ -20,6 +20,15 @@ export function CardSearchBrowser({ autoFocus = false, loggedIn = true }: { auto
   const [error, setError] = useState(false);
   const [searched, setSearched] = useState(false);
 
+  // Seed the query from a ?q= URL param so deep links work — e.g. Google's
+  // sitelinks search box (SearchAction) hands off to /card-data?q=<term>. Read
+  // window.location directly (not useSearchParams) to avoid forcing a Suspense
+  // boundary / dynamic rendering on the static card-data hub. Mount-only.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) setQuery(q);
+  }, []);
+
   useEffect(() => {
     if (query.trim().length < 2) {
       setResults([]);

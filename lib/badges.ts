@@ -68,7 +68,10 @@ export type BadgeSlug =
   | "founding_collector"
   | "veteran"
   // Multi-format
-  | "multi_format";
+  | "multi_format"
+  // Set completion
+  | "set_finisher"
+  | "master_setter";
 
 export type BadgeMeta = {
   slug: BadgeSlug;
@@ -146,6 +149,9 @@ export const BADGES: BadgeMeta[] = [
   { slug: "veteran",            label: "Year One",            description: "Member for 1 or more years",                    color: "purple"  },
   // Multi-format
   { slug: "multi_format",       label: "Multi-Format",        description: "Cards and sealed products in your inventory",    color: "teal"    },
+  // Set completion
+  { slug: "set_finisher",       label: "Set Finisher",        description: "Completed a full set — one of every card",       color: "emerald" },
+  { slug: "master_setter",      label: "Master Setter",       description: "Completed a master set — every finish of every card", color: "gold" },
 ];
 
 export const BADGE_MAP = new Map<BadgeSlug, BadgeMeta>(

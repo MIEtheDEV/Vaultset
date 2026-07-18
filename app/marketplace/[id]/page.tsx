@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { ListingDetail } from "@/components/ListingDetail";
+import { getListingSetSignal } from "@/lib/sets/masterset";
+import { FINISH_LABELS } from "@/lib/sets/setCardFinishes";
 import { isOnVacation, vacationReturnDate } from "@/lib/vacation";
 import { mergeDailySeries, apiDailyChange, dailyChange, type PricePoint, type Change } from "@/lib/priceHistory";
 import { priceApiId } from "@/lib/pricing/cardIdentity";
@@ -105,6 +108,23 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     .neq("id", id)
     .order("created_at", { ascending: false })
     .limit(6);
+
+  // Pro-only: does this listing advance the viewer's set/master-set completion?
+  // (Skip on the viewer's own listings.)
+  const { data: viewerProfile } = await supabase
+    .from("profiles")
+    .select("is_pro")
+    .eq("id", user.id)
+    .single();
+  const setSignal =
+    (viewerProfile as any)?.is_pro && listing.user_id !== user.id
+      ? await getListingSetSignal(
+          supabase,
+          user.id,
+          { set_code: (card as any).set_code, set_name: card.set_name, card_number: card.card_number },
+          (listing as any).finish ?? null,
+        )
+      : null;
 
   // Market-value history for the value-over-time chart. price_history is RLS-restricted
   // to the owner, so read it with the service-role client — read-only, and a listed
@@ -216,6 +236,34 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productLd) }} />
+
+      {setSignal && (setSignal.needed || setSignal.neededFinish) && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-gold/40 bg-gold/10 p-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 text-gold">
+            <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" />
+          </svg>
+          <div className="text-sm">
+            {setSignal.completesComplete ? (
+              <p className="font-semibold text-gold">
+                This is the last card you need to complete your {setSignal.setName} set!
+              </p>
+            ) : setSignal.needed ? (
+              <p className="font-semibold text-foreground">Needed for your {setSignal.setName} set</p>
+            ) : (
+              <p className="font-semibold text-foreground">Fills a Master Set gap in {setSignal.setName}</p>
+            )}
+            <p className="mt-0.5 text-foreground-muted">
+              {setSignal.needed
+                ? `You have ${setSignal.complete.owned}/${setSignal.complete.total} cards in this set.`
+                : `You own this card but not the ${FINISH_LABELS[setSignal.listingFinish!] ?? setSignal.listingFinish} finish — ${setSignal.master.owned}/${setSignal.master.total} finishes collected.`}{" "}
+              <Link href={`/masterset/${encodeURIComponent(setSignal.setCode)}`} className="text-gold hover:underline">
+                View master set →
+              </Link>
+            </p>
+          </div>
+        </div>
+      )}
+
       <ListingDetail
         listing={{
           id:          listing.id,
