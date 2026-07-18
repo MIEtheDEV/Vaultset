@@ -297,13 +297,15 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
   const canonicalUrl = `https://www.vaultset.app/card-data/${encodeURIComponent(id)}`;
   const askHigh = asks.length ? Math.max(...asks) : null;
   // Secondary-market collectible; a rolling validity horizon keeps Google from
-  // flagging a missing `priceValidUntil` on the Offer.
+  // flagging a missing `priceValidUntil` on the Offer. `validFrom` is the honest
+  // start of that window — when this price was last refreshed.
   const priceValidUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const validFrom = (updatedAt ? new Date(updatedAt) : new Date()).toISOString().slice(0, 10);
   const itemCondition = "https://schema.org/UsedCondition";
   const offers = current != null
     ? (forSale.length > 0 && lowestAsk != null
-        ? { "@type": "AggregateOffer", priceCurrency: "USD", lowPrice: lowestAsk, highPrice: askHigh ?? lowestAsk, offerCount: forSale.length, availability: "https://schema.org/InStock", itemCondition, priceValidUntil, url: canonicalUrl }
-        : { "@type": "Offer", priceCurrency: "USD", price: Number(current).toFixed(2), availability: "https://schema.org/InStock", itemCondition, priceValidUntil, url: canonicalUrl })
+        ? { "@type": "AggregateOffer", priceCurrency: "USD", lowPrice: lowestAsk, highPrice: askHigh ?? lowestAsk, offerCount: forSale.length, availability: "https://schema.org/InStock", itemCondition, validFrom, priceValidUntil, url: canonicalUrl }
+        : { "@type": "Offer", priceCurrency: "USD", price: Number(current).toFixed(2), availability: "https://schema.org/InStock", itemCondition, validFrom, priceValidUntil, url: canonicalUrl })
     : null;
   // Natural product identifier: pokemontcg.io id is the productID; set+number is a human-readable sku.
   const sku = card.set_code && card.card_number ? `${card.set_code}-${card.card_number}` : undefined;
