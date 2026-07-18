@@ -20,6 +20,13 @@ import type { CardRef } from "@/lib/pricing/PriceProvider";
 
 const raritySystem = new PokemonRaritySystem();
 
+// Route params arrive percent-encoded: a `tcg:`/`manual:` id linked as `tcg%3A676102`
+// reaches us verbatim, so `startsWith("tcg:")` misses and the card 404s. Decode once
+// at the entry points. (No-op for plain ids like `sv4pt5-234`.)
+function decodeCardId(raw: string): string {
+  try { return decodeURIComponent(raw); } catch { return raw; }
+}
+
 // Card metadata (artist, attacks, set info) is immutable per card, but the fetch is
 // an external pokemontcg.io round-trip that otherwise runs on every render — including
 // every anonymous/crawler view. Cache it hard (24h) so crawls don't pay the network hop.
@@ -90,7 +97,8 @@ async function resolveCards(admin: ReturnType<typeof createAdminClient>, key: st
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = decodeCardId(rawId);
   const admin = createAdminClient();
 
   // Mirror the page body's resolution: prefer a `cards` row, else fall back to the
@@ -124,7 +132,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 }
 
 export default async function CardDataPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = decodeCardId(rawId);
   const admin = createAdminClient();
 
   const supa = await createClient();

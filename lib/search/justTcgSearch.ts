@@ -19,6 +19,20 @@ function tcgImage(id: string, size: "small" | "large"): string {
   return `https://tcgplayer-cdn.tcgplayer.com/product/${id}${suffix}`;
 }
 
+// JustTCG embeds the collector number in the card name, e.g.
+// "Mega Dragonite ex - 290/217" (number field = "290/217"). Strip that trailing
+// " - <number>" so it isn't shown twice once we render the number separately.
+// Matched against the card's own number only, so legit hyphenated names are safe.
+function stripEmbeddedNumber(name: string, rawNumber?: string): string {
+  let n = name.trim();
+  const nums = [rawNumber, rawNumber?.split("/")[0]].filter(Boolean) as string[];
+  for (const num of nums) {
+    const suffix = ` - ${num}`;
+    if (n.endsWith(suffix)) return n.slice(0, -suffix.length).trim();
+  }
+  return n;
+}
+
 function justTcgKey(): string | undefined {
   // Prefer the paid key (higher limits) when present, matching the pricing engine.
   return process.env.JUSTTCG_API_KEY_PAID || process.env.JUSTTCG_API_KEY;
@@ -29,7 +43,7 @@ function toSearchResult(c: JustTcgCard): SearchResult | null {
   if (!c.tcgplayerId || !c.name) return null;
   return {
     id:     `tcg:${c.tcgplayerId}`,
-    name:   c.name,
+    name:   stripEmbeddedNumber(c.name, c.number),
     number: (c.number ?? "").split("/")[0],
     rarity: c.rarity,
     set:    { id: "", name: c.set_name ?? "" },
