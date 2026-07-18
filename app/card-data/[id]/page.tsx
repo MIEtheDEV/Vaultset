@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -18,6 +19,17 @@ import { propagateMarketValues } from "@/lib/pricing/propagateMarketValues";
 import type { CardRef } from "@/lib/pricing/PriceProvider";
 
 const raritySystem = new PokemonRaritySystem();
+
+// Card metadata (artist, attacks, set info) is immutable per card, but the fetch is
+// an external pokemontcg.io round-trip that otherwise runs on every render — including
+// every anonymous/crawler view. Cache it hard (24h) so crawls don't pay the network hop.
+// Per-id keyParts + tag keep entries distinct and individually revalidatable later.
+const cachedCardDetail = (cardId: string) =>
+  unstable_cache(
+    () => fetchPokemonCardDetail(cardId),
+    ["card-detail", cardId],
+    { revalidate: 86400, tags: [`card-detail:${cardId}`] },
+  )();
 
 const FINISH_LABEL: Record<string, string> = {
   normal: "Normal", holofoil: "Holofoil", reverseHolofoil: "Reverse Holo",
@@ -228,7 +240,7 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
     cardIds.length
       ? admin.from("pack_reveals").select("*", { count: "exact", head: true }).in("card_id", cardIds)
       : Promise.resolve({ count: 0 }),
-    isCatalogId ? fetchPokemonCardDetail(id) : Promise.resolve(null as PokemonCardDetail | null),
+    isCatalogId ? cachedCardDetail(id) : Promise.resolve(null as PokemonCardDetail | null),
   ]);
   const pullCount = (pullsRes as { count: number | null }).count ?? 0;
 
@@ -270,11 +282,17 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
   // ── Structured data (Product + Offer/AggregateOffer, BreadcrumbList) ─────────
   const canonicalUrl = `https://vaultset.app/card-data/${encodeURIComponent(id)}`;
   const askHigh = asks.length ? Math.max(...asks) : null;
+  // Secondary-market collectible; a rolling validity horizon keeps Google from
+  // flagging a missing `priceValidUntil` on the Offer.
+  const priceValidUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const itemCondition = "https://schema.org/UsedCondition";
   const offers = current != null
     ? (forSale.length > 0 && lowestAsk != null
-        ? { "@type": "AggregateOffer", priceCurrency: "USD", lowPrice: lowestAsk, highPrice: askHigh ?? lowestAsk, offerCount: forSale.length, availability: "https://schema.org/InStock", url: canonicalUrl }
-        : { "@type": "Offer", priceCurrency: "USD", price: Number(current).toFixed(2), availability: "https://schema.org/InStock", url: canonicalUrl })
+        ? { "@type": "AggregateOffer", priceCurrency: "USD", lowPrice: lowestAsk, highPrice: askHigh ?? lowestAsk, offerCount: forSale.length, availability: "https://schema.org/InStock", itemCondition, priceValidUntil, url: canonicalUrl }
+        : { "@type": "Offer", priceCurrency: "USD", price: Number(current).toFixed(2), availability: "https://schema.org/InStock", itemCondition, priceValidUntil, url: canonicalUrl })
     : null;
+  // Natural product identifier: pokemontcg.io id is the productID; set+number is a human-readable sku.
+  const sku = card.set_code && card.card_number ? `${card.set_code}-${card.card_number}` : undefined;
   const productLd = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -282,7 +300,10 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
     ...(card.image_url ? { image: card.image_url } : {}),
     description: `${card.name}${card.card_number ? ` #${card.card_number}` : ""} from ${card.set_name} — market value, price history, condition & graded prices, and marketplace listings on Vaultset.`,
     category: "Trading Card",
+    productID: id,
+    ...(sku ? { sku } : {}),
     brand: { "@type": "Brand", name: card.game === "pokemon" ? "Pokémon" : card.game },
+    url: canonicalUrl,
     ...(offers ? { offers } : {}),
   };
   const breadcrumbLd = {

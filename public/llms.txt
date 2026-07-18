@@ -1,0 +1,24 @@
+# Vaultset
+
+> The free Pokémon TCG collection tracker, price guide, and collector marketplace. Vaultset lets collectors manage inventory, track live market values (raw and graded), and buy, sell, and trade cards with a community. Built for Pokémon today, architected for multi-game.
+
+Vaultset aggregates real-time and historical card prices from multiple sources (JustTCG, pokemontcg.io, Cardmarket EU, and eBay graded-slab medians) into a single per-card view, alongside marketplace listings from other collectors.
+
+## Card data & prices
+- [Card search & price guide](https://vaultset.app/card-data): Search any Pokémon card and open its page for market value, price history, per-condition and graded prices, and marketplace availability.
+- [Most valuable Pokémon cards](https://vaultset.app/most-valuable-pokemon-cards): Ranked list of the highest-value cards by current market price.
+- [Browse by set](https://vaultset.app/sets): Every Pokémon set, each linking to its cards and values.
+
+## Marketplace & community
+- [Marketplace](https://vaultset.app/marketplace): Cards and sealed products listed for sale or trade by collectors.
+- [Community](https://vaultset.app/community): Collector activity, showcases, and discussion.
+- [Collector reviews](https://vaultset.app/reviews): What collectors say about Vaultset.
+
+## Product & company
+- [Pricing](https://vaultset.app/pricing): Free tier and Vaultset Pro.
+- [Contact](https://vaultset.app/contact): Get in touch.
+- [Privacy policy](https://vaultset.app/privacy)
+- [Terms of service](https://vaultset.app/terms)
+
+## Optional
+- [Sitemap](https://vaultset.app/sitemap.xml): Full list of crawlable URLs, including every card, set, rarity, and species hub page.
