@@ -36,7 +36,11 @@ export async function fetchPokemonCardDetail(id: string): Promise<PokemonCardDet
   if (id.startsWith("tcg:") || id.startsWith("manual:")) return null;
   try {
     const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY ? { "X-Api-Key": process.env.POKEMON_TCG_API_KEY } : {};
-    const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}`, { headers, next: { revalidate: 3600 } });
+    // Hard timeout: this runs on the card-page render path, including the cold
+    // (uncached) first crawl. Without it a slow/hanging upstream blocks the whole
+    // page for ~30s+ and Googlebot times out. Detail is optional — the page renders
+    // fine without it, and the cache still warms whenever the upstream is healthy.
+    const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}`, { headers, next: { revalidate: 3600 }, signal: AbortSignal.timeout(4500) });
     if (!res.ok) return null;
     const json = await res.json();
     return (json?.data as PokemonCardDetail) ?? null;
@@ -202,6 +206,7 @@ export class PokemonTCGProvider extends CardSearchProvider {
       const res = await fetch(`${BASE}/cards?${params}`, {
         headers: this.getHeaders(),
         next: { revalidate: 3600 },
+        signal: AbortSignal.timeout(6000),
       });
       if (!res.ok) return [];
       const json = await res.json();
@@ -217,9 +222,12 @@ export class PokemonTCGProvider extends CardSearchProvider {
     if (id.startsWith("tcg:") || id.startsWith("manual:")) return null;
     try {
       const params = new URLSearchParams({ select: "id,name,number,rarity,subtypes,set,images,tcgplayer" });
+      // Bounded: getById is the card-page render fallback for cards not in our DB —
+      // an unbounded hang here stalls the whole page (and its crawl). See fetchPokemonCardDetail.
       const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}?${params}`, {
         headers: this.getHeaders(),
         next: { revalidate: 3600 },
+        signal: AbortSignal.timeout(4500),
       });
       if (!res.ok) return null;
       const json = await res.json();

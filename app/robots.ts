@@ -40,6 +40,6 @@ export default function robots(): MetadataRoute.Robots {
       { userAgent: AI_ANSWER_ENGINES, allow: "/", disallow: PRIVATE },
       { userAgent: AI_TRAINING_SCRAPERS, disallow: "/" },
     ],
-    sitemap: "https://vaultset.app/sitemap.xml",
+    sitemap: "https://www.vaultset.app/sitemap.xml",
   };
 }

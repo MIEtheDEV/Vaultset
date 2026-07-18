@@ -92,11 +92,25 @@ async function resolveCards(admin: ReturnType<typeof createAdminClient>, key: st
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const admin = createAdminClient();
+
+  // Mirror the page body's resolution: prefer a `cards` row, else fall back to the
+  // live catalog. Without this fallback, any card not yet in our DB — but present in
+  // the price cache, so it's in the sitemap — rendered full content while emitting
+  // `noindex` + no canonical, a self-inflicted deindex of a large share of card pages.
   const { representative } = await resolveCards(admin, id);
-  if (!representative) return { title: "Card Not Found", robots: { index: false } };
-  const numStr = representative.card_number ? ` #${representative.card_number}` : "";
-  const title = `${representative.name}${numStr} — ${representative.set_name}`;
-  const description = `Market value, price history, condition & graded prices, and marketplace availability for ${representative.name} (${representative.set_name}${numStr}) on Vaultset.`;
+  let meta: { name: string; number: string | null; setName: string; image: string | null } | null =
+    representative
+      ? { name: representative.name, number: representative.card_number ?? null, setName: representative.set_name ?? "", image: representative.image_url ?? null }
+      : null;
+  if (!meta) {
+    const sr = await resolveCardById(id);
+    if (sr) meta = { name: sr.name, number: sr.number ?? null, setName: sr.set?.name ?? "", image: sr.images?.large ?? sr.images?.small ?? null };
+  }
+  if (!meta) return { title: "Card Not Found", robots: { index: false } };
+
+  const numStr = meta.number ? ` #${meta.number}` : "";
+  const title = `${meta.name}${numStr}${meta.setName ? ` — ${meta.setName}` : ""}`;
+  const description = `Market value, price history, condition & graded prices, and marketplace availability for ${meta.name} (${meta.setName}${numStr}) on Vaultset.`;
   return {
     title,
     description,
@@ -104,7 +118,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     openGraph: {
       title: `${title} — Vaultset`,
       description,
-      images: representative.image_url ? [{ url: representative.image_url, alt: representative.name }] : [],
+      images: meta.image ? [{ url: meta.image, alt: meta.name }] : [],
     },
   };
 }
@@ -280,7 +294,7 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
     .filter(([, v]) => v === "Legal").map(([k]) => k).join(", ")) || null;
 
   // ── Structured data (Product + Offer/AggregateOffer, BreadcrumbList) ─────────
-  const canonicalUrl = `https://vaultset.app/card-data/${encodeURIComponent(id)}`;
+  const canonicalUrl = `https://www.vaultset.app/card-data/${encodeURIComponent(id)}`;
   const askHigh = asks.length ? Math.max(...asks) : null;
   // Secondary-market collectible; a rolling validity horizon keeps Google from
   // flagging a missing `priceValidUntil` on the Offer.
@@ -310,8 +324,8 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Card Search", item: "https://vaultset.app/card-data" },
-      ...(card.set_code ? [{ "@type": "ListItem", position: 2, name: card.set_name, item: `https://vaultset.app/sets/${encodeURIComponent(card.set_code)}` }] : []),
+      { "@type": "ListItem", position: 1, name: "Card Search", item: "https://www.vaultset.app/card-data" },
+      ...(card.set_code ? [{ "@type": "ListItem", position: 2, name: card.set_name, item: `https://www.vaultset.app/sets/${encodeURIComponent(card.set_code)}` }] : []),
       { "@type": "ListItem", position: card.set_code ? 3 : 2, name: card.name, item: canonicalUrl },
     ],
   };

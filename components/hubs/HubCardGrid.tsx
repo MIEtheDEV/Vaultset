@@ -15,7 +15,7 @@ export function HubCardGrid({ cards, showSet = false }: { cards: CatalogCard[]; 
     itemListElement: cards.slice(0, 50).map((c, i) => ({
       "@type": "ListItem",
       position: i + 1,
-      url: `https://vaultset.app/card-data/${encodeURIComponent(c.apiId)}`,
+      url: `https://www.vaultset.app/card-data/${encodeURIComponent(c.apiId)}`,
       name: c.name,
     })),
   };

@@ -19,11 +19,11 @@ export default async function SetsIndexPage() {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
     name: "Pokémon TCG Sets",
-    url: "https://vaultset.app/sets",
+    url: "https://www.vaultset.app/sets",
     hasPart: sets.slice(0, 100).map((s) => ({
       "@type": "CollectionPage",
       name: meta.get(s.setCode)?.name ?? s.setName,
-      url: `https://vaultset.app/sets/${encodeURIComponent(s.setCode)}`,
+      url: `https://www.vaultset.app/sets/${encodeURIComponent(s.setCode)}`,
     })),
   };
 

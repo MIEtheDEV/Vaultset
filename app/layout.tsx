@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://vaultset.app"),
+  metadataBase: new URL("https://www.vaultset.app"),
   manifest: "/site.webmanifest",
   icons: {
     icon: [
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
     title: "Vaultset — The Ultimate Trading Card Platform",
     description:
       "Manage your collection, track live market values, buy and sell cards, and connect with a passionate community.",
-    url: "https://vaultset.app",
+    url: "https://www.vaultset.app",
     type: "website",
     siteName: "Vaultset",
     images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Vaultset — The Ultimate Trading Card Platform" }],

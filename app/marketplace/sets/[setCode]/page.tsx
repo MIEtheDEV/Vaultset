@@ -34,8 +34,8 @@ export default async function MarketplaceSetPage({ params }: { params: Promise<{
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Marketplace", item: "https://vaultset.app/marketplace" },
-      { "@type": "ListItem", position: 2, name: `${name} for sale`, item: `https://vaultset.app/marketplace/sets/${encodeURIComponent(setCode)}` },
+      { "@type": "ListItem", position: 1, name: "Marketplace", item: "https://www.vaultset.app/marketplace" },
+      { "@type": "ListItem", position: 2, name: `${name} for sale`, item: `https://www.vaultset.app/marketplace/sets/${encodeURIComponent(setCode)}` },
     ],
   };
 

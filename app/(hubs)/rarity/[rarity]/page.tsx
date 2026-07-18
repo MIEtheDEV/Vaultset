@@ -37,8 +37,8 @@ export default async function RarityPage({ params }: { params: Promise<{ rarity:
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Card Search", item: "https://vaultset.app/card-data" },
-      { "@type": "ListItem", position: 2, name: `${label} cards`, item: `https://vaultset.app/rarity/${encodeURIComponent(rarity)}` },
+      { "@type": "ListItem", position: 1, name: "Card Search", item: "https://www.vaultset.app/card-data" },
+      { "@type": "ListItem", position: 2, name: `${label} cards`, item: `https://www.vaultset.app/rarity/${encodeURIComponent(rarity)}` },
     ],
   };
 

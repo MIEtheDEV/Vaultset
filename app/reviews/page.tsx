@@ -31,7 +31,7 @@ export default async function ReviewsPage() {
     name: "Vaultset",
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
-    url: "https://vaultset.app",
+    url: "https://www.vaultset.app",
     aggregateRating: { "@type": "AggregateRating", ratingValue: average.toFixed(1), reviewCount: count, bestRating: 5, worstRating: 1 },
     review: all.slice(0, 20).map((r) => ({
       "@type": "Review",

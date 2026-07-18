@@ -40,8 +40,8 @@ export default async function SetDetailPage({ params }: { params: Promise<{ setC
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Sets", item: "https://vaultset.app/sets" },
-      { "@type": "ListItem", position: 2, name, item: `https://vaultset.app/sets/${encodeURIComponent(setCode)}` },
+      { "@type": "ListItem", position: 1, name: "Sets", item: "https://www.vaultset.app/sets" },
+      { "@type": "ListItem", position: 2, name, item: `https://www.vaultset.app/sets/${encodeURIComponent(setCode)}` },
     ],
   };
 

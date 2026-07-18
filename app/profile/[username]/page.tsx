@@ -636,7 +636,7 @@ export default async function ProfilePage({
             "mainEntity": {
               "@type": "Person",
               "name": `@${profile.username}`,
-              "url": `https://vaultset.app/profile/${profile.username}`,
+              "url": `https://www.vaultset.app/profile/${profile.username}`,
               ...(bio ? { "description": bio } : {}),
               ...(specialty ? { "knowsAbout": specialty } : {}),
             },

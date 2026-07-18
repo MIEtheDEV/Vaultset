@@ -33,8 +33,8 @@ export default async function PokemonPage({ params }: { params: Promise<{ name: 
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Card Search", item: "https://vaultset.app/card-data" },
-      { "@type": "ListItem", position: 2, name: `${display} cards`, item: `https://vaultset.app/pokemon/${encodeURIComponent(name)}` },
+      { "@type": "ListItem", position: 1, name: "Card Search", item: "https://www.vaultset.app/card-data" },
+      { "@type": "ListItem", position: 2, name: `${display} cards`, item: `https://www.vaultset.app/pokemon/${encodeURIComponent(name)}` },
     ],
   };
 

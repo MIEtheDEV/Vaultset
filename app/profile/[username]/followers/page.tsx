@@ -68,9 +68,9 @@ export default async function FollowersPage({
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Community", item: "https://vaultset.app/community" },
-      { "@type": "ListItem", position: 2, name: `@${username}`, item: `https://vaultset.app/profile/${username}` },
-      { "@type": "ListItem", position: 3, name: "Followers", item: `https://vaultset.app/profile/${username}/followers` },
+      { "@type": "ListItem", position: 1, name: "Community", item: "https://www.vaultset.app/community" },
+      { "@type": "ListItem", position: 2, name: `@${username}`, item: `https://www.vaultset.app/profile/${username}` },
+      { "@type": "ListItem", position: 3, name: "Followers", item: `https://www.vaultset.app/profile/${username}/followers` },
     ],
   };
 

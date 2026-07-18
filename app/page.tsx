@@ -207,17 +207,17 @@ export default async function Home() {
     "@graph": [
       {
         "@type": "WebSite",
-        "@id": "https://vaultset.app/#website",
+        "@id": "https://www.vaultset.app/#website",
         name: "Vaultset",
-        url: "https://vaultset.app",
+        url: "https://www.vaultset.app",
         description: "The free Pokémon TCG collection tracker. Manage your inventory, track live market prices, and buy, sell, and trade cards with other collectors.",
       },
       {
         "@type": "Organization",
-        "@id": "https://vaultset.app/#organization",
+        "@id": "https://www.vaultset.app/#organization",
         name: "Vaultset",
-        url: "https://vaultset.app",
-        logo: { "@type": "ImageObject", url: "https://vaultset.app/img/icon.png" },
+        url: "https://www.vaultset.app",
+        logo: { "@type": "ImageObject", url: "https://www.vaultset.app/img/icon.png" },
         description: "The free Pokémon TCG collection tracker. Manage your inventory, track live market prices, and buy, sell, and trade cards with other collectors.",
         sameAs: ["https://twitter.com/vaultsetapp"],
       },

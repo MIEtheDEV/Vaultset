@@ -34,8 +34,8 @@ export default async function MarketplacePokemonPage({ params }: { params: Promi
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Marketplace", item: "https://vaultset.app/marketplace" },
-      { "@type": "ListItem", position: 2, name: `${display} for sale`, item: `https://vaultset.app/marketplace/pokemon/${encodeURIComponent(name)}` },
+      { "@type": "ListItem", position: 1, name: "Marketplace", item: "https://www.vaultset.app/marketplace" },
+      { "@type": "ListItem", position: 2, name: `${display} for sale`, item: `https://www.vaultset.app/marketplace/pokemon/${encodeURIComponent(name)}` },
     ],
   };
 

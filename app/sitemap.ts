@@ -8,7 +8,7 @@ import { distinctSetCodes, distinctRarities, distinctSpecies, distinctListedSetC
 export const revalidate = 86400;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const base = "https://vaultset.app";
+  const base = "https://www.vaultset.app";
   const now  = new Date();
 
   const staticPages: MetadataRoute.Sitemap = [

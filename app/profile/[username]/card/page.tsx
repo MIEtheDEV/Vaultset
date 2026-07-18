@@ -116,7 +116,7 @@ export default async function ProfileCardPage({
     avatarUrl:       (profile as any).avatar_url   as string | null ?? null,
     avatarColorKey:  (profile as any).avatar_color as string | null ?? null,
     listingThumbs,
-    profileUrl:      `https://vaultset.app/profile/${profile.username}`,
+    profileUrl:      `https://www.vaultset.app/profile/${profile.username}`,
   };
 
   return (

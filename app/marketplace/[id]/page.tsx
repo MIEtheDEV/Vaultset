@@ -171,9 +171,9 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home",        item: "https://vaultset.app" },
-      { "@type": "ListItem", position: 2, name: "Marketplace", item: "https://vaultset.app/marketplace" },
-      { "@type": "ListItem", position: 3, name: card.name,     item: `https://vaultset.app/marketplace/${id}` },
+      { "@type": "ListItem", position: 1, name: "Home",        item: "https://www.vaultset.app" },
+      { "@type": "ListItem", position: 2, name: "Marketplace", item: "https://www.vaultset.app/marketplace" },
+      { "@type": "ListItem", position: 3, name: card.name,     item: `https://www.vaultset.app/marketplace/${id}` },
     ],
   };
 
@@ -187,7 +187,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     category: "Trading Card",
     offers: listing.for_sale && listing.list_price != null ? {
       "@type": "Offer",
-      url: `https://vaultset.app/marketplace/${id}`,
+      url: `https://www.vaultset.app/marketplace/${id}`,
       price: listing.list_price.toFixed(2),
       priceCurrency: "USD",
       availability: (listing as any).on_hold
@@ -197,7 +197,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
       seller: {
         "@type": "Person",
         name: `@${sellerUsername}`,
-        url: `https://vaultset.app/profile/${sellerUsername}`,
+        url: `https://www.vaultset.app/profile/${sellerUsername}`,
       },
     } : {
       "@type": "Offer",
@@ -207,7 +207,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
       seller: {
         "@type": "Person",
         name: `@${sellerUsername}`,
-        url: `https://vaultset.app/profile/${sellerUsername}`,
+        url: `https://www.vaultset.app/profile/${sellerUsername}`,
       },
     },
   };
