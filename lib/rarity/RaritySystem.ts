@@ -11,6 +11,34 @@ export interface RarityVariantInfo {
   finishLabel:  string;
 }
 
+// ── Rarity symbols ────────────────────────────────────────────────────────────
+// The visual mark stamped on a card next to its rarity name. We store only the
+// *shape* and *color family* here (pure data) — the actual SVG rendering lives in
+// components/RaritySymbol.tsx so this stays usable server-side and game-agnostic.
+export type RaritySymbolShape =
+  | "circle"       // Common
+  | "diamond"      // Uncommon
+  | "star"         // single star
+  | "double_star"  // two stars
+  | "triple_star"  // three stars (Hyper Rare)
+  | "starburst"    // 4-pointed burst (Mega Hyper Rare)
+  | "ace_badge";   // stylized ACE SPEC text block
+
+// "black" renders as currentColor so it stays legible in light and dark themes.
+// The metallic/two-tone colors render as gradients in the component.
+export type RaritySymbolColor =
+  | "black"
+  | "gold"
+  | "silver"
+  | "magenta"
+  | "two_tone"  // pastel pink + pastel green (Mega Attack Rare)
+  | "rainbow";  // legacy Rare Rainbow card treatment
+
+export interface RaritySymbolInfo {
+  shape: RaritySymbolShape;
+  color: RaritySymbolColor;
+}
+
 export interface RarityOption {
   value: string;
   label: string;
@@ -39,6 +67,13 @@ export abstract class RaritySystem {
 
   /** Returns the human-readable display label for a rarity key. */
   abstract getDisplayLabel(rarity: string): string;
+
+  /**
+   * Returns the symbol (shape + color) for a rarity key, or null if the key
+   * is unknown / has no symbol. Callers pair this with getDisplayLabel to
+   * render the mark next to the title.
+   */
+  abstract getSymbol(rarity: string): RaritySymbolInfo | null;
 
   /** Returns grouped rarity options for form dropdowns. */
   abstract getRarityOptions(): RarityGroup[];

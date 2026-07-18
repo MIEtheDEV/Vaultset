@@ -2,7 +2,14 @@ import { RaritySystem } from "./RaritySystem";
 import { PokemonRaritySystem } from "./PokemonRaritySystem";
 
 export { RaritySystem } from "./RaritySystem";
-export type { RarityVariantInfo, RarityOption, RarityGroup } from "./RaritySystem";
+export type {
+  RarityVariantInfo,
+  RarityOption,
+  RarityGroup,
+  RaritySymbolInfo,
+  RaritySymbolShape,
+  RaritySymbolColor,
+} from "./RaritySystem";
 export { PokemonRaritySystem } from "./PokemonRaritySystem";
 
 // Registry of rarity systems keyed by game identifier.

@@ -375,16 +375,19 @@ export class PokemonTCGProvider extends CardSearchProvider {
       "ultra rare":                "ultra_rare",
       "illustration rare":         "illustration_rare",
       "special illustration rare": "special_illustration_rare",
-      // pokemontcg.io returns this one as ALL_CAPS_UNDERSCORE ("MEGA_ATTACK_RARE"),
-      // so its lowercased form is underscore-joined, not space-joined like the rest.
+      // pokemontcg.io returns the Mega Evolution rarities as ALL_CAPS_UNDERSCORE
+      // ("MEGA_ATTACK_RARE" / "MEGA_HYPER_RARE"), so their lowercased forms are
+      // underscore-joined, not space-joined like the rest.
       "mega_attack_rare":          "mega_attack_rare",
       "mega attack rare":          "mega_attack_rare",
+      "mega_hyper_rare":           "mega_hyper_rare",
+      "mega hyper rare":           "mega_hyper_rare",
       "hyper rare":                "hyper_rare",
-      "mega hyper rare":           "hyper_rare",
-      "secret rare":               "secret_rare",
-      "rare holo v":               "rare_holo_v",
-      "rare holo vmax":            "rare_holo_vmax",
-      "rare holo vstar":           "rare_holo_vstar",
+      "secret rare":               "rare_secret",
+      // Legacy V / VMAX / VSTAR consolidate into Ultra Rare (Full Art).
+      "rare holo v":               "rare_ultra",
+      "rare holo vmax":            "rare_ultra",
+      "rare holo vstar":           "rare_ultra",
       "rare ultra":                "rare_ultra",
       "rare rainbow":              "rare_rainbow",
       "rare secret":               "rare_secret",

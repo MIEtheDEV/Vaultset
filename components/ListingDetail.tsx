@@ -12,12 +12,11 @@ import { MarketValueChip } from "@/components/MarketValueChip";
 import { CardValueChart } from "@/components/CardValueChart";
 import { DailyChange } from "@/components/DailyChange";
 import { createClient } from "@/utils/supabase/client";
-import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
+import { RarityLabel } from "@/components/RaritySymbol";
 import { dailyChange, type PricePoint, type Change } from "@/lib/priceHistory";
 import { priceApiId } from "@/lib/pricing/cardIdentity";
 import { timeAgo } from "@/lib/timeAgo";
 
-const raritySystem = new PokemonRaritySystem();
 
 // ── Display helpers ────────────────────────────────────────────────────────────
 
@@ -174,7 +173,7 @@ export function ListingDetail({
 
           {/* Card attributes */}
           <div className="flex flex-wrap gap-2">
-            {rarity  && <span className="rounded-full border border-border bg-surface-raised px-3 py-1 text-xs text-foreground-muted">{raritySystem.getDisplayLabel(rarity)}</span>}
+            {rarity  && <span className="rounded-full border border-border bg-surface-raised px-3 py-1 text-xs text-foreground-muted"><RarityLabel rarity={rarity} /></span>}
             {variant && <span className="rounded-full border border-border bg-surface-raised px-3 py-1 text-xs text-foreground-muted">{VARIANT_LABEL[variant] ?? variant}</span>}
             {listing.finish && <span className="rounded-full border border-border bg-surface-raised px-3 py-1 text-xs text-foreground-muted">{FINISH_LABEL[listing.finish] ?? listing.finish}</span>}
             {edition === "1st_edition"  && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-400">1st Edition</span>}

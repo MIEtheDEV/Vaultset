@@ -10,6 +10,7 @@ import { readGradedPrices } from "@/lib/pricing/gradedPrices";
 import { extractApiCardHistory, extractApiCardStats, extractApiVariants } from "@/lib/pricing/cardHistory";
 import { mergeDailySeries, apiDailyChange, type PricePoint } from "@/lib/priceHistory";
 import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
+import { RarityLabel } from "@/components/RaritySymbol";
 import { speciesName, speciesSlug } from "@/lib/cards/species";
 import { resolveCardById, getSearchProvider, fetchPokemonCardDetail, type SearchResult, type PokemonCardDetail } from "@/lib/search";
 import { PriceFetchEngine } from "@/lib/pricing/PriceFetchEngine";
@@ -248,10 +249,10 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
 
   const rarity = gd.rarity as string | undefined;
   const variant = gd.variant as string | undefined;
-  const tags = [...new Set([
-    rarity ? raritySystem.getDisplayLabel(rarity) : null,
-    variant ? (VARIANT_LABEL[variant] ?? variant) : null,
-  ].filter(Boolean) as string[])];
+  const rarityLabel = rarity ? raritySystem.getDisplayLabel(rarity) : null;
+  const variantLabel = variant ? (VARIANT_LABEL[variant] ?? variant) : null;
+  // Variant chip only when it adds info beyond the rarity label (they often coincide).
+  const showVariant = !!variantLabel && variantLabel !== rarityLabel;
   const isPromo = !!gd.is_promo;
   const isEx = !!gd.is_ex;
   const tcgUrl = (priceRow as any)?.tcgplayer_url as string | null;
@@ -343,11 +344,16 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
             <p className="mt-1 text-foreground-muted">
               {card.set_name}{card.card_number ? ` · #${card.card_number}${setTotal ? `/${setTotal}` : ""}` : ""}{card.year ? ` · ${card.year}` : ""}
             </p>
-            {tags.length > 0 && (
+            {(rarity || showVariant) && (
               <div className="mt-3 flex flex-wrap gap-2">
-                {tags.map((t) => (
-                  <span key={t} className="rounded-full border border-border bg-surface-raised px-3 py-1 text-xs text-foreground-muted">{t}</span>
-                ))}
+                {rarity && (
+                  <span className="rounded-full border border-border bg-surface-raised px-3 py-1 text-xs text-foreground-muted">
+                    <RarityLabel rarity={rarity} />
+                  </span>
+                )}
+                {showVariant && (
+                  <span className="rounded-full border border-border bg-surface-raised px-3 py-1 text-xs text-foreground-muted">{variantLabel}</span>
+                )}
               </div>
             )}
           </div>

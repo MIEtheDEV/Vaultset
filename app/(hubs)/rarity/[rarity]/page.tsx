@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getRarityCards, distinctRarities } from "@/lib/hubs/hubQueries";
 import { HubCardGrid } from "@/components/hubs/HubCardGrid";
 import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
+import { RaritySymbol } from "@/components/RaritySymbol";
 
 const raritySystem = new PokemonRaritySystem();
 
@@ -45,7 +46,10 @@ export default async function RarityPage({ params }: { params: Promise<{ rarity:
     <div className="space-y-8">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
       <div>
-        <h1 className="text-3xl font-bold text-foreground">{label} Pokémon Cards</h1>
+        <h1 className="flex items-center gap-2.5 text-3xl font-bold text-foreground">
+          <RaritySymbol rarity={rarity} title={label} />
+          <span>{label} Pokémon Cards</span>
+        </h1>
         <p className="mt-2 text-foreground-muted max-w-2xl">
           {label} cards tracked on Vaultset, sorted by market value. Open any card for its full price
           history, condition and graded prices, and marketplace listings.

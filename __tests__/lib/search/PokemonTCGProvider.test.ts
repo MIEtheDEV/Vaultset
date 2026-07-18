@@ -28,15 +28,23 @@ describe("PokemonTCGProvider", () => {
         "special_illustration_rare"
       );
       expect(provider.mapRarity("hyper rare")).toBe("hyper_rare");
-      expect(provider.mapRarity("secret rare")).toBe("secret_rare");
+      expect(provider.mapRarity("secret rare")).toBe("rare_secret");
       expect(provider.mapRarity("ace spec rare")).toBe("ace_spec_rare");
+    });
+
+    it("routes the Mega Evolution rarities to their own keys", () => {
+      expect(provider.mapRarity("mega attack rare")).toBe("mega_attack_rare");
+      expect(provider.mapRarity("mega_attack_rare")).toBe("mega_attack_rare");
+      expect(provider.mapRarity("mega hyper rare")).toBe("mega_hyper_rare");
+      expect(provider.mapRarity("mega_hyper_rare")).toBe("mega_hyper_rare");
     });
 
     it("maps legacy Sword & Shield / Sun & Moon rarities correctly", () => {
       expect(provider.mapRarity("rare holo")).toBe("rare_holo");
-      expect(provider.mapRarity("rare holo v")).toBe("rare_holo_v");
-      expect(provider.mapRarity("rare holo vmax")).toBe("rare_holo_vmax");
-      expect(provider.mapRarity("rare holo vstar")).toBe("rare_holo_vstar");
+      // V / VMAX / VSTAR consolidate into the single Ultra Rare (Full Art) tier.
+      expect(provider.mapRarity("rare holo v")).toBe("rare_ultra");
+      expect(provider.mapRarity("rare holo vmax")).toBe("rare_ultra");
+      expect(provider.mapRarity("rare holo vstar")).toBe("rare_ultra");
       expect(provider.mapRarity("rare ultra")).toBe("rare_ultra");
       expect(provider.mapRarity("rare rainbow")).toBe("rare_rainbow");
       expect(provider.mapRarity("rare secret")).toBe("rare_secret");
@@ -53,9 +61,9 @@ describe("PokemonTCGProvider", () => {
       );
     });
 
-    it("maps both hyper rare aliases to the same internal key", () => {
+    it("keeps Hyper Rare and Mega Hyper Rare as distinct keys", () => {
       expect(provider.mapRarity("hyper rare")).toBe("hyper_rare");
-      expect(provider.mapRarity("mega hyper rare")).toBe("hyper_rare");
+      expect(provider.mapRarity("mega hyper rare")).toBe("mega_hyper_rare");
     });
 
     it("returns an empty string for unknown rarity strings", () => {

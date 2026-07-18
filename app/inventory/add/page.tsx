@@ -8,6 +8,8 @@ import { createClient } from "@/utils/supabase/client";
 import { PokemonCardSearch } from "@/components/PokemonCardSearch";
 import { CardScanner } from "@/components/CardScanner";
 import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
+import { RaritySymbol } from "@/components/RaritySymbol";
+import { RaritySelect } from "@/components/RaritySelect";
 import { PokemonTCGProvider } from "@/lib/search/PokemonTCGProvider";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
 
@@ -652,20 +654,13 @@ export default function AddCardPage() {
               <label className={labelClass()}>Rarity</label>
               {isPromo ? (
                 <div className={lockedFieldClass()}>
-                  <span className="text-sm text-foreground">Promo</span>
+                  <span className="flex items-center gap-1.5 text-sm text-foreground"><RaritySymbol rarity="promo" />Promo</span>
                   <span className="text-xs text-foreground-muted">auto</span>
                 </div>
               ) : (
-                <select value={rarity} onChange={(e) => applyRarity(e.target.value)} className={selectClass()}>
-                  <option value="">Select rarity</option>
-                  {raritySystem.getRarityOptions().map(({ group, options }) => (
-                    <optgroup key={group} label={group}>
-                      {options.map(({ value, label }) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
+                // Custom dropdown so the rarity symbol shows on the button and every option
+                // (a native <select> can't render SVG inside its <option>s).
+                <RaritySelect value={rarity} onChange={applyRarity} />
               )}
             </div>
 
