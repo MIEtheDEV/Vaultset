@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
 
 // Marketing nav links — mirrors the desktop set in the homepage navbar.
 // `authOnly` links require an account, so they're shown only to signed-in users.
@@ -28,6 +27,8 @@ export function HomeMobileNav({ loggedIn = false }: { loggedIn?: boolean }) {
 
   async function signOut() {
     setOpen(false);
+    // Lazy-load the Supabase browser client only on sign-out — see UserNav.
+    const { createClient } = await import("@/utils/supabase/client");
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");

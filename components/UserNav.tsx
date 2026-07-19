@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
 
 export function UserNav({
   username,
@@ -20,6 +19,10 @@ export function UserNav({
   const router = useRouter();
 
   async function signOut() {
+    // Lazy-load the Supabase browser client (pulls in supabase-js + realtime,
+    // ~59 KiB) only when the user actually signs out — keeps it out of the
+    // initial bundle on every page that renders the nav.
+    const { createClient } = await import("@/utils/supabase/client");
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
