@@ -8,21 +8,25 @@ const nextConfig: NextConfig = {
   // button). Keep it external so the prebuilt binary loads at runtime.
   serverExternalPackages: ["sharp"],
   images: {
-    // Card art is immutable — a given card's image never changes — so cache
-    // each optimized variant for a month instead of Vercel's 1h default. A
-    // "cache write" is billed on every miss AND every stale revalidation, so a
-    // short TTL re-writes still-viewed images hourly. 31 days ≈ one write per
-    // variant per month (Vercel's own recommended value for static imagery).
+    // Vercel Image Optimization is DISABLED site-wide. As a card platform we
+    // proxy thousands of third-party images (pokemontcg.io / TCGplayer CDN)
+    // through next/image; on the Hobby plan that blows past the metered
+    // optimizer quota, after which uncached variants return 402 and images
+    // break on mobile (which requests wider DPR variants than desktop). The
+    // source CDNs already serve reasonably-sized images over fast edges, so we
+    // serve them directly instead of re-optimizing. next/image still handles
+    // layout / lazy-loading / priority — it just emits the original URL.
+    //   Re-enabling optimization later = remove `unoptimized` (and upgrade the
+    //   Vercel plan, or the 402s return). The hero uses its own pre-generated
+    //   static WebPs, so it stays crisp regardless.
+    unoptimized: true,
+    // NOTE: minimumCacheTTL / deviceSizes / imageSizes only affect the
+    // optimizer, so they are inert while `unoptimized` is on. Kept so the tuned
+    // values are ready if optimization is ever re-enabled.
     minimumCacheTTL: 2678400,
-    // Trim the generated-variant pool to what we actually render. Source images
-    // (pokemontcg.io ~600–745px wide, TCGplayer CDN similar) are small, so the
-    // default deviceSizes up to 3840px only burn cache writes for widths no
-    // card can fill. Fixed thumbnails run 24–256px (→ imageSizes); the widest
-    // layout is the listing photo at 100vw/50vw (→ deviceSizes, capped at 1200).
-    // Fewer candidate widths also means different `sizes` contexts collapse onto
-    // shared variants, improving cache reuse.
     deviceSizes: [640, 828, 1200],
     imageSizes: [48, 96, 128, 256, 384],
+    // remotePatterns still gates which hostnames next/image will render.
     remotePatterns: [
       {
         protocol: "https",
