@@ -6,7 +6,7 @@ import Image from "next/image";
 const CARDS = [
   {
     id:     "charizard",
-    src:    "https://images.pokemontcg.io/base1/4_hires.png",
+    src:    "/hero/charizard.webp",
     alt:    "Charizard",
     name:   "Charizard #4",
     set:    "Base Set — 1999",
@@ -15,7 +15,7 @@ const CARDS = [
   },
   {
     id:     "blastoise",
-    src:    "https://images.pokemontcg.io/base1/2_hires.png",
+    src:    "/hero/blastoise.webp",
     alt:    "Blastoise",
     name:   "Blastoise #2",
     set:    "Base Set — 1999",
@@ -24,7 +24,7 @@ const CARDS = [
   },
   {
     id:     "venusaur",
-    src:    "https://images.pokemontcg.io/base1/15_hires.png",
+    src:    "/hero/venusaur.webp",
     alt:    "Venusaur",
     name:   "Venusaur #15",
     set:    "Base Set — 1999",
@@ -74,14 +74,16 @@ export function HeroCardStack() {
             <Image
               src={card.src}
               alt={card.alt}
-              // Intrinsic dimensions of pokemontcg.io hi-res card art (600×825).
-              // Passed only for aspect ratio / CLS prevention — CSS (w-full
-              // h-auto) drives the rendered size (160px mobile, 224px desktop),
-              // and `sizes` tells Next which optimized variant to generate so we
-              // ship a ~640px WebP instead of the raw ~800 KB PNG.
-              width={600}
-              height={825}
-              sizes="(max-width: 1024px) 160px, 224px"
+              // Pre-optimized 480px static WebPs in /public/hero (generated from
+              // the pokemontcg.io hi-res art). `unoptimized` serves them directly
+              // and deliberately bypasses Vercel's Image Optimization — this is a
+              // fixed set of 3 brand images that must never consume the metered
+              // optimizer quota (which 402s once exhausted). width/height are the
+              // asset's real dimensions for aspect-ratio/CLS; CSS (w-full h-auto)
+              // drives the rendered size. priority preloads them for LCP.
+              width={480}
+              height={660}
+              unoptimized
               priority
               className="w-full h-auto block rounded-xl mb-2"
             />
