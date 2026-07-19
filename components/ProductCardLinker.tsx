@@ -190,7 +190,7 @@ export function ProductCardLinker({
                 {/* Image */}
                 <div className="relative aspect-[2.5/3.5] w-full overflow-hidden bg-surface-raised">
                   {item.image_url ? (
-                    <img src={item.image_url} alt={item.name} className="w-full h-full object-contain" />
+                    <Image src={item.image_url} alt={item.name} fill sizes="(max-width: 640px) 50vw, 25vw" className="object-contain" />
                   ) : item.is_promo ? (
                     <div className="absolute inset-0 overflow-hidden">
                       <Image src="/img/promo.png" alt="Promo" fill sizes="(max-width: 640px) 50vw, 25vw" className="object-contain" style={{ padding: "3rem 2rem" }} />

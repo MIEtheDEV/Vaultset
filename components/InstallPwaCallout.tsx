@@ -68,7 +68,7 @@ export function InstallPwaCallout({
           </svg>
         </div>
         <div className="min-w-0 pr-6">
-          <h3 className="text-sm font-semibold text-foreground">Install Vaultset as an app</h3>
+          <h2 className="text-sm font-semibold text-foreground">Install Vaultset as an app</h2>
           <p className="mt-1 text-sm text-foreground-muted leading-relaxed">
             Vaultset isn&apos;t on the App Store or Google Play — but you can install it straight from
             your browser as a free app (PWA) in seconds.

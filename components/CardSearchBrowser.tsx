@@ -79,7 +79,7 @@ export function CardSearchBrowser({ autoFocus = false, loggedIn = true }: { auto
       {!loggedIn && (
         <p className="text-xs text-foreground-muted">
           Showing cards already on Vaultset.{" "}
-          <Link href="/login" className="text-gold hover:text-gold-light transition-colors">Sign in</Link>{" "}
+          <Link href="/login" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">Sign in</Link>{" "}
           to search the full Pokémon TCG catalog.
         </p>
       )}

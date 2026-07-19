@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 
 const CARDS = [
   {
@@ -70,12 +71,19 @@ export function HeroCardStack() {
               opacity:      position === 2 ? 0.85 : 1,
             }}
           >
-            <img
+            <Image
               src={card.src}
               alt={card.alt}
+              // Intrinsic dimensions of pokemontcg.io hi-res card art (600×825).
+              // Passed only for aspect ratio / CLS prevention — CSS (w-full
+              // h-auto) drives the rendered size (160px mobile, 224px desktop),
+              // and `sizes` tells Next which optimized variant to generate so we
+              // ship a ~640px WebP instead of the raw ~800 KB PNG.
+              width={600}
+              height={825}
+              sizes="(max-width: 1024px) 160px, 224px"
+              priority
               className="w-full h-auto block rounded-xl mb-2"
-              fetchPriority="high"
-              loading="eager"
             />
             <div
               className="hidden lg:block"

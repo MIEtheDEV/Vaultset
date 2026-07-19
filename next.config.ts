@@ -8,6 +8,21 @@ const nextConfig: NextConfig = {
   // button). Keep it external so the prebuilt binary loads at runtime.
   serverExternalPackages: ["sharp"],
   images: {
+    // Card art is immutable — a given card's image never changes — so cache
+    // each optimized variant for a month instead of Vercel's 1h default. A
+    // "cache write" is billed on every miss AND every stale revalidation, so a
+    // short TTL re-writes still-viewed images hourly. 31 days ≈ one write per
+    // variant per month (Vercel's own recommended value for static imagery).
+    minimumCacheTTL: 2678400,
+    // Trim the generated-variant pool to what we actually render. Source images
+    // (pokemontcg.io ~600–745px wide, TCGplayer CDN similar) are small, so the
+    // default deviceSizes up to 3840px only burn cache writes for widths no
+    // card can fill. Fixed thumbnails run 24–256px (→ imageSizes); the widest
+    // layout is the listing photo at 100vw/50vw (→ deviceSizes, capped at 1200).
+    // Fewer candidate widths also means different `sizes` contexts collapse onto
+    // shared variants, improving cache reuse.
+    deviceSizes: [640, 828, 1200],
+    imageSizes: [48, 96, 128, 256, 384],
     remotePatterns: [
       {
         protocol: "https",

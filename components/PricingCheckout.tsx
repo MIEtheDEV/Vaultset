@@ -154,7 +154,7 @@ export function PricingCheckout({
         {!isPro && !isLoggedIn && (
           <p className="text-xs text-foreground-muted">
             Free account required.{" "}
-            <Link href="/login" className="text-gold hover:text-gold-light transition-colors">
+            <Link href="/login" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">
               Already have one?
             </Link>
           </p>

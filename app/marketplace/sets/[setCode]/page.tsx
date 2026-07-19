@@ -54,8 +54,8 @@ export default async function MarketplaceSetPage({ params }: { params: Promise<{
         <p className="mt-2 text-foreground-muted max-w-2xl">
           {cards.length} {name} card{cards.length !== 1 ? "s" : ""} listed by collectors on Vaultset,
           with live market values. Open a card to see all listings, prices, and grades —{" "}
-          <Link href="/register" className="text-gold hover:text-gold-light transition-colors">create a free account</Link> or{" "}
-          <Link href="/login" className="text-gold hover:text-gold-light transition-colors">sign in</Link> to buy or make an offer.
+          <Link href="/register" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">create a free account</Link> or{" "}
+          <Link href="/login" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">sign in</Link> to buy or make an offer.
         </p>
         <p className="mt-2 text-sm">
           <Link href={`/sets/${encodeURIComponent(setCode)}`} className="text-gold hover:text-gold-light transition-colors">

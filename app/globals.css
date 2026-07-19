@@ -5,7 +5,9 @@
   --color-surface: #0f1424;
   --color-surface-raised: #161d30;
   --color-foreground: #eef0ff;
-  --color-foreground-muted: #6b7194;
+  /* Lightened from #6b7194 to clear WCAG AA 4.5:1 for body text on every
+     surface (background/surface/surface-raised) — the old value sat at ~3.85:1. */
+  --color-foreground-muted: #858cab;
   --color-gold: #e8b84b;
   --color-gold-light: #f5d07a;
   --color-border: #1e2440;

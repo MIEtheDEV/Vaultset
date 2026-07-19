@@ -671,9 +671,9 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
           </div>
           {!user && (
             <p className="text-xs text-foreground-muted">
-              <Link href="/register" className="text-gold hover:text-gold-light transition-colors">Create a free account</Link>
+              <Link href="/register" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">Create a free account</Link>
               {" "}or{" "}
-              <Link href="/login" className="text-gold hover:text-gold-light transition-colors">sign in</Link>
+              <Link href="/login" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">sign in</Link>
               {" "}to view listings and make offers.
             </p>
           )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
 
 interface PokemonCard {
@@ -129,11 +130,18 @@ export function PokemonCardSearch({ onSelect }: Props) {
                 onClick={() => handleSelect(card)}
                 className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-raised transition-colors"
               >
-                <img
-                  src={card.images.small}
-                  alt={card.name}
-                  className="h-10 w-7 rounded object-cover flex-shrink-0"
-                />
+                {card.images.small ? (
+                  <Image
+                    src={card.images.small}
+                    alt={card.name}
+                    width={28}
+                    height={40}
+                    sizes="28px"
+                    className="h-10 w-7 rounded object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <div className="h-10 w-7 rounded bg-surface-raised flex-shrink-0" />
+                )}
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{card.name}</p>
                   <p className="text-xs text-foreground-muted truncate">

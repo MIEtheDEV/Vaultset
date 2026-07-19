@@ -646,9 +646,12 @@ export default async function DashboardPage() {
                   <li key={item.id} className="flex flex-col gap-2 px-6 py-3">
                     <div className="flex items-center gap-4">
                       {card.image_url ? (
-                        <img
+                        <Image
                           src={card.image_url}
                           alt={card.name}
+                          width={32}
+                          height={48}
+                          sizes="32px"
                           className="h-12 w-8 rounded-md object-cover flex-shrink-0"
                         />
                       ) : (
