@@ -170,6 +170,7 @@ export default async function DashboardPage() {
     { count: userFollowerCount },
     { data: badgeData },
     { data: rpcBadgeSlugs },
+    { data: sealedValueRows },
   ] = await Promise.all([
     supabase.from("collection_items").select("quantity, market_price").eq("user_id", user!.id),
     supabase.from("collection_items").select("quantity").eq("user_id", user!.id).eq("for_sale", true),
@@ -212,6 +213,7 @@ export default async function DashboardPage() {
       .select("badge_slug, earned_at")
       .eq("user_id", user!.id),
     supabase.rpc("check_user_badges", { p_user_id: user!.id }),
+    supabase.from("product_purchases").select("market_value").eq("user_id", user!.id),
   ]);
 
   // Dedupe matches by listing_id (multiple wishlist items can match same listing)
@@ -260,9 +262,15 @@ export default async function DashboardPage() {
   const senderMap = new Map((senderProfiles ?? []).map((p) => [p.id, p.username]));
 
   const totalCards       = quantityData?.reduce((sum, r) => sum + (r.quantity ?? 1), 0) ?? 0;
-  const collectionValue  = quantityData?.reduce((sum, r) => {
+  const singlesValue     = quantityData?.reduce((sum, r) => {
     return sum + (r.market_price != null ? Number(r.market_price) * (r.quantity ?? 1) : 0);
   }, 0) ?? 0;
+  // Total collection value spans singles AND sealed products (each sealed row is
+  // one unit, so no quantity multiplier).
+  const sealedValue      = (sealedValueRows ?? []).reduce((sum, r) => {
+    return sum + ((r as any).market_value != null ? Number((r as any).market_value) : 0);
+  }, 0);
+  const collectionValue  = singlesValue + sealedValue;
   // Card counts reflect physical copies (sum of quantity), not row/line-item counts,
   // so they stay consistent with Total Cards. Sealed products have no quantity (1 row = 1 unit).
   const cardListings    = (cardListingRows ?? []).reduce((sum, r) => sum + (r.quantity ?? 1), 0);

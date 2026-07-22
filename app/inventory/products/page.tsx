@@ -13,12 +13,14 @@ export default async function ProductsPage() {
     .from("product_purchases")
     .select(`
       id, name, product_type, cost, list_price, status, for_sale, for_trade, purchased_at, notes, created_at,
+      market_value, market_value_updated_at,
       collection_items ( id, quantity, list_price )
     `)
     .eq("user_id", user.id)
     .order("purchased_at", { ascending: false });
 
   const totalInvested = products?.reduce((sum, p) => sum + Number(p.cost), 0) ?? 0;
+  const totalMarket   = products?.reduce((sum, p) => sum + ((p as any).market_value != null ? Number((p as any).market_value) : 0), 0) ?? 0;
 
   return (
     <div className="space-y-8">
@@ -59,6 +61,7 @@ export default async function ProductsPage() {
           {[
             { label: "Products Tracked", value: String(products.length) },
             { label: "Total Invested",   value: `$${totalInvested.toFixed(2)}` },
+            { label: "Market Value",     value: totalMarket > 0 ? `$${totalMarket.toFixed(2)}` : "—" },
           ].map(({ label, value }) => (
             <div key={label} className="rounded-2xl border border-border bg-surface p-5">
               <p className="text-xs font-medium text-foreground-muted uppercase tracking-wide">{label}</p>
@@ -97,6 +100,8 @@ export default async function ProductsPage() {
             const pullValue   = cards.reduce((sum, c) => sum + ((c as any).list_price != null ? Number((c as any).list_price) * ((c as any).quantity ?? 1) : 0), 0);
             const net         = pullValue - Number(product.cost);
             const hasValue    = pullValue > 0;
+            const marketValue = (product as any).market_value != null ? Number((product as any).market_value) : null;
+            const marketNet   = marketValue != null ? marketValue - Number(product.cost) : null;
 
             return (
               <div key={product.id} className="rounded-2xl border border-border bg-surface overflow-hidden">
@@ -116,6 +121,16 @@ export default async function ProductsPage() {
                       {" · "}
                       {new Date(product.purchased_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </p>
+                    {marketValue != null && (
+                      <p className="mt-1 text-xs text-foreground-muted">
+                        Market value: <span className="font-semibold text-foreground">${marketValue.toFixed(2)}</span>
+                        {marketNet != null && (
+                          <span className={marketNet >= 0 ? "text-emerald-400" : "text-red-400"}>
+                            {" · "}{marketNet >= 0 ? "+" : ""}${marketNet.toFixed(2)} vs cost
+                          </span>
+                        )}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <Link

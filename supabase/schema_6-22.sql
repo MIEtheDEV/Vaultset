@@ -1140,7 +1140,13 @@ CREATE TABLE IF NOT EXISTS "public"."product_purchases" (
     "list_price" numeric(10,2),
     "for_sale" boolean DEFAULT false NOT NULL,
     "for_trade" boolean DEFAULT false NOT NULL,
+    "tcgplayer_id" "text",
+    "set_name" "text",
+    "image_url" "text",
+    "market_value" numeric(10,2),
+    "market_value_updated_at" timestamp with time zone,
     CONSTRAINT "product_purchases_cost_check" CHECK (("cost" >= (0)::numeric)),
+    CONSTRAINT "product_purchases_market_value_check" CHECK (("market_value" >= (0)::numeric)),
     CONSTRAINT "product_purchases_product_type_check" CHECK (("product_type" = ANY (ARRAY['etb'::"text", 'booster_box'::"text", 'blister'::"text", 'bundle'::"text", 'single_pack'::"text", 'collection_box'::"text", 'other'::"text"]))),
     CONSTRAINT "product_purchases_status_check" CHECK (("status" = ANY (ARRAY['sealed'::"text", 'opened'::"text"])))
 );
@@ -1704,6 +1710,10 @@ CREATE INDEX "price_history_user_date_idx" ON "public"."price_history" USING "bt
 
 
 CREATE INDEX "product_purchases_user_id_idx" ON "public"."product_purchases" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "product_purchases_tcgplayer_id_idx" ON "public"."product_purchases" USING "btree" ("tcgplayer_id");
 
 
 

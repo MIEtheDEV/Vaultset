@@ -21,6 +21,7 @@ export function RefreshMarketButton({ lastRefreshedAt }: Props) {
   const router = useRouter();
   const [loading,      setLoading]      = useState(false);
   const [updatedCount, setUpdatedCount] = useState<number | null>(null);
+  const [sealedCount,  setSealedCount]  = useState(0);
   const [needsPro,     setNeedsPro]     = useState(false);
   const [hasError,     setHasError]     = useState(false);
 
@@ -39,6 +40,7 @@ export function RefreshMarketButton({ lastRefreshedAt }: Props) {
 
       const json = await res.json();
       setUpdatedCount(json.updated);
+      setSealedCount(json.sealedUpdated ?? 0);
       router.refresh();
     } catch {
       setHasError(true);
@@ -78,7 +80,10 @@ export function RefreshMarketButton({ lastRefreshedAt }: Props) {
           </a>
         )}
         {updatedCount != null && !hasError && !needsPro && (
-          <span className="text-emerald-400">Updated {updatedCount} card{updatedCount !== 1 ? "s" : ""}</span>
+          <span className="text-emerald-400">
+            Updated {updatedCount} card{updatedCount !== 1 ? "s" : ""}
+            {sealedCount > 0 && ` · ${sealedCount} sealed product${sealedCount !== 1 ? "s" : ""}`}
+          </span>
         )}
         {!hasError && !needsPro && updatedCount == null && lastRefreshedAt && (
           <span>Last refreshed {formatRelative(lastRefreshedAt)}</span>

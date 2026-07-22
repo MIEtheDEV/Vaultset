@@ -5,6 +5,7 @@ import { PokemonTCGProvider } from "@/lib/search/PokemonTCGProvider";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
 import { PriceFetchEngine } from "@/lib/pricing/PriceFetchEngine";
 import { propagateMarketValues } from "@/lib/pricing/propagateMarketValues";
+import { refreshSealedProductPrices } from "@/lib/pricing/sealedProductPrices";
 import { ensureGradedPrices } from "@/lib/pricing/gradedPrices";
 import { priceApiId } from "@/lib/pricing/cardIdentity";
 import type { CardRef } from "@/lib/pricing/PriceProvider";
@@ -140,6 +141,16 @@ export async function POST() {
   const freshIds = [...priced.values()].filter((p) => !p.fromCache).map((p) => p.cardApiId);
   await propagateMarketValues(admin, freshIds);
 
+  // Refresh sealed product market values (ETBs, booster boxes, …) through the
+  // same engine/cache, keyed by their TCGplayer product id. Best-effort: a
+  // failure here must not fail the (successful) singles refresh above.
+  let sealedUpdated = 0;
+  try {
+    sealedUpdated = await refreshSealedProductPrices(admin, user.id);
+  } catch (err) {
+    console.warn(`[pricing] sealed product refresh failed: ${(err as Error).message}`);
+  }
+
   await admin
     .from("market_refresh_log")
     .upsert({ user_id: user.id, refreshed_at: new Date().toISOString() });
@@ -184,5 +195,5 @@ export async function POST() {
     }
   }
 
-  return NextResponse.json({ updated });
+  return NextResponse.json({ updated, sealedUpdated });
 }

@@ -1,6 +1,7 @@
 import type { SearchResult } from "./CardSearchProvider";
 import { variantsToPrices, type JustTcgVariant } from "@/lib/pricing/justtcgVariants";
 import { fetchWithTimeout } from "@/lib/http";
+import { inferProductType } from "@/lib/products";
 
 const API_BASE = "https://api.justtcg.com/v1";
 
@@ -80,6 +81,67 @@ export async function searchJustTcg(query: string, number?: string): Promise<Sea
     const json = await res.json();
     const cards: JustTcgCard[] = Array.isArray(json) ? json : (json?.data ?? []);
     return cards.map(toSearchResult).filter((c): c is SearchResult => c !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** A sealed product (ETB, booster box, bundle, …) as JustTCG returns it. */
+export interface SealedProductResult {
+  /** TCGplayer product id — the identity we persist + price by. */
+  tcgplayerId: string;
+  name: string;
+  setName: string;
+  image: string;
+  /** Latest "Sealed" market price, in USD, when JustTCG carries one. */
+  marketValue: number | null;
+  /** Best-effort PRODUCT_TYPES value inferred from the name ("" if unsure). */
+  productType: string;
+}
+
+// Sealed products carry a variant whose condition is literally "Sealed".
+// Filtering on that cleanly separates them from singles (raw conditions) and
+// from digital "Code Card" rows (condition "Near Mint").
+function sealedVariant(c: JustTcgCard): JustTcgVariant | undefined {
+  return (c.variants ?? []).find((v) => /sealed/i.test(v.condition ?? ""));
+}
+
+function toSealedResult(c: JustTcgCard): SealedProductResult | null {
+  if (!c.tcgplayerId || !c.name) return null;
+  const v = sealedVariant(c);
+  if (!v) return null; // not a sealed product
+  return {
+    tcgplayerId: c.tcgplayerId,
+    name:        c.name,
+    setName:     c.set_name ?? "",
+    image:       tcgImage(c.tcgplayerId, "small"),
+    marketValue: v.price ?? null,
+    productType: inferProductType(c.name),
+  };
+}
+
+/**
+ * Search JustTCG for SEALED products (ETBs, booster boxes, bundles, blisters).
+ * JustTCG returns sealed products alongside singles under the same Pokémon
+ * catalog; we keep only rows that carry a "Sealed" variant. Each result carries
+ * its real TCGplayer product id and current sealed market price, so the add flow
+ * can persist both with no extra pricing request. No-ops when the key is unset.
+ */
+export async function searchJustTcgSealed(query: string): Promise<SealedProductResult[]> {
+  const key = justTcgKey();
+  if (!key) return [];
+  try {
+    const params = new URLSearchParams({ game: "pokemon", q: query });
+    const res = await fetchWithTimeout(`${API_BASE}/cards?${params}`, {
+      headers: { "x-api-key": key },
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const cards: JustTcgCard[] = Array.isArray(json) ? json : (json?.data ?? []);
+    return cards
+      .map(toSealedResult)
+      .filter((c): c is SealedProductResult => c !== null);
   } catch {
     return [];
   }
