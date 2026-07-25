@@ -98,6 +98,23 @@ $$;
 ALTER FUNCTION "public"."admin_card_counts"() OWNER TO "postgres";
 
 
+
+CREATE OR REPLACE FUNCTION "public"."collector_collection_stats"() RETURNS TABLE("user_id" "uuid", "collection_value" numeric, "collection_size" bigint)
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  select
+    ci.user_id,
+    coalesce(sum(coalesce(ci.market_price, 0) * coalesce(ci.quantity, 1)), 0)::numeric as collection_value,
+    coalesce(sum(coalesce(ci.quantity, 1)), 0)::bigint as collection_size
+  from public.collection_items ci
+  group by ci.user_id;
+$$;
+
+
+ALTER FUNCTION "public"."collector_collection_stats"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."auto_expire_offers"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -2659,6 +2676,11 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 REVOKE ALL ON FUNCTION "public"."admin_card_counts"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."admin_card_counts"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."collector_collection_stats"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."collector_collection_stats"() TO "service_role";
 
 
 

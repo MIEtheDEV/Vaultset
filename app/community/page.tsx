@@ -35,6 +35,7 @@ export default async function CommunityPage() {
     { data: featuredRows },
     { data: earnedRows },
     { data: pricingItems },
+    { data: collectionStats },
   ] = await Promise.all([
     supabase.from("collection_items").select("user_id, quantity").or("for_sale.eq.true,for_trade.eq.true"),
     supabase.from("follows").select("following_id"),
@@ -51,6 +52,8 @@ export default async function CommunityPage() {
       .eq("for_sale", true)
       .not("list_price", "is", null)
       .gt("list_price", 0),
+    // Per-user collection value + size (server-side aggregate; value stays private).
+    supabase.rpc("collector_collection_stats"),
   ]);
 
   // userId → explicitly featured slug list (may be empty if column doesn't exist yet)
@@ -91,14 +94,46 @@ export default async function CommunityPage() {
     followerCountMap.set(f.following_id, (followerCountMap.get(f.following_id) ?? 0) + 1);
   });
 
+  // userId → total collection value / size (cards owned), from the SQL aggregate.
+  const valueMap = new Map<string, number>();
+  const sizeMap  = new Map<string, number>();
+  type CollectionStat = { user_id: string; collection_value: number | string; collection_size: number | string };
+  ((collectionStats ?? []) as CollectionStat[]).forEach((s) => {
+    valueMap.set(s.user_id, Number(s.collection_value) || 0);
+    sizeMap.set(s.user_id,  Number(s.collection_size)  || 0);
+  });
+
   const totalCollectors = allProfiles?.length ?? 0;
   const totalListings   = (publicItems ?? []).reduce((s, l) => s + ((l as any).quantity ?? 1), 0);
   const totalFollows    = followRows?.length ?? 0;
 
-  const topCollectors = [...(allProfiles ?? [])]
-    .filter((p) => (followerCountMap.get(p.id) ?? 0) > 0)
-    .sort((a, b) => (followerCountMap.get(b.id) ?? 0) - (followerCountMap.get(a.id) ?? 0))
-    .slice(0, 10);
+  // Top Collectors score (weights sum to 1.0): follow count leads (0.6), then
+  // collection value (0.25) as the main "quality" signal, then size (0.15) as a
+  // minor tiebreak so card count can't win on bulk alone. Each metric is log-scaled
+  // (all three are long-tailed) then normalized to [0,1] across all collectors — so
+  // the weights hold despite very different raw scales (followers in the 10s, value
+  // in the $1000s). A single whale can't flatten the field the way raw values would.
+  const FOLLOW_W = 0.6, VALUE_W = 0.25, SIZE_W = 0.15;
+  const logp = (n: number) => Math.log1p(Math.max(0, n));
+  const candidates = allProfiles ?? [];
+  const maxLogOf = (sel: (id: string) => number) =>
+    candidates.reduce((m, p) => Math.max(m, logp(sel(p.id))), 0) || 1;
+  const maxLogF = maxLogOf((id) => followerCountMap.get(id) ?? 0);
+  const maxLogV = maxLogOf((id) => valueMap.get(id) ?? 0);
+  const maxLogS = maxLogOf((id) => sizeMap.get(id) ?? 0);
+  const collectorScore = (id: string) =>
+    FOLLOW_W * (logp(followerCountMap.get(id) ?? 0) / maxLogF) +
+    VALUE_W  * (logp(valueMap.get(id) ?? 0) / maxLogV) +
+    SIZE_W   * (logp(sizeMap.get(id) ?? 0) / maxLogS);
+
+  const topCollectors = candidates
+    .map((p) => ({ p, score: collectorScore(p.id) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) =>
+      b.score - a.score ||
+      (followerCountMap.get(b.p.id) ?? 0) - (followerCountMap.get(a.p.id) ?? 0))
+    .slice(0, 10)
+    .map((x) => x.p);
 
   // ── Pricing stats ──────────────────────────────────────────────────────────
 
@@ -177,6 +212,7 @@ export default async function CommunityPage() {
             {topCollectors.map((profile, index) => {
               const followers = followerCountMap.get(profile.id) ?? 0;
               const listings  = listingCountMap.get(profile.id) ?? 0;
+              const cards     = sizeMap.get(profile.id) ?? 0;
               const badges    = getFeaturedBadges(profile.id);
               const isPro     = isProSubscriber(profile as any);
               const isSupporter = (profile as any).is_supporter ?? false;
@@ -204,6 +240,7 @@ export default async function CommunityPage() {
                     )}
                     <p className="text-xs text-foreground-muted">
                       {followers} follower{followers !== 1 ? "s" : ""}
+                      {cards > 0 ? ` · ${cards} card${cards !== 1 ? "s" : ""}` : ""}
                       {listings > 0 ? ` · ${listings} listing${listings !== 1 ? "s" : ""}` : ""}
                     </p>
                   </div>
