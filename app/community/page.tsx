@@ -48,7 +48,7 @@ export default async function CommunityPage() {
       : Promise.resolve({ data: [] as { user_id: string; badge_slug: string; earned_at: string }[] }),
     supabase
       .from("collection_items")
-      .select("list_price, cards(name, set_name)")
+      .select("list_price, cards(name, set_name, card_number)")
       .eq("for_sale", true)
       .not("list_price", "is", null)
       .gt("list_price", 0),
@@ -138,7 +138,7 @@ export default async function CommunityPage() {
   // ── Pricing stats ──────────────────────────────────────────────────────────
 
   const setStatsMap = new Map<string, { count: number; prices: number[] }>();
-  const cardStatsMap = new Map<string, { name: string; setName: string; count: number; prices: number[] }>();
+  const cardStatsMap = new Map<string, { name: string; setName: string; cardNumber: string | null; count: number; prices: number[] }>();
 
   (pricingItems ?? []).forEach((item) => {
     const raw  = (item as any).cards;
@@ -152,10 +152,13 @@ export default async function CommunityPage() {
     setEntry.count++;
     setEntry.prices.push(price);
 
-    // Per card (name + set as key)
+    // Per card — keyed by name + set + NUMBER so distinct printings stay separate.
+    // Different finishes of the same printing (e.g. holo vs reverse holo of #42)
+    // are the same card and count together; a different number (e.g. an Illustration
+    // Rare #91) is a different card and gets its own row.
     if (!card?.name) return;
-    const key = `${card.name}||${card.set_name}`;
-    if (!cardStatsMap.has(key)) cardStatsMap.set(key, { name: card.name, setName: card.set_name, count: 0, prices: [] });
+    const key = `${card.name}||${card.set_name}||${card.card_number ?? ""}`;
+    if (!cardStatsMap.has(key)) cardStatsMap.set(key, { name: card.name, setName: card.set_name, cardNumber: card.card_number ?? null, count: 0, prices: [] });
     const cardEntry = cardStatsMap.get(key)!;
     cardEntry.count++;
     cardEntry.prices.push(price);
@@ -171,6 +174,7 @@ export default async function CommunityPage() {
     .slice(0, 5);
 
   const topCards = [...cardStatsMap.values()]
+    .filter((c) => c.count > 1) // "Most Listed" → only cards with multiple listings
     .sort((a, b) => b.count - a.count)
     .slice(0, 8)
     .map((c) => ({
@@ -284,10 +288,12 @@ export default async function CommunityPage() {
               <h3 className="text-xs font-medium text-foreground-muted uppercase tracking-wide">Most Listed Cards</h3>
               <div className="rounded-2xl border border-border bg-surface divide-y divide-border overflow-hidden">
                 {topCards.map((card) => (
-                  <div key={`${card.name}||${card.setName}`} className="flex items-center gap-4 px-5 py-3">
+                  <div key={`${card.name}||${card.setName}||${card.cardNumber ?? ""}`} className="flex items-center gap-4 px-5 py-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{card.name}</p>
-                      <p className="text-xs text-foreground-muted truncate">{card.setName}</p>
+                      <p className="text-xs text-foreground-muted truncate">
+                        {card.setName}{card.cardNumber ? ` · #${card.cardNumber}` : ""}
+                      </p>
                     </div>
                     <div className="flex items-center gap-4 text-xs shrink-0">
                       <span className="text-foreground-muted">{card.count} listing{card.count !== 1 ? "s" : ""}</span>
