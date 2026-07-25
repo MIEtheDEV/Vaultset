@@ -1094,6 +1094,7 @@ CREATE TABLE IF NOT EXISTS "public"."pack_reveals" (
     "image_url" "text",
     "rarity" "text",
     "collection_item_id" "uuid",
+    "reveal_group_id" "uuid",
     "visibility" "text" DEFAULT 'public'::"text" NOT NULL,
     "notes" "text",
     "revealed_at" timestamp with time zone DEFAULT "now"() NOT NULL,
@@ -1686,6 +1687,10 @@ CREATE INDEX "notifications_user_read_idx" ON "public"."notifications" USING "bt
 
 
 CREATE INDEX "offers_parent_offer_id_idx" ON "public"."offers" USING "btree" ("parent_offer_id") WHERE ("parent_offer_id" IS NOT NULL);
+
+
+
+CREATE INDEX "pack_reveals_group_id_idx" ON "public"."pack_reveals" USING "btree" ("reveal_group_id");
 
 
 
