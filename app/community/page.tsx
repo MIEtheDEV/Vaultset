@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { timeAgo } from "@/lib/timeAgo";
 import { BadgeChip } from "@/components/BadgeChip";
 import { BADGE_MAP, type BadgeSlug } from "@/lib/badges";
 import { ProBadge } from "@/components/ProBadge";
@@ -310,82 +309,6 @@ export default async function CommunityPage() {
           )}
         </div>
       )}
-
-      {/* All Collectors */}
-      <div className="space-y-4">
-        <h2 className="font-semibold text-foreground">
-          Collectors
-          <span className="ml-2 text-sm font-normal text-foreground-muted">({totalCollectors})</span>
-        </h2>
-
-        {(!allProfiles || allProfiles.length === 0) ? (
-          <div className="rounded-2xl border border-border bg-surface py-12 text-center">
-            <p className="text-sm text-foreground-muted">No collectors yet.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {allProfiles.map((profile) => {
-              const listingCount  = listingCountMap.get(profile.id) ?? 0;
-              const followerCount = followerCountMap.get(profile.id) ?? 0;
-              const badges        = getFeaturedBadges(profile.id);
-              const isPro         = isProSubscriber(profile as any);
-              const isSupporter   = (profile as any).is_supporter ?? false;
-
-              return (
-                <Link
-                  key={profile.id}
-                  href={`/profile/${profile.username}`}
-                  className="flex items-center justify-between rounded-xl border border-border bg-surface px-5 py-3 hover:bg-surface-raised transition-colors"
-                >
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-medium text-foreground min-w-0 truncate">@{profile.username}</span>
-                      {isPro && <span className="shrink-0"><ProBadge /></span>}
-                      {isSupporter && <span className="shrink-0"><SupporterBadge /></span>}
-                    </div>
-                    {badges.length > 0 && (
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {badges.map((badge) => (
-                          <BadgeChip key={badge.slug} badge={badge} earned size="mini" />
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-xs text-foreground-muted flex items-center gap-2 flex-wrap">
-                      <span>Joined {timeAgo(profile.created_at)}</span>
-                      {(profile as any).city && (
-                        <span className="flex items-center gap-1">
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                            <circle cx="12" cy="10" r="3" />
-                          </svg>
-                          {(profile as any).city}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    {followerCount > 0 && (
-                      <span className="text-xs text-foreground-muted">
-                        {followerCount} follower{followerCount !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                    {listingCount > 0 ? (
-                      <span className="text-xs font-medium text-gold">
-                        {listingCount} listing{listingCount !== 1 ? "s" : ""}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-foreground-muted">No listings</span>
-                    )}
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-foreground-muted">
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
 
       {/* More features */}
       <div className="rounded-2xl border border-border bg-surface p-6">
