@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { createClient } from "@/utils/supabase/server";
 import { RemoveProductButton } from "@/components/RemoveProductButton";
 import { PRODUCT_TYPE_LABEL as productTypeLabel } from "@/lib/products";
@@ -13,7 +14,7 @@ export default async function ProductsPage() {
     .from("product_purchases")
     .select(`
       id, name, product_type, cost, list_price, status, for_sale, for_trade, purchased_at, notes, created_at,
-      market_value, market_value_updated_at,
+      image_url, market_value, market_value_updated_at,
       collection_items ( id, quantity, list_price )
     `)
     .eq("user_id", user.id)
@@ -106,7 +107,15 @@ export default async function ProductsPage() {
             return (
               <div key={product.id} className="rounded-2xl border border-border bg-surface overflow-hidden">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 px-6 py-4 border-b border-border bg-surface-raised">
-                  <div>
+                  <div className="flex items-start gap-3">
+                    {(product as any).image_url && (
+                      <Image
+                        src={(product as any).image_url} alt={product.name}
+                        width={40} height={56} sizes="40px"
+                        className="h-14 w-10 rounded object-contain flex-shrink-0"
+                      />
+                    )}
+                    <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-foreground">{product.name}</p>
                       {(product as any).status === "opened"
@@ -131,6 +140,7 @@ export default async function ProductsPage() {
                         )}
                       </p>
                     )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <Link
