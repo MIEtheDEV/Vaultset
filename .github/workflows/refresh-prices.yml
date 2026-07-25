@@ -1,0 +1,69 @@
+name: Refresh recent set prices
+
+# Newly-released sets are where prices are thinnest and move fastest, and nothing
+# re-read them on a schedule — every warm was a manual `pnpm` run. Weekly is the
+# right cadence: frequent enough that a new set's thin sample fills in, cheap
+# enough that pass 1 (bedrock) is free and pass 2 stays inside the JustTCG budget.
+on:
+  schedule:
+    # Mondays 09:00 UTC. JustTCG's daily budget resets at UTC midnight, so this
+    # runs with the day's full allowance available.
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      months:
+        description: "How many months back to treat as 'recent'"
+        required: false
+        default: "6"
+      dry_run:
+        description: "Plan only — no API calls, no writes"
+        type: boolean
+        required: false
+        default: false
+
+# Never let two refreshes overlap: they'd double-spend the JustTCG daily budget
+# and race each other's card_prices upserts.
+concurrency:
+  group: refresh-prices
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 45
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      POKEMON_TCG_API_KEY: ${{ secrets.POKEMON_TCG_API_KEY }}
+      JUSTTCG_API_KEY: ${{ secrets.JUSTTCG_API_KEY }}
+      # REQUIRED for correct budgeting. justTcgLimits() falls back to the FREE
+      # tier (100/day, 20 per batch) unless one of these says otherwise — so
+      # omitting them silently throttles the job to a tenth of the real quota
+      # rather than failing. Set JUSTTCG_TIER to match the actual plan.
+      JUSTTCG_TIER: ${{ secrets.JUSTTCG_TIER }}
+      JUSTTCG_API_KEY_PAID: ${{ secrets.JUSTTCG_API_KEY_PAID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # --ignore-scripts, and no `pnpm rebuild sharp` — unlike CI this job never
+      # touches the scan index, so the native build is pure overhead here.
+      - name: Install dependencies
+        run: pnpm install --ignore-scripts
+
+      - name: Refresh recent set prices
+        run: >-
+          pnpm refresh:recent
+          --months=${{ github.event.inputs.months || '6' }}
+          ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
