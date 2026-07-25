@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPokemonSets } from "@/lib/sets/getPokemonSets";
 import { normalizeCardNumber } from "@/lib/search/cardNumber";
 import { sortFinishes } from "@/lib/sets/setCardFinishes";
+import { getRaritySystem } from "@/lib/rarity";
 
 // Master-set completion: cross-reference the shared `set_cards` checklist against
 // a user's owned `collection_items`. Two tiers:
@@ -40,6 +41,7 @@ export interface MasterSetView {
   releaseDate?: string;
   printedTotal?: number; // pokemontcg.io numbered base count (excludes secret rares)
   cards: CardStatus[];
+  chaseCards: CardStatus[]; // the set's rarest cards ("hits"), rarest-first
   complete: Progress;
   master: Progress;
   hasPartial: boolean;   // any card's finish list may be incomplete (SV-era / no price data)
@@ -68,6 +70,28 @@ interface OwnedIndex {
 }
 
 const normName = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
+
+// A set's "chase cards" / hits: its rarest cards, ranked by the rarity system's
+// sort order (rarest first). We keep anything strictly rarer than a plain "Rare" —
+// that captures the genuine pulls (illustration/secret/hyper/ultra rares, full
+// arts, etc.) across both modern (S&V) and legacy sets — then cap the list so the
+// strip stays a curated highlight rather than a second full grid. Rarity is the
+// game's own signal for a "hit" and needs no extra price fetch. Mirrors the
+// selection on the public set hub (components/hubs/ChaseCards.selectChaseCards).
+const CHASE_LIMIT = 12;
+const raritySystem = getRaritySystem("pokemon");
+const RARE_SORT = raritySystem.getSortOrder("rare");
+
+function selectChaseCards(cards: CardStatus[]): CardStatus[] {
+  return cards
+    .filter((c) => c.rarity != null && raritySystem.getSortOrder(c.rarity) < RARE_SORT)
+    .sort((a, b) => {
+      const diff = raritySystem.getSortOrder(a.rarity!) - raritySystem.getSortOrder(b.rarity!);
+      if (diff !== 0) return diff;
+      return a.card_number.localeCompare(b.card_number, undefined, { numeric: true });
+    })
+    .slice(0, CHASE_LIMIT);
+}
 
 // JustTCG prefixes set names like "SV07: Stellar Crown" / "ME03: Perfect Order" /
 // "ME: Ascended Heroes"; pokemontcg.io uses the bare name. Strip a leading
@@ -198,6 +222,7 @@ export async function getMasterSetView(
     releaseDate: meta?.releaseDate,
     printedTotal: meta?.printedTotal,
     cards,
+    chaseCards: selectChaseCards(cards),
     complete,
     master,
     hasPartial: cards.some((c) => c.variant_fidelity === "partial"),

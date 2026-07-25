@@ -6,6 +6,7 @@ import { getSetChecklist, getSetHubIndex, getListedBySet, distinctSetCardCodes }
 import { getPokemonSets } from "@/lib/sets/getPokemonSets";
 import { splitSecretRares } from "@/lib/sets/setDisplay";
 import { HubCardGrid } from "@/components/hubs/HubCardGrid";
+import { ChaseCards } from "@/components/hubs/ChaseCards";
 
 export const revalidate = 86400;
 export const dynamicParams = true;
@@ -80,6 +81,8 @@ export default async function SetDetailPage({ params }: { params: Promise<{ setC
         The full {name} card list with live market values where available. Click any card for its
         price history, condition breakdown, graded prices, and marketplace availability.
       </p>
+
+      <ChaseCards cards={cards} />
 
       {/* Master set checklist CTA */}
       <div className="rounded-2xl border border-border bg-surface p-5 flex flex-wrap items-center justify-between gap-4">

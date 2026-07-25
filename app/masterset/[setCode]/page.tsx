@@ -7,6 +7,7 @@ import { loadOwnedIndex, getMasterSetView } from "@/lib/sets/masterset";
 import { splitSecretRares } from "@/lib/sets/setDisplay";
 import { recordAndAwardCompletion } from "@/lib/sets/setCompletion";
 import { MasterSetGrid } from "@/components/masterset/MasterSetGrid";
+import { ChaseCards } from "@/components/masterset/ChaseCards";
 
 export const metadata: Metadata = { title: "Master Set", robots: { index: false } };
 
@@ -56,6 +57,8 @@ export default async function MasterSetDetailPage({
           })()}
         </div>
       </div>
+
+      <ChaseCards cards={view.chaseCards} />
 
       <MasterSetGrid
         cards={view.cards}
