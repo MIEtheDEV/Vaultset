@@ -14,6 +14,11 @@ describe("deriveIsEx", () => {
     expect(deriveIsEx("Zacian V")).toBe(true);
     expect(deriveIsEx("Charizard VMAX")).toBe(true);
     expect(deriveIsEx("Arceus VSTAR")).toBe(true);
+    expect(deriveIsEx("Mewtwo V-UNION")).toBe(true);
+  });
+
+  it("catches V-UNION via subtypes too", () => {
+    expect(deriveIsEx("Mewtwo", ["V-UNION"])).toBe(true);
   });
 
   it("does not flag ordinary cards", () => {

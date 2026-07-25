@@ -703,9 +703,6 @@ export default function AddCardPage() {
                 <option value="shadowless">Shadowless</option>
               </select>
             </div>
-            <div className="flex items-center h-full pt-6">
-              <Toggle on={isEx} onToggle={() => setIsEx((v) => !v)} label="ex card" />
-            </div>
           </div>
         </div>
 
