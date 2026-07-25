@@ -49,7 +49,7 @@ const COND_ORDER = ["near_mint", "lightly_played", "moderately_played", "heavily
 const VARIANT_LABEL: Record<string, string> = {
   standard_ex: "Standard ex", full_art: "Full Art", illustration_rare: "Illustration Rare",
   special_illustration_rare: "Special Illustration Rare", gold_card: "Gold Card", secret_rare: "Secret Rare",
-  standard_holo: "Standard Holo", standard_v: "Standard V", vmax: "VMAX", vstar: "VSTAR",
+  standard_holo: "Standard Holo", cosmos_holo: "Cosmos Holo", standard_v: "Standard V", vmax: "VMAX", vstar: "VSTAR",
   rainbow_rare: "Rainbow Rare", shiny_rare: "Shiny Rare", shiny_gx: "Shiny GX", ace_spec: "ACE SPEC",
 };
 

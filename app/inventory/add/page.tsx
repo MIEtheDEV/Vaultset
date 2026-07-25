@@ -83,6 +83,7 @@ function hasUsableMarket(t?: TcgPlayerData | null): boolean {
 const PROMO_VARIANTS = [
   { value: "standard",                  label: "Standard" },
   { value: "standard_holo",             label: "Standard Holo" },
+  { value: "cosmos_holo",               label: "Cosmos Holo" },
   { value: "standard_ex",               label: "Standard ex" },
   { value: "full_art",                  label: "Full Art" },
   { value: "illustration_rare",         label: "Illustration Rare (Alt Art)" },
@@ -269,12 +270,22 @@ export default function AddCardPage() {
     }
     setTcgplayerData(card.tcgplayer ?? null);
     setConditionPrices(null);
+
+    // Rarity: prefer an already-mapped key (scan enrichment from our own catalog),
+    // else map the raw pokemontcg.io rarity. Promo is a rarity, detected from the
+    // matched card's set name (or an enriched promo key). Computed up front so the
+    // async price resolution below can fill the promo finish once it lands.
+    const mappedRarity =
+      card.rarityKey ??
+      (card.rarity ? searchProvider.mapRarity(card.rarity.toLowerCase()) : "");
+    const finalRarity = isPromoCard(card.set.name, mappedRarity) ? "promo" : mappedRarity;
+
     // When the search payload has no usable price (e.g. a brand-new set that
-    // pokemontcg.io hasn't priced yet), resolve the real value through the pricing
-    // engine so the live estimate isn't blank. Cache-first (6h) → cheap, and it
-    // warms the shared cache for everyone. Established cards already have a price
-    // in the payload, so no extra request is spent. reqId guards against a slow
-    // response landing after the user has picked a different card.
+    // pokemontcg.io hasn't priced yet, or a tcg:-sourced promo), resolve the real
+    // value through the pricing engine so the live estimate isn't blank. Cache-first
+    // (6h) → cheap, and it warms the shared cache for everyone. Established cards
+    // already have a price in the payload, so no extra request is spent. reqId
+    // guards against a slow response landing after the user picks a different card.
     if (!hasUsableMarket(card.tcgplayer)) {
       const reqId = ++priceReqRef.current;
       setPriceLoading(true);
@@ -289,6 +300,9 @@ export default function AddCardPage() {
           if (j?.prices) {
             setTcgplayerData({ url: j.tcgplayerUrl ?? "", updatedAt: j.updatedAt ?? "", prices: j.prices });
             setConditionPrices(j.conditionPrices ?? null);
+            // Promo finish is only inferable once real prices resolve (tcg: promos
+            // arrive priceless). Fill it if the user hasn't already picked one.
+            if (finalRarity === "promo") setFinish((prev) => prev || promoFinishFromPrices(j.prices));
           }
         })
         .catch(() => { /* leave estimate blank — the card still saves and fills later */ })
@@ -303,13 +317,6 @@ export default function AddCardPage() {
     setCardNumber(card.number);
     setImageUrl(card.images.large);
 
-    // Rarity: prefer an already-mapped key (scan enrichment from our own catalog),
-    // else map the raw pokemontcg.io rarity. Promo is a rarity, detected from the
-    // matched card's set name (or an enriched promo key).
-    const mappedRarity =
-      card.rarityKey ??
-      (card.rarity ? searchProvider.mapRarity(card.rarity.toLowerCase()) : "");
-    const finalRarity = isPromoCard(card.set.name, mappedRarity) ? "promo" : mappedRarity;
     setRarity(finalRarity);
 
     if (finalRarity === "promo") {
@@ -601,7 +608,10 @@ export default function AddCardPage() {
                 onChange={(e) => handleSetSelect(e.target.value)}
                 className={selectClass()}
               >
-                <option value="">{setsLoading ? "Loading sets…" : "Select set"}</option>
+                {/* tcg:-sourced (JustTCG) promos carry a set name but no pokemontcg
+                    set code, so they can't match a dropdown option — surface the
+                    scanned set name here instead of a blank "Select set". */}
+                <option value="">{cardSet && !setCode ? cardSet : setsLoading ? "Loading sets…" : "Select set"}</option>
                 {Object.entries(setsBySeries).map(([series, seriesSets]) => (
                   <optgroup key={series} label={series}>
                     {seriesSets.map((s) => (

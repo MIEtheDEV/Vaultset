@@ -42,7 +42,7 @@ const VARIANT_LABEL: Record<string, string> = {
   standard_ex: "Standard ex", full_art: "Full Art",
   illustration_rare: "Illustration Rare (Alt Art)", special_illustration_rare: "Special Illustration Rare (Alt Art ex)",
   gold_card: "Gold Card", secret_rare: "Secret Rare", standard_holo: "Standard Holo",
-  standard_v: "Standard V", vmax: "VMAX", vstar: "VSTAR",
+  cosmos_holo: "Cosmos Holo", standard_v: "Standard V", vmax: "VMAX", vstar: "VSTAR",
   rainbow_rare: "Rainbow Rare", shiny_rare: "Shiny Rare", shiny_gx: "Shiny GX", ace_spec: "ACE SPEC",
 };
 
