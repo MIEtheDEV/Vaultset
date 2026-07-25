@@ -49,6 +49,9 @@ interface PtcgCard {
 interface SetCardRow {
   set_code: string;
   set_name: string;
+  // Denormalized per-set, like set_name — the hub grids order by it, and reading
+  // it off the row keeps pokemontcg.io off the page-render path.
+  release_date: string | null;
   card_number: string;
   card_number_raw: string | null;
   name: string;
@@ -124,6 +127,8 @@ async function main() {
 
   for (const set of sets) {
     const year = set.releaseDate ? Number(set.releaseDate.slice(0, 4)) : null;
+    // pokemontcg.io ships YYYY/MM/DD; Postgres `date` wants YYYY-MM-DD.
+    const releaseDate = set.releaseDate ? set.releaseDate.replace(/\//g, "-") : null;
     const rowsByNumber = new Map<string, SetCardRow>();
 
     // ---- 2. pokemontcg.io cards for this set -------------------------------
@@ -144,6 +149,7 @@ async function main() {
         rowsByNumber.set(num, {
           set_code: set.id,
           set_name: set.name,
+          release_date: releaseDate,
           card_number: num,
           card_number_raw: c.number,
           name: c.name,
@@ -175,6 +181,7 @@ async function main() {
       rowsByNumber.set(num, {
         set_code: set.id,
         set_name: set.name,
+        release_date: releaseDate,
         card_number: num,
         card_number_raw: String(row.card_number ?? ""),
         name: String(row.name ?? ""),

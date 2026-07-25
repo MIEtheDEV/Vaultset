@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { distinctSetCardCodes, distinctRarities, distinctSpecies, distinctListedSetCodes, distinctListedSpecies } from "@/lib/hubs/hubQueries";
+import { distinctSetCardCodes, distinctRarities, distinctSpecies, distinctListedSetCodes, distinctListedSpecies, paginate } from "@/lib/hubs/hubQueries";
 
 // Rebuilt daily; the hub enumerators read the daily-cached catalog snapshot, so
 // this stays cheap. (Well under the 50k-URL sitemap cap today; if the catalog
@@ -29,9 +29,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const supabase = createAdminClient();
 
-    const [{ data: profiles }, { data: pricedCards }, setCodes, rarities, species, listedSets, listedSpecies] = await Promise.all([
-      supabase.from("profiles").select("username, created_at").eq("banned", false),
-      supabase.from("card_prices").select("card_api_id, updated_at"),
+    // Both fetch-alls page through PostgREST's ~1000-row response cap — without
+    // paginate() the sitemap silently drops every card past the first thousand.
+    const [profiles, pricedCards, setCodes, rarities, species, listedSets, listedSpecies] = await Promise.all([
+      paginate<{ username: string; created_at: string }>((f, t) =>
+        supabase.from("profiles").select("username, created_at").eq("banned", false).order("username").range(f, t)),
+      paginate<{ card_api_id: string; updated_at: string | null }>((f, t) =>
+        supabase.from("card_prices").select("card_api_id, updated_at").order("card_api_id").range(f, t)),
       distinctSetCardCodes(),
       distinctRarities(),
       distinctSpecies(),
@@ -39,7 +43,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       distinctListedSpecies(),
     ]);
 
-    const profilePages: MetadataRoute.Sitemap = (profiles ?? []).map((p) => ({
+    const profilePages: MetadataRoute.Sitemap = profiles.map((p) => ({
       url:             `${base}/profile/${p.username}`,
       lastModified:    new Date(p.created_at),
       changeFrequency: "weekly" as const,
@@ -47,7 +51,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }));
 
     // Public card-data pages — one per cached catalog card (skip user-specific `manual:` keys).
-    const cardPages: MetadataRoute.Sitemap = (pricedCards ?? [])
+    const cardPages: MetadataRoute.Sitemap = pricedCards
       .filter((c) => !String(c.card_api_id).startsWith("manual:"))
       .map((c) => ({
         url:             `${base}/card-data/${encodeURIComponent(c.card_api_id)}`,

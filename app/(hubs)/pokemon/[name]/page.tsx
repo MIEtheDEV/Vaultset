@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getSpeciesCards, distinctSpecies } from "@/lib/hubs/hubQueries";
+import { getSpeciesCards, topSpecies } from "@/lib/hubs/hubQueries";
 import { HubCardGrid } from "@/components/hubs/HubCardGrid";
+import { ChaseCards } from "@/components/hubs/ChaseCards";
 import { speciesName } from "@/lib/cards/species";
 
 export const revalidate = 86400;
 export const dynamicParams = true;
 
+// Only the busiest species prerender; the long tail is ISR'd on first request.
 export async function generateStaticParams() {
-  return (await distinctSpecies()).map((name) => ({ name }));
+  return (await topSpecies()).map((name) => ({ name }));
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ name: string }> }): Promise<Metadata> {
@@ -18,7 +20,7 @@ export async function generateMetadata({ params }: { params: Promise<{ name: str
   const display = speciesName(cards[0].name);
   return {
     title: `All ${display} Cards — Prices & Values`,
-    description: `Every ${display} Pokémon card across sets with live market values on Vaultset. ${cards.length} cards tracked, sorted by value.`,
+    description: `Every ${display} Pokémon card across sets on Vaultset — ${cards.length} cards, newest first, with market values where available.`,
     alternates: { canonical: `/pokemon/${encodeURIComponent(name)}` },
   };
 }
@@ -44,10 +46,16 @@ export default async function PokemonPage({ params }: { params: Promise<{ name: 
       <div>
         <h1 className="text-3xl font-bold text-foreground">All {display} Cards</h1>
         <p className="mt-2 text-foreground-muted max-w-2xl">
-          Every {display} card across Pokémon TCG sets, with live market values and sorted by worth.
-          Click any card for its full price history, condition and graded prices, and listings.
+          All {cards.length} {display} cards across Pokémon TCG sets, newest set first, with live
+          market values where we have them. Click any card for its full price history, condition and
+          graded prices, and listings.
         </p>
       </div>
+      <ChaseCards
+        cards={cards}
+        subtitle={`The rarest ${display} cards ever printed`}
+        showSet
+      />
       <HubCardGrid cards={cards} showSet />
     </div>
   );

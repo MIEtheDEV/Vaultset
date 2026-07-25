@@ -3,29 +3,32 @@ import Image from "next/image";
 import { getRaritySystem } from "@/lib/rarity";
 import { RaritySymbol } from "@/components/RaritySymbol";
 import type { CatalogCard } from "@/lib/hubs/hubQueries";
+import { selectChaseCards as rankChaseCards } from "@/lib/sets/chaseCards";
 
 const raritySystem = getRaritySystem("pokemon");
-const RARE_SORT = raritySystem.getSortOrder("rare");
-const CHASE_LIMIT = 12;
 
-// A set's "chase cards" / hits: its rarest, most sought-after cards. We keep
-// anything strictly rarer than a plain "Rare" — that captures the genuine pulls
-// (illustration/secret/hyper/ultra rares, full arts, etc.) across both modern
-// (S&V) and legacy sets — rank rarest-first with market value as the tiebreak,
-// and cap the list so the strip stays a curated highlight, not a second grid.
-// Rarity is the game's own signal for a "hit", so this needs no extra price fetch.
+/** A set's hits, ranked by market value where the set is priced (see
+ *  lib/sets/chaseCards — shared with the master-set strip). */
 export function selectChaseCards(cards: CatalogCard[]): CatalogCard[] {
-  return cards
-    .filter((c) => c.rarity != null && raritySystem.getSortOrder(c.rarity) < RARE_SORT)
-    .sort((a, b) => {
-      const diff = raritySystem.getSortOrder(a.rarity!) - raritySystem.getSortOrder(b.rarity!);
-      if (diff !== 0) return diff;
-      return (b.value ?? -1) - (a.value ?? -1);
-    })
-    .slice(0, CHASE_LIMIT);
+  return rankChaseCards(cards, (c) => ({
+    rarity: c.rarity,
+    value: c.value,
+    number: c.number,
+    key: c.apiId,
+  }));
 }
 
-export function ChaseCards({ cards }: { cards: CatalogCard[] }) {
+export function ChaseCards({
+  cards,
+  subtitle = "The set's most sought-after pulls",
+  showSet = false,
+}: {
+  cards: CatalogCard[];
+  /** Overridden on the species hubs, where the strip spans many sets. */
+  subtitle?: string;
+  /** Show each card's set name — needed when the strip isn't scoped to one set. */
+  showSet?: boolean;
+}) {
   const chase = selectChaseCards(cards);
   if (chase.length === 0) return null;
 
@@ -33,18 +36,18 @@ export function ChaseCards({ cards }: { cards: CatalogCard[] }) {
     <section className="space-y-3">
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="text-lg font-semibold text-foreground">Chase Cards</h2>
-        <span className="text-sm text-foreground-muted">The set&apos;s most sought-after pulls</span>
+        <span className="text-sm text-foreground-muted">{subtitle}</span>
       </div>
       <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 [scrollbar-width:thin]">
         {chase.map((c) => (
-          <ChaseTile key={c.apiId} card={c} />
+          <ChaseTile key={c.apiId} card={c} showSet={showSet} />
         ))}
       </div>
     </section>
   );
 }
 
-function ChaseTile({ card }: { card: CatalogCard }) {
+function ChaseTile({ card, showSet = false }: { card: CatalogCard; showSet?: boolean }) {
   const label = card.rarity ? raritySystem.getDisplayLabel(card.rarity) : null;
 
   return (
@@ -68,10 +71,18 @@ function ChaseTile({ card }: { card: CatalogCard }) {
       </div>
       <div className="p-2.5 space-y-0.5">
         <p className="text-xs font-medium text-foreground truncate group-hover:text-gold transition-colors">{card.name}</p>
+        {showSet && card.setName ? (
+          <p className="text-[11px] text-foreground-muted truncate">{card.setName}</p>
+        ) : null}
         <p className="text-[11px] text-foreground-muted truncate">
           {card.number ? `#${card.number}` : ""}
           {label ? <span className="text-gold/90">{card.number ? " · " : ""}{label}</span> : null}
         </p>
+        {/* The strip is ranked by this where the set is priced — show it, or the
+            order looks arbitrary next to the rarity badge. */}
+        {card.value != null && (
+          <p className="text-xs font-semibold text-gold">${Number(card.value).toFixed(2)}</p>
+        )}
       </div>
     </Link>
   );

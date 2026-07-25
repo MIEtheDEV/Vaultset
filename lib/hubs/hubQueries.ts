@@ -2,7 +2,9 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { priceApiId } from "@/lib/pricing/cardIdentity";
+import { headlineMarketValue } from "@/lib/pricing/headlineMarketValue";
 import { speciesSlug } from "@/lib/cards/species";
+import { byCardNumberThenId, byReleaseDesc } from "./hubOrder";
 
 // Programmatic-hub data layer. A single daily-cached "catalog" snapshot (distinct
 // catalog cards + their market value) backs every hub; each hub just filters/
@@ -18,26 +20,19 @@ export interface CatalogCard {
   image: string | null;
   rarity: string | null;
   value: number | null;
+  /** ISO YYYY-MM-DD from `set_cards.release_date`; null for catalog-only cards. */
+  releaseDate: string | null;
 }
 
-function marketValue(prices: unknown): number | null {
-  if (!prices || typeof prices !== "object") return null;
-  const p = prices as Record<string, { market?: number | null } | null>;
-  return (
-    p.holofoil?.market ??
-    p.normal?.market ??
-    p.reverseHolofoil?.market ??
-    Object.values(p).map((x) => x?.market).find((m) => m != null) ??
-    null
-  );
-}
+// Shared with the master-set view so both derive the same headline figure.
+const marketValue = headlineMarketValue;
 
 // PostgREST clamps every response to the project's max-rows (~1000 here) — even
 // with a high .limit() or a wide .range() — so any fetch-all must page through in
 // chunks ≤ that cap. Pass a query factory that applies .range(from,to); we walk
 // pages until one comes back short. Requires a stable .order() on a unique column
 // so pages don't overlap or skip.
-async function paginate<T>(
+export async function paginate<T>(
   makeQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null }>,
 ): Promise<T[]> {
   const PAGE = 1000;
@@ -53,11 +48,16 @@ async function paginate<T>(
 
 async function buildCatalog(): Promise<CatalogCard[]> {
   const admin = createAdminClient();
-  const [cards, prices] = await Promise.all([
+  const [cards, prices, { data: releaseDates }] = await Promise.all([
     paginate((f, t) => admin.from("cards").select("id, name, set_name, set_code, card_number, image_url, game_data").order("id").range(f, t)),
     paginate((f, t) => admin.from("card_prices").select("card_api_id, prices").order("card_api_id").range(f, t)),
+    admin.rpc("set_release_dates"),
   ]);
   const priceMap = new Map(prices.map((p) => [p.card_api_id as string, p.prices]));
+  // `cards` has no release date of its own; inherit the set's. Cards whose
+  // set_code isn't a pokemontcg.io set id (JustTCG-sourced promos) stay null and
+  // sort into the tail.
+  const releaseMap = (releaseDates ?? {}) as Record<string, string>;
   const seen = new Map<string, CatalogCard>();
   for (const c of cards) {
     const gd = (c.game_data ?? {}) as Record<string, unknown>;
@@ -72,6 +72,7 @@ async function buildCatalog(): Promise<CatalogCard[]> {
       image: (c.image_url as string) ?? null,
       rarity: (gd.rarity as string) ?? null,
       value: marketValue(priceMap.get(apiId)),
+      releaseDate: releaseMap[c.set_code as string] ?? null,
     });
   }
   return [...seen.values()];
@@ -80,7 +81,7 @@ async function buildCatalog(): Promise<CatalogCard[]> {
 /** Distinct catalog cards with market value — daily-cached; the base for all hubs. */
 // Bump the key suffix when the catalog shape / normalization logic changes so a
 // deploy busts the persisted data cache instead of waiting out the TTL.
-export const getCatalog = unstable_cache(buildCatalog, ["seo-catalog", "v2"], {
+export const getCatalog = unstable_cache(buildCatalog, ["seo-catalog", "v3"], {
   revalidate: 86400,
   tags: ["seo-catalog"],
 });
@@ -118,23 +119,15 @@ export const getSetHubIndex = unstable_cache(buildSetHubIndex, ["seo-set-hub", "
   tags: ["seo-set-hub"],
 });
 
-// Natural collector-number order: numeric cards ascending, then non-numeric
-// (TG/GG/SV promos) lexically after them.
-const byCardNumber = (a: CatalogCard, b: CatalogCard) => {
-  const na = parseInt(a.number ?? "", 10), nb = parseInt(b.number ?? "", 10);
-  const aNum = !Number.isNaN(na), bNum = !Number.isNaN(nb);
-  if (aNum && bNum) return na - nb || (a.number ?? "").localeCompare(b.number ?? "");
-  if (aNum) return -1;
-  if (bNum) return 1;
-  return (a.number ?? "").localeCompare(b.number ?? "");
-};
+// Ordering lives in ./hubOrder (pure, unit-tested). Re-exported for callers.
+export { byCardNumber, byCardNumberThenId, byReleaseDesc } from "./hubOrder";
 
 /** The full card checklist for a set (with market value where we have it), by number. */
 export async function getSetChecklist(setCode: string): Promise<CatalogCard[]> {
   const admin = createAdminClient();
   const { data: rows } = await admin
     .from("set_cards")
-    .select("pokemon_api_id, name, set_code, set_name, card_number, image_url, rarity")
+    .select("pokemon_api_id, name, set_code, set_name, card_number, image_url, rarity, release_date")
     .eq("set_code", setCode);
   // Only cards with a native pokemontcg.io id can link to a /card-data page.
   const cards = (rows ?? []).filter((r) => r.pokemon_api_id);
@@ -153,16 +146,92 @@ export async function getSetChecklist(setCode: string): Promise<CatalogCard[]> {
       image: (r.image_url as string) ?? null,
       rarity: (r.rarity as string) ?? null,
       value: marketValue(priceMap.get(r.pokemon_api_id as string)),
+      releaseDate: (r.release_date as string) ?? null,
     }))
-    .sort(byCardNumber);
+    // A single set is already one release date — number order is the natural
+    // read here. Tiebreak on apiId so the order is reproducible either way.
+    .sort(byCardNumberThenId);
 }
 
 export async function getRarityCards(rarityKey: string): Promise<CatalogCard[]> {
-  return (await getCatalog()).filter((c) => c.rarity === rarityKey).sort(byValueDesc);
+  return (await getCatalog()).filter((c) => c.rarity === rarityKey).sort(byReleaseDesc);
 }
 
+// ── Species hubs: sourced from `set_cards`, same reasoning as the set hubs ──
+// These used to filter getCatalog(), which only holds cards users have added or
+// searched — so "All Empoleon Cards" rendered the 1 Empoleon anyone owned, not
+// the 22 that exist. We instead resolve slug → the real card names in the full
+// checklist, then do a bounded per-species read (largest species is ~123 rows).
+//
+// The slug→name map can't be built in SQL: speciesName()'s normalization (the
+// "Mewtwo & Mew GX" / "M Charizard EX" / trailing-mechanic rules) lives in TS
+// and must stay the single source of truth. So we pull just the distinct names
+// (a ~100KB aggregate, cap-safe via the RPC) and group them here.
+
+export interface SpeciesSummary { slug: string; names: string[]; count: number }
+
+async function buildSpeciesIndex(): Promise<SpeciesSummary[]> {
+  const admin = createAdminClient();
+  const { data } = await admin.rpc("set_card_name_counts");
+  const rows = (data ?? []) as { name: string; n: number }[];
+  const bySlug = new Map<string, SpeciesSummary>();
+  for (const r of rows) {
+    const slug = speciesSlug(r.name);
+    if (!slug) continue;
+    const e = bySlug.get(slug) ?? { slug, names: [], count: 0 };
+    e.names.push(r.name);
+    e.count += r.n;
+    bySlug.set(slug, e);
+  }
+  return [...bySlug.values()].sort((a, b) => b.count - a.count);
+}
+
+/** slug → the checklist card names that roll up to it — daily-cached. */
+export const getSpeciesIndex = unstable_cache(buildSpeciesIndex, ["seo-species", "v2"], {
+  revalidate: 86400,
+  tags: ["seo-species"],
+});
+
 export async function getSpeciesCards(slug: string): Promise<CatalogCard[]> {
-  return (await getCatalog()).filter((c) => speciesSlug(c.name) === slug).sort(byValueDesc);
+  const entry = (await getSpeciesIndex()).find((s) => s.slug === slug);
+
+  let checklist: CatalogCard[] = [];
+  if (entry?.names.length) {
+    const admin = createAdminClient();
+    const { data: rows } = await admin
+      .from("set_cards")
+      .select("pokemon_api_id, name, set_code, set_name, card_number, image_url, rarity, release_date")
+      .in("name", entry.names)
+      .not("pokemon_api_id", "is", null)
+      // byReleaseDesc below is authoritative; ordering the fetch too just makes
+      // the intermediate state reproducible when debugging.
+      .order("release_date", { ascending: false })
+      .order("pokemon_api_id");
+    const apiIds = (rows ?? []).map((r) => r.pokemon_api_id as string);
+    const { data: prices } = apiIds.length
+      ? await admin.from("card_prices").select("card_api_id, prices").in("card_api_id", apiIds)
+      : { data: [] as { card_api_id: string; prices: unknown }[] };
+    const priceMap = new Map((prices ?? []).map((p) => [p.card_api_id as string, p.prices]));
+    checklist = (rows ?? []).map((r) => ({
+      apiId: r.pokemon_api_id as string,
+      name: r.name as string,
+      setCode: (r.set_code as string) ?? null,
+      setName: (r.set_name as string) ?? "",
+      number: (r.card_number as string) ?? null,
+      image: (r.image_url as string) ?? null,
+      rarity: (r.rarity as string) ?? null,
+      value: marketValue(priceMap.get(r.pokemon_api_id as string)),
+      releaseDate: (r.release_date as string) ?? null,
+    }));
+  }
+
+  // Union in the catalog so JustTCG-sourced promos (`tcg:` ids, absent from the
+  // pokemontcg.io-built checklist) don't disappear from hubs that already rank.
+  const merged = new Map(checklist.map((c) => [c.apiId, c]));
+  for (const c of await getCatalog()) {
+    if (speciesSlug(c.name) === slug && !merged.has(c.apiId)) merged.set(c.apiId, c);
+  }
+  return [...merged.values()].sort(byReleaseDesc);
 }
 
 export async function getMostValuable(limit = 100): Promise<CatalogCard[]> {
@@ -176,8 +245,20 @@ export async function distinctSetCardCodes(): Promise<string[]> {
 export async function distinctRarities(): Promise<string[]> {
   return [...new Set((await getCatalog()).map((c) => c.rarity).filter((r): r is string => !!r))];
 }
+/** Every species slug (checklist ∪ catalog) — for the sitemap. */
 export async function distinctSpecies(): Promise<string[]> {
-  return [...new Set((await getCatalog()).map((c) => speciesSlug(c.name)).filter(Boolean))];
+  const [index, catalog] = await Promise.all([getSpeciesIndex(), getCatalog()]);
+  return [...new Set([
+    ...index.map((s) => s.slug),
+    ...catalog.map((c) => speciesSlug(c.name)),
+  ].filter(Boolean))];
+}
+
+/** The busiest species, for build-time prerender. The other ~3k render on first
+ *  request via ISR (`dynamicParams`) — prerendering all of them would add
+ *  thousands of DB round-trips to every build for pages nobody has hit yet. */
+export async function topSpecies(limit = 250): Promise<string[]> {
+  return (await getSpeciesIndex()).slice(0, limit).map((s) => s.slug);
 }
 
 // ── Marketplace category hubs: distinct cards currently listed for sale/trade ──
@@ -203,11 +284,13 @@ async function buildListedCatalog(): Promise<ListedCard[]> {
 
   const cardIds = [...new Set(items.map((i) => i.card_id as string))];
   const sellerIds = [...new Set(items.map((i) => i.user_id as string))];
-  const [{ data: cards }, { data: sellers }] = await Promise.all([
+  const [{ data: cards }, { data: sellers }, { data: releaseDates }] = await Promise.all([
     admin.from("cards").select("id, name, set_name, set_code, card_number, image_url, game_data").in("id", cardIds),
     admin.from("profiles").select("id, banned").in("id", sellerIds),
+    admin.rpc("set_release_dates"),
   ]);
   const banned = new Set((sellers ?? []).filter((s) => s.banned).map((s) => s.id as string));
+  const releaseMap = (releaseDates ?? {}) as Record<string, string>;
 
   const meta = new Map<string, CatalogCard>();
   for (const c of cards ?? []) {
@@ -223,6 +306,7 @@ async function buildListedCatalog(): Promise<ListedCard[]> {
       image: (c.image_url as string) ?? null,
       rarity: (gd.rarity as string) ?? null,
       value: null,
+      releaseDate: releaseMap[c.set_code as string] ?? null,
     });
   }
   const apiIds = [...new Set([...meta.values()].map((m) => m.apiId))];
@@ -249,13 +333,17 @@ async function buildListedCatalog(): Promise<ListedCard[]> {
 }
 
 /** Distinct cards with active listings — hourly-cached (listings churn faster). */
-export const getListedCatalog = unstable_cache(buildListedCatalog, ["seo-listed", "v2"], {
+export const getListedCatalog = unstable_cache(buildListedCatalog, ["seo-listed", "v3"], {
   revalidate: 3600,
   tags: ["seo-listed"],
 });
 
+// Most-listed first, then value — but both tie often (most cards have a single
+// listing), so fall through to the total order rather than leaving it to the DB.
 const byListing = (a: ListedCard, b: ListedCard) =>
-  (b.forSale + b.forTrade) - (a.forSale + a.forTrade) || (b.value ?? -1) - (a.value ?? -1);
+  (b.forSale + b.forTrade) - (a.forSale + a.forTrade)
+  || (b.value ?? -1) - (a.value ?? -1)
+  || byReleaseDesc(a, b);
 
 export async function getListedBySet(setCode: string): Promise<ListedCard[]> {
   return (await getListedCatalog()).filter((c) => c.setCode === setCode).sort(byListing);

@@ -3199,6 +3199,9 @@ CREATE TABLE IF NOT EXISTS "public"."set_cards" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "set_code" "text" NOT NULL,
     "set_name" "text" NOT NULL,
+    -- Denormalized per-set (like set_name) so the hub grids can order by recency
+    -- without a live pokemontcg.io fetch on the render path.
+    "release_date" "date",
     "card_number" "text" NOT NULL,
     "card_number_raw" "text",
     "name" "text" NOT NULL,
@@ -3217,6 +3220,8 @@ CREATE TABLE IF NOT EXISTS "public"."set_cards" (
 ALTER TABLE "public"."set_cards" OWNER TO "postgres";
 CREATE INDEX IF NOT EXISTS "set_cards_set_code_idx" ON "public"."set_cards" USING "btree" ("set_code");
 CREATE INDEX IF NOT EXISTS "set_cards_pokemon_api_id_idx" ON "public"."set_cards" USING "btree" ("pokemon_api_id");
+-- The /pokemon/[species] hub reads set_cards by `name IN (...)`.
+CREATE INDEX IF NOT EXISTS "set_cards_name_idx" ON "public"."set_cards" USING "btree" ("name");
 ALTER TABLE "public"."set_cards" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Set cards are publicly readable" ON "public"."set_cards" FOR SELECT USING (true);
 CREATE POLICY "Service role can manage set cards" ON "public"."set_cards" USING (("auth"."role"() = 'service_role'::"text")) WITH CHECK (("auth"."role"() = 'service_role'::"text"));
@@ -3258,6 +3263,43 @@ AS $$
 $$;
 ALTER FUNCTION "public"."set_completion_totals"() OWNER TO "postgres";
 GRANT ALL ON FUNCTION "public"."set_completion_totals"() TO "anon", "authenticated", "service_role";
+
+-- set_code → release date as one JSONB object (156 keys), so the catalog snapshot
+-- (built from `cards`, which has no release date) can inherit each card's set
+-- release date for recency ordering without a live pokemontcg.io fetch.
+CREATE OR REPLACE FUNCTION "public"."set_release_dates"()
+RETURNS "jsonb"
+LANGUAGE "sql" STABLE
+AS $$
+  select coalesce(jsonb_object_agg(set_code, release_date), '{}'::jsonb)
+  from (
+    select set_code, max(release_date) as release_date
+    from public.set_cards
+    where release_date is not null
+    group by set_code
+  ) t;
+$$;
+ALTER FUNCTION "public"."set_release_dates"() OWNER TO "postgres";
+GRANT EXECUTE ON FUNCTION "public"."set_release_dates"() TO "service_role";
+
+-- Backs the /pokemon/[species] hubs. Returns one JSONB value (not a rowset) so
+-- PostgREST's max-rows cap can't silently truncate it: [{name, n}, ...] over the
+-- full set_cards checklist. ~4.2k entries / ~100KB — small enough for a daily
+-- unstable_cache entry, unlike the 18k-row / 4MB table itself.
+CREATE OR REPLACE FUNCTION "public"."set_card_name_counts"()
+RETURNS "jsonb"
+LANGUAGE "sql" STABLE
+AS $$
+  select coalesce(jsonb_agg(jsonb_build_object('name', name, 'n', n)), '[]'::jsonb)
+  from (
+    select name, count(*)::int as n
+    from public.set_cards
+    where pokemon_api_id is not null
+    group by name
+  ) t;
+$$;
+ALTER FUNCTION "public"."set_card_name_counts"() OWNER TO "postgres";
+GRANT EXECUTE ON FUNCTION "public"."set_card_name_counts"() TO "service_role";
 
 
 
