@@ -3,7 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPokemonSets } from "@/lib/sets/getPokemonSets";
 import { normalizeCardNumber } from "@/lib/search/cardNumber";
 import { sortFinishes } from "@/lib/sets/setCardFinishes";
-import { getRaritySystem } from "@/lib/rarity";
+import { selectChaseCards as rankChaseCards } from "@/lib/sets/chaseCards";
+import { headlineMarketValue } from "@/lib/pricing/headlineMarketValue";
 
 // Master-set completion: cross-reference the shared `set_cards` checklist against
 // a user's owned `collection_items`. Two tiers:
@@ -29,6 +30,8 @@ export interface CardStatus extends SetCardRow {
   ownedFinishes: string[]; // subset of `finishes` the user owns
   ownedComplete: boolean;  // owns at least one copy (any finish)
   ownedMaster: boolean;    // owns every finish
+  /** Headline market value, when cached. Ranks the chase strip; null = unpriced. */
+  value: number | null;
 }
 
 export interface Progress { owned: number; total: number }
@@ -71,27 +74,16 @@ interface OwnedIndex {
 
 const normName = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
 
-// A set's "chase cards" / hits: its rarest cards, ranked by the rarity system's
-// sort order (rarest first). We keep anything strictly rarer than a plain "Rare" —
-// that captures the genuine pulls (illustration/secret/hyper/ultra rares, full
-// arts, etc.) across both modern (S&V) and legacy sets — then cap the list so the
-// strip stays a curated highlight rather than a second full grid. Rarity is the
-// game's own signal for a "hit" and needs no extra price fetch. Mirrors the
-// selection on the public set hub (components/hubs/ChaseCards.selectChaseCards).
-const CHASE_LIMIT = 12;
-const raritySystem = getRaritySystem("pokemon");
-const RARE_SORT = raritySystem.getSortOrder("rare");
-
-function selectChaseCards(cards: CardStatus[]): CardStatus[] {
-  return cards
-    .filter((c) => c.rarity != null && raritySystem.getSortOrder(c.rarity) < RARE_SORT)
-    .sort((a, b) => {
-      const diff = raritySystem.getSortOrder(a.rarity!) - raritySystem.getSortOrder(b.rarity!);
-      if (diff !== 0) return diff;
-      return a.card_number.localeCompare(b.card_number, undefined, { numeric: true });
-    })
-    .slice(0, CHASE_LIMIT);
-}
+// Chase-card selection is shared with the public set hub (lib/sets/chaseCards) so
+// the two strips for the same set can't disagree — they previously used different
+// tiebreaks. Ranking is value-first where the set is priced, rarity otherwise.
+const selectChaseCards = (cards: CardStatus[]): CardStatus[] =>
+  rankChaseCards(cards, (c) => ({
+    rarity: c.rarity,
+    value: c.value,
+    number: c.card_number,
+    key: c.pokemon_api_id ?? c.card_number,
+  }));
 
 // JustTCG prefixes set names like "SV07: Stellar Crown" / "ME03: Perfect Order" /
 // "ME: Ascended Heroes"; pokemontcg.io uses the bare name. Strip a leading
@@ -192,6 +184,14 @@ export async function getMasterSetView(
   const setRows = (rows ?? []) as (SetCardRow & { card_number_raw: string | null })[];
   if (setRows.length === 0) return null;
 
+  // Cached prices for this set — one bounded read (≤255 ids), no upstream fetch.
+  // Only used to rank the chase strip; a miss just means rarity ordering.
+  const apiIds = setRows.map((r) => r.pokemon_api_id).filter((id): id is string => !!id);
+  const { data: priceRows } = apiIds.length
+    ? await supabase.from("card_prices").select("card_api_id, prices").in("card_api_id", apiIds)
+    : { data: [] as { card_api_id: string; prices: unknown }[] };
+  const priceMap = new Map((priceRows ?? []).map((p) => [p.card_api_id as string, p.prices]));
+
   const ownedNumbers = ownedIndex.bySet.get(setCode);
   const cards: CardStatus[] = setRows.map((r) => {
     const ownedFinishes = resolveOwnedFinishes(r.finishes, ownedNumbers?.get(r.card_number));
@@ -200,6 +200,7 @@ export async function getMasterSetView(
       ownedFinishes,
       ownedComplete: (ownedNumbers?.get(r.card_number)?.size ?? 0) > 0,
       ownedMaster: r.finishes.length > 0 && ownedFinishes.length >= r.finishes.length,
+      value: r.pokemon_api_id ? headlineMarketValue(priceMap.get(r.pokemon_api_id)) : null,
     };
   });
 
