@@ -39,12 +39,16 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       POKEMON_TCG_API_KEY: ${{ secrets.POKEMON_TCG_API_KEY }}
       JUSTTCG_API_KEY: ${{ secrets.JUSTTCG_API_KEY }}
-      # REQUIRED for correct budgeting. justTcgLimits() falls back to the FREE
-      # tier (100/day, 20 per batch) unless one of these says otherwise — so
-      # omitting them silently throttles the job to a tenth of the real quota
-      # rather than failing. Set JUSTTCG_TIER to match the actual plan.
-      JUSTTCG_TIER: ${{ secrets.JUSTTCG_TIER }}
+      # JUSTTCG_API_KEY_PAID is the one that matters. It both authenticates the
+      # request (apiKey() prefers it) and selects the plan — justTcgLimits()
+      # infers "starter" (1000/day, 200 per batch) from its presence alone.
+      # Without it the job silently drops to the free tier, 100/day and 20 per
+      # batch, doing a tenth of the work rather than failing.
       JUSTTCG_API_KEY_PAID: ${{ secrets.JUSTTCG_API_KEY_PAID }}
+      # Optional override, unset locally. Only needed ABOVE starter — the
+      # inference above always says "starter", so a professional/enterprise plan
+      # would stay capped at 1000/day until this names the real tier.
+      JUSTTCG_TIER: ${{ secrets.JUSTTCG_TIER }}
 
     steps:
       - uses: actions/checkout@v4
