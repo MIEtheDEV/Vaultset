@@ -297,7 +297,7 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
   const variantLabel = variant ? (VARIANT_LABEL[variant] ?? variant) : null;
   // Variant chip only when it adds info beyond the rarity label (they often coincide).
   const showVariant = !!variantLabel && variantLabel !== rarityLabel;
-  const isPromo = !!gd.is_promo;
+  const isPromo = gd.rarity === "promo";
   const isEx = !!gd.is_ex;
   const tcgUrl = ((priceRow as any)?.tcgplayer_url as string | null) ?? resolvedSr?.tcgplayer?.url ?? null;
   const updatedAt = (priceRow as any)?.updated_at as string | null;

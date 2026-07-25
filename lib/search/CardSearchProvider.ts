@@ -22,6 +22,10 @@ export interface SearchResult {
   name: string;
   number: string;
   rarity?: string;
+  /** An already-mapped internal rarity key (e.g. "double_rare"), filled by scan
+   *  enrichment from our own catalog when `rarity` (the raw pokemontcg.io string)
+   *  is absent. Consumers use it verbatim — do NOT run it through mapRarity. */
+  rarityKey?: string;
   subtypes?: string[];
   set: { id: string; name: string };
   images: { small: string; large: string };

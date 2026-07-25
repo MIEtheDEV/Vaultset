@@ -649,7 +649,7 @@ export default async function DashboardPage() {
               {recentItems.map((item) => {
                 const card = Array.isArray(item.cards) ? item.cards[0] : item.cards;
                 if (!card) return null;
-                const hasTags = Boolean(item.grader || item.condition || (card as any).game_data?.is_promo || item.quantity > 1);
+                const hasTags = Boolean(item.grader || item.condition || (card as any).game_data?.rarity === "promo" || item.quantity > 1);
                 return (
                   <li key={item.id} className="flex flex-col gap-2 px-6 py-3">
                     <div className="flex items-center gap-4">
@@ -663,8 +663,8 @@ export default async function DashboardPage() {
                           className="h-12 w-8 rounded-md object-cover flex-shrink-0"
                         />
                       ) : (
-                        <div className={`relative h-12 w-8 rounded-md flex-shrink-0 overflow-hidden ${(card as any).game_data?.is_promo ? "border border-gold/40 bg-surface shadow-[0_0_8px_rgba(232,184,75,0.15)]" : "bg-surface-raised"}`}>
-                          {(card as any).game_data?.is_promo && (
+                        <div className={`relative h-12 w-8 rounded-md flex-shrink-0 overflow-hidden ${(card as any).game_data?.rarity === "promo" ? "border border-gold/40 bg-surface shadow-[0_0_8px_rgba(232,184,75,0.15)]" : "bg-surface-raised"}`}>
+                          {(card as any).game_data?.rarity === "promo" && (
                             <Image src="/img/promo.png" alt="Promo Card" fill sizes="32px" className="object-contain p-0.5" />
                           )}
                         </div>
@@ -687,7 +687,7 @@ export default async function DashboardPage() {
                             {item.condition.replace(/_/g, " ")}
                           </span>
                         ) : null}
-                        {(card as any).game_data?.is_promo && (
+                        {(card as any).game_data?.rarity === "promo" && (
                           <span className="rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-400">Promo</span>
                         )}
                         {item.quantity > 1 && (

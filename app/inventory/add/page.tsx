@@ -8,10 +8,10 @@ import { createClient } from "@/utils/supabase/client";
 import { PokemonCardSearch } from "@/components/PokemonCardSearch";
 import { CardScanner } from "@/components/CardScanner";
 import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
-import { RaritySymbol } from "@/components/RaritySymbol";
 import { RaritySelect } from "@/components/RaritySelect";
 import { PokemonTCGProvider } from "@/lib/search/PokemonTCGProvider";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
+import { deriveIsEx, isPromoCard } from "@/lib/cards/cardTraits";
 
 // Instantiated once at module level — demonstrates encapsulation:
 // all game-specific rarity and search logic lives inside these classes.
@@ -135,7 +135,6 @@ export default function AddCardPage() {
   const [finish, setFinish]   = useState("");
   const [edition, setEdition] = useState("");
   const [isEx, setIsEx]       = useState(false);
-  const [isPromo, setIsPromo] = useState(false);
 
   const [condition, setCondition]   = useState("");
   const [quantity, setQuantity]     = useState("1");
@@ -234,11 +233,14 @@ export default function AddCardPage() {
   // Derived from rarity via the rarity system — demonstrates polymorphism:
   // swapping raritySystem for a different game's implementation changes
   // all variant/finish behaviour without touching this component.
+  // Promo is a rarity now, not a separate flag. A promo card has no rarity-locked
+  // variant/finish, so those become manual selectors (variantInfo === null).
+  const isPromo = rarity === "promo";
   const variantInfo = isPromo ? null : raritySystem.getVariantInfo(rarity);
 
   function applyRarity(mappedRarity: string) {
     setRarity(mappedRarity);
-    if (isPromo) return;
+    if (mappedRarity === "promo") { setVariant(""); setFinish(""); return; }
     const info = raritySystem.getVariantInfo(mappedRarity);
     if (info) {
       setVariant(info.variantKey);
@@ -249,22 +251,8 @@ export default function AddCardPage() {
     }
   }
 
-  function handlePromoToggle() {
-    const next = !isPromo;
-    setIsPromo(next);
-    if (next) {
-      setRarity("promo");
-      setVariant("");
-      setFinish("");
-    } else {
-      setRarity("");
-      setVariant("");
-      setFinish("");
-    }
-  }
-
   function handlePokemonSelect(card: {
-    id: string; name: string; number: string; rarity?: string;
+    id: string; name: string; number: string; rarity?: string; rarityKey?: string;
     subtypes?: string[];
     set: { id: string; name: string };
     images: { small: string; large: string };
@@ -315,28 +303,27 @@ export default function AddCardPage() {
     setCardNumber(card.number);
     setImageUrl(card.images.large);
 
-    const detectedPromo = /promo/i.test(card.set.name);
-    setIsPromo(detectedPromo);
+    // Rarity: prefer an already-mapped key (scan enrichment from our own catalog),
+    // else map the raw pokemontcg.io rarity. Promo is a rarity, detected from the
+    // matched card's set name (or an enriched promo key).
+    const mappedRarity =
+      card.rarityKey ??
+      (card.rarity ? searchProvider.mapRarity(card.rarity.toLowerCase()) : "");
+    const finalRarity = isPromoCard(card.set.name, mappedRarity) ? "promo" : mappedRarity;
+    setRarity(finalRarity);
 
-    if (detectedPromo) {
-      setRarity("promo");
+    if (finalRarity === "promo") {
       setVariant("");
       // Preselect the finish when the card's pricing data implies a single
       // printing; leave blank (user picks) when it's ambiguous.
       setFinish(promoFinishFromPrices(card.tcgplayer?.prices));
     } else {
-      const mappedRarity = card.rarity ? searchProvider.mapRarity(card.rarity.toLowerCase()) : "";
-      setRarity(mappedRarity);
-      const info = raritySystem.getVariantInfo(mappedRarity);
+      const info = raritySystem.getVariantInfo(finalRarity);
       if (info) { setVariant(info.variantKey); setFinish(info.finishKey); }
       else       { setVariant(""); setFinish(""); }
     }
 
-    const sub = card.subtypes?.map((s) => s.toLowerCase()) ?? [];
-    setIsEx(
-      sub.includes("ex") || sub.includes("mega") || sub.includes("gx") ||
-      sub.includes("v")  || sub.includes("vmax") || sub.includes("vstar")
-    );
+    setIsEx(deriveIsEx(card.name, card.subtypes));
 
     // Snapshot the auto-filled identity so we can tell at save time whether the
     // user had to correct the scanned/searched card's data.
@@ -349,8 +336,7 @@ export default function AddCardPage() {
         name: card.name,
         setCode: card.set.id,
         cardNumber: card.number,
-        isPromo: String(detectedPromo),
-        rarity: detectedPromo ? "promo" : (card.rarity ? searchProvider.mapRarity(card.rarity.toLowerCase()) : ""),
+        rarity: finalRarity,
       },
     };
   }
@@ -405,7 +391,6 @@ export default function AddCardPage() {
     if (edition)      game_data.edition        = edition;
     if (rarity)       game_data.rarity         = rarity;
     game_data.is_ex    = isEx;
-    game_data.is_promo = isPromo;
 
     const { data: card, error: cardError } = await supabase
       .from("cards")
@@ -484,7 +469,7 @@ export default function AddCardPage() {
     const source = sel?.source ?? "manual";
     let modifiedFields: string[] = [];
     if (sel) {
-      const cur: Record<string, string> = { name, setCode, cardNumber, isPromo: String(isPromo), rarity };
+      const cur: Record<string, string> = { name, setCode, cardNumber, rarity };
       modifiedFields = Object.keys(sel.snapshot).filter((k) => sel.snapshot[k] !== cur[k]);
     }
     pendingEventRef.current = {
@@ -639,28 +624,16 @@ export default function AddCardPage() {
               </div>
             ) : null}
 
-            {/* Promo toggle */}
-            <div className="sm:col-span-2">
-              <Toggle on={isPromo} onToggle={handlePromoToggle} label="Promo card" />
-              {isPromo && (
-                <p className="mt-1.5 text-xs text-foreground-muted">
-                  Rarity no longer determines variant or finish — select both manually below.
-                </p>
-              )}
-            </div>
-
-            {/* Rarity — locked to "Promo" when isPromo, otherwise user-selectable */}
+            {/* Rarity — auto-filled from the matched card; Promo is a selectable
+                option here (there's no separate promo toggle). Custom dropdown so
+                the rarity symbol renders on the button and every option. */}
             <div className="sm:col-span-2">
               <label className={labelClass()}>Rarity</label>
-              {isPromo ? (
-                <div className={lockedFieldClass()}>
-                  <span className="flex items-center gap-1.5 text-sm text-foreground"><RaritySymbol rarity="promo" />Promo</span>
-                  <span className="text-xs text-foreground-muted">auto</span>
-                </div>
-              ) : (
-                // Custom dropdown so the rarity symbol shows on the button and every option
-                // (a native <select> can't render SVG inside its <option>s).
-                <RaritySelect value={rarity} onChange={applyRarity} />
+              <RaritySelect value={rarity} onChange={applyRarity} />
+              {isPromo && (
+                <p className="mt-1.5 text-xs text-foreground-muted">
+                  Promo — rarity doesn&apos;t determine variant or finish; select both below.
+                </p>
               )}
             </div>
 

@@ -44,7 +44,7 @@ export default async function LinkCardsPage({ params }: { params: Promise<{ id: 
           set_name:            card?.set_name ?? "—",
           card_number:         card?.card_number ?? null,
           image_url:           card?.image_url ?? null,
-          is_promo:            !!(card?.game_data as any)?.is_promo,
+          isPromo:             (card?.game_data as any)?.rarity === "promo",
         };
       })}
     />

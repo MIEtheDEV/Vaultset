@@ -19,6 +19,7 @@ interface ScannedCard {
   name: string;
   number: string;
   rarity?: string;
+  rarityKey?: string;
   subtypes?: string[];
   set: { id: string; name: string };
   images: { small: string; large: string };

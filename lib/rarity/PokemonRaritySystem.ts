@@ -135,9 +135,17 @@ export class PokemonRaritySystem extends RaritySystem {
       { id: "modern", group: "Modern — Scarlet & Violet (2023+)" },
       { id: "legacy", group: "Legacy — Sword & Shield / Sun & Moon" },
     ];
-    return groups.map(({ id, group }) => ({
+    const out: RarityGroup[] = groups.map(({ id, group }) => ({
       group,
       options: RARITIES.filter((r) => r.group === id).map((r) => ({ value: r.key, label: r.label })),
     }));
+    // Era-agnostic rarities (e.g. Promo) sit outside the modern/legacy split — a
+    // card is a promo regardless of era. Surface them so promo is a first-class,
+    // manually-selectable rarity (there's no separate promo toggle anymore).
+    const special = RARITIES.filter((r) => r.group === null);
+    if (special.length) {
+      out.push({ group: "Special", options: special.map((r) => ({ value: r.key, label: r.label })) });
+    }
+    return out;
   }
 }

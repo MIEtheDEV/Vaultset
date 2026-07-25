@@ -24,8 +24,7 @@ export type ResolvedCard = {
   set_name: string;
   card_number: string;
   image_url: string;
-  rarity: string;
-  is_promo: boolean;
+  rarity: string; // internal key; "promo" for promo cards (no separate flag)
 };
 
 function getHeaders(): Record<string, string> {
@@ -68,14 +67,15 @@ function mapRarity(apiRarity: string): string {
 }
 
 function toResolved(card: Record<string, any>): ResolvedCard {
+  const setName = card.set?.name ?? "";
   return {
     pokemon_api_id: card.id,
     name:           card.name,
-    set_name:       card.set?.name ?? "",
+    set_name:       setName,
     card_number:    card.number ?? "",
     image_url:      card.images?.small ?? "",
-    rarity:         card.rarity ? mapRarity(card.rarity) : "",
-    is_promo:       /promo/i.test(card.set?.name ?? ""),
+    // Promo is a rarity; detect it from the set name, else map the API rarity.
+    rarity:         /promo/i.test(setName) ? "promo" : (card.rarity ? mapRarity(card.rarity) : ""),
   };
 }
 

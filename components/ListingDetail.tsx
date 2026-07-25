@@ -99,9 +99,9 @@ export function ListingDetail({
   // other users — the owner still sees normal controls on their own listing.
   const onVacation = sellerOnVacation && !isOwn;
   const onHold   = listing.on_hold || onVacation;
-  const isPromo  = !!(card.game_data?.is_promo);
   const gd       = card.game_data ?? {};
   const rarity   = gd.rarity   as string | undefined;
+  const isPromo  = rarity === "promo";
   const variant  = gd.variant  as string | undefined;
   const edition  = gd.edition  as string | undefined;
   const isEx     = !!(gd.is_ex);
@@ -390,7 +390,7 @@ export function ListingDetail({
           <div className="flex gap-3 overflow-x-auto pb-2">
             {otherListings.map((item) => {
               if (!item.card) return null;
-              const otherIsPromo = !!(item.card.game_data as any)?.is_promo;
+              const otherIsPromo = (item.card.game_data as any)?.rarity === "promo";
               return (
                 <Link
                   key={item.id}

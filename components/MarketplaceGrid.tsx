@@ -206,7 +206,7 @@ export function MarketplaceGrid({
                   <div className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-lg bg-surface">
                     {card.image_url ? (
                       <Image src={card.image_url} alt={card.name} fill sizes="144px" className="object-contain" />
-                    ) : (card.game_data as any)?.is_promo ? (
+                    ) : (card.game_data as any)?.rarity === "promo" ? (
                       <Image src="/img/promo.png" alt="Promo" fill sizes="144px" className="object-contain" style={{ padding: "0.5rem" }} />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-foreground-muted">
@@ -347,7 +347,7 @@ export function MarketplaceGrid({
               if (!card) return null;
               const condKey  = item.condition ?? "";
               const isOwn    = item.user_id === currentUserId;
-              const isPromo  = !!(card.game_data as any)?.is_promo;
+              const isPromo  = (card.game_data as any)?.rarity === "promo";
               const isWanted = !isOwn && wishedApiSet.has(getCardApiId(item));
 
               return (

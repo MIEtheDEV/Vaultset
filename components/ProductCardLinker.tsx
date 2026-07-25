@@ -22,7 +22,7 @@ interface CardItem {
   set_name:    string;
   card_number: string | null;
   image_url:   string | null;
-  is_promo:    boolean;
+  isPromo:     boolean;
 }
 
 export function ProductCardLinker({
@@ -191,7 +191,7 @@ export function ProductCardLinker({
                 <div className="relative aspect-[2.5/3.5] w-full overflow-hidden bg-surface-raised">
                   {item.image_url ? (
                     <Image src={item.image_url} alt={item.name} fill sizes="(max-width: 640px) 50vw, 25vw" className="object-contain" />
-                  ) : item.is_promo ? (
+                  ) : item.isPromo ? (
                     <div className="absolute inset-0 overflow-hidden">
                       <Image src="/img/promo.png" alt="Promo" fill sizes="(max-width: 640px) 50vw, 25vw" className="object-contain" style={{ padding: "3rem 2rem" }} />
                     </div>

@@ -84,7 +84,7 @@ export interface InventoryItem {
     card_number: string | null;
     year: number | null;
     image_url: string | null;
-    game_data: { is_promo?: boolean; [key: string]: unknown } | null;
+    game_data: { rarity?: string; [key: string]: unknown } | null;
   } | {
     id: string;
     game: string;
@@ -93,7 +93,7 @@ export interface InventoryItem {
     card_number: string | null;
     year: number | null;
     image_url: string | null;
-    game_data: { is_promo?: boolean; [key: string]: unknown } | null;
+    game_data: { rarity?: string; [key: string]: unknown } | null;
   }[] | null;
 }
 
@@ -340,7 +340,7 @@ export function InventoryGrid({ items, proposedItemIds = [], canRefresh = false,
                 <div className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-t-2xl bg-surface-raised">
                   {card.image_url ? (
                     <CardImage src={card.image_url} alt={card.name} />
-                  ) : card.game_data?.is_promo ? (
+                  ) : card.game_data?.rarity === "promo" ? (
                     <div className="absolute inset-0 overflow-hidden">
                       <Image
                         src="/img/promo.png"
@@ -419,7 +419,7 @@ export function InventoryGrid({ items, proposedItemIds = [], canRefresh = false,
                           {finishLabel[item.finish] ?? item.finish}
                         </span>
                       )}
-                      {card.game_data?.is_promo && (
+                      {card.game_data?.rarity === "promo" && (
                         <span className="rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-400">Promo</span>
                       )}
                     </div>

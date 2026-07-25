@@ -59,6 +59,43 @@ function fromIndex(entry: ScoredEntry): SearchResult {
   } as SearchResult;
 }
 
+/** Fill an already-mapped rarity key for candidates that arrived without a rarity
+ *  (index fallbacks, `tcg:` entries, or a timed-out native batch), from our own
+ *  `set_cards` catalog — offline, no external call. Keyed by `pokemon_api_id`
+ *  (native ids) or `tcgplayer_id` (`tcg:<productId>`). Best-effort: any failure
+ *  leaves rarity blank (the user can still pick it). Promos aren't in set_cards,
+ *  so they stay blank here and are detected from the set name in the add form. */
+async function enrichRarity(cands: SearchResult[]): Promise<void> {
+  const missing = cands.filter((c) => !c.rarity && !c.rarityKey);
+  if (!missing.length) return;
+  const nativeIds = missing.filter((c) => !c.id.includes(":")).map((c) => c.id);
+  const tcgIds    = missing.filter((c) => c.id.startsWith("tcg:")).map((c) => c.id.slice(4));
+  if (!nativeIds.length && !tcgIds.length) return;
+
+  const admin = createAdminClient();
+  const byNative = new Map<string, string>();
+  const byTcg    = new Map<string, string>();
+  try {
+    await Promise.all([
+      nativeIds.length
+        ? admin.from("set_cards").select("pokemon_api_id, rarity").in("pokemon_api_id", nativeIds)
+            .then(({ data }) => { for (const r of data ?? []) if (r.rarity) byNative.set(r.pokemon_api_id, r.rarity); })
+        : Promise.resolve(),
+      tcgIds.length
+        ? admin.from("set_cards").select("tcgplayer_id, rarity").in("tcgplayer_id", tcgIds)
+            .then(({ data }) => { for (const r of data ?? []) if (r.rarity) byTcg.set(String(r.tcgplayer_id), r.rarity); })
+        : Promise.resolve(),
+    ]);
+  } catch {
+    return; // best-effort — leave rarity blank, the user can still pick it
+  }
+
+  for (const c of missing) {
+    const rk = c.id.startsWith("tcg:") ? byTcg.get(c.id.slice(4)) : byNative.get(c.id);
+    if (rk) c.rarityKey = rk;
+  }
+}
+
 /** Map matched index entries → SearchResult candidates the add flow understands.
  *  Bounded so a scan can't exceed the route's maxDuration (the cause of the
  *  earlier 504s): the ONLY external calls are one best-effort pokemontcg.io
@@ -97,6 +134,7 @@ async function toCandidates(top: ScoredEntry[]): Promise<{ candidates: SearchRes
     // in time; otherwise the index metadata is a complete, pickable fallback.
     out.push(nativeById.get(entry.id) ?? fromIndex(entry));
   }
+  await enrichRarity(out);
   return { candidates: out, droppedTop };
 }
 

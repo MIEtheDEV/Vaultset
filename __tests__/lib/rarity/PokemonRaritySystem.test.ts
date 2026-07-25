@@ -207,11 +207,12 @@ describe("PokemonRaritySystem", () => {
   });
 
   describe("getRarityOptions", () => {
-    it("returns exactly two groups (modern, legacy)", () => {
+    it("returns modern, legacy, and special groups", () => {
       const groups = system.getRarityOptions();
-      expect(groups).toHaveLength(2);
+      expect(groups).toHaveLength(3);
       expect(groups[0].group).toContain("Scarlet & Violet");
       expect(groups[1].group).toContain("Legacy");
+      expect(groups[2].group).toContain("Special");
     });
 
     it("every option has a non-empty value and label", () => {
@@ -237,9 +238,11 @@ describe("PokemonRaritySystem", () => {
       expect(values).not.toContain("rare_holo_v");
     });
 
-    it("does not offer promo in the dropdown (set via the promo toggle instead)", () => {
+    it("offers promo as a first-class rarity (in the Special group)", () => {
       const allValues = system.getRarityOptions().flatMap((g) => g.options.map((o) => o.value));
-      expect(allValues).not.toContain("promo");
+      expect(allValues).toContain("promo");
+      const special = system.getRarityOptions().find((g) => g.group.includes("Special"));
+      expect(special?.options.map((o) => o.value)).toContain("promo");
     });
 
     it("lists each era group rarest-first (pip-color order)", () => {

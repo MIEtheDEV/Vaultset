@@ -161,8 +161,8 @@ export default function ImportPage() {
 
       const game_data: Record<string, unknown> = {};
       if (r?.pokemon_api_id) game_data.pokemon_api_id = r.pokemon_api_id;
+      // rarity carries promo (=== "promo"); no separate is_promo flag.
       if (r?.rarity)         game_data.rarity         = r.rarity;
-      if (r?.is_promo)       game_data.is_promo       = r.is_promo;
 
       const { data: card, error: cardError } = await supabase
         .from("cards")
