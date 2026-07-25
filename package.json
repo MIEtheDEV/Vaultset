@@ -12,6 +12,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "warm:catalog": "tsx scripts/warmCatalog.ts",
+    "warm:set": "tsx scripts/warmSet.ts",
     "scan:index": "tsx scripts/build-scan-index.ts",
     "scan:replay": "tsx scripts/scan-replay.ts",
     "sets:index": "tsx scripts/build-set-cards.ts"

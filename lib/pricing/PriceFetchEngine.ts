@@ -12,7 +12,7 @@ const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
  * lands in the result map at all, but this also guards the belt-and-suspenders
  * case of an empty payload having been cached.
  */
-function hasUsablePrice(r?: ResolvedPrice): boolean {
+export function hasUsablePrice(r?: ResolvedPrice): boolean {
   if (!r) return false;
   const hasMarket = !!r.prices && Object.values(r.prices).some((v) => v?.market != null);
   const hasCondition = !!r.conditionPrices && Object.keys(r.conditionPrices).length > 0;

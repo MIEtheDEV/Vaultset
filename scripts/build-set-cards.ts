@@ -6,6 +6,12 @@
  *
  *   pnpm sets:index                 # rebuild every set pokemontcg.io knows
  *   pnpm sets:index --set sv8       # rebuild a single set (fast, for tuning)
+ *   pnpm sets:index --set sv8 --no-warm   # skip the post-build price warm
+ *
+ * After (re)building, it price-warms the sets it touched — gap-only (cards with no
+ * cached price) and bounded by the remaining JustTCG daily budget — so a new set's
+ * card-data pages show market values immediately instead of staying blank until
+ * something happens to fetch them. Newest sets warm first; pass --no-warm to skip.
  *
  * Sources:
  *   1. pokemontcg.io — full card list per set (id,name,number,rarity,tcgplayer,
@@ -80,6 +86,7 @@ async function main() {
   const onlySets = setArgIdx >= 0
     ? (process.argv[setArgIdx + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean)
     : null;
+  const noWarm = process.argv.includes("--no-warm");
 
   const { createAdminClient } = await import("@/utils/supabase/admin");
   const { normalizeCardNumber } = await import("@/lib/search/cardNumber");
@@ -113,6 +120,7 @@ async function main() {
   console.log(`sets to build: ${sets.length}`);
 
   let totalRows = 0;
+  const builtSetCodes: string[] = []; // newest-first (sets are fetched -releaseDate)
 
   for (const set of sets) {
     const year = set.releaseDate ? Number(set.releaseDate.slice(0, 4)) : null;
@@ -192,11 +200,42 @@ async function main() {
       console.error(`  ${set.id} upsert failed: ${error.message}`);
     } else {
       totalRows += rows.length;
+      builtSetCodes.push(set.id);
       console.log(`  ${set.id} (${set.name}): ${rows.length} cards (declared total ${set.total ?? "?"})`);
     }
   }
 
   console.log(`done: ${totalRows} set_cards rows across ${sets.length} sets`);
+
+  // ---- 4. Price-warm the sets we just built (gap-only, budget-bounded) ------
+  // Fills market values for cards with no cached price yet — chiefly brand-new
+  // sets that live only in set_cards. Newest sets first; the JustTCG daily budget
+  // caps the run, so a full rebuild never overspends (already-priced cards are a
+  // no-op). Best-effort: a warming failure never fails the index build.
+  if (!noWarm && builtSetCodes.length > 0) {
+    const { warmSetPrices } = await import("@/lib/pricing/warmSetPrices");
+    console.log(`warming prices for ${builtSetCodes.length} set(s) (gap-only, newest first)…`);
+    let totalFresh = 0;
+    // One set per call so each gets its own probe + budget check — a set that
+    // can't be matched upstream aborts after a few requests instead of draining
+    // the day's budget before the next set is reached.
+    for (const code of builtSetCodes) {
+      try {
+        const r = await warmSetPrices(admin, [code], { onlyMissing: true, log: (m) => console.log(`  [${code}] ${m}`) });
+        totalFresh += r.freshlyFetched;
+        console.log(`  [${code}] ${r.aborted ? "skipped (unmatched upstream)" : `freshlyPriced=${r.freshlyFetched}${r.dropped ? ` deferred=${r.dropped}` : ""}`}`);
+        // Budget spent: eligible cards remained but none could be processed.
+        if (!r.aborted && r.processed === 0 && r.candidates > 0) {
+          console.log(`  budget spent — stopping warm. Re-run 'pnpm sets:index' (or 'pnpm warm:set --set <code>') after the daily reset.`);
+          break;
+        }
+      } catch (e) {
+        console.warn(`  [${code}] warm skipped: ${(e as Error).message}`);
+      }
+    }
+    console.log(`warm done: freshlyPriced=${totalFresh}`);
+  }
+
   process.exit(0);
 }
 

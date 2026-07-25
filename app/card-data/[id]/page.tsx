@@ -82,6 +82,38 @@ function fromSearchResult(sr: SearchResult, id: string): CardView {
   };
 }
 
+// Adapt a `set_cards` checklist row to the page's shape. Last-resort resolution
+// for cards that live only on a set checklist — newer sets (e.g. Mega Evolution)
+// that pokemontcg.io's live API hasn't catalogued yet and nobody has added to our
+// `cards` table. Without this, every set-hub / chase-card link into such a set
+// 404s even though we have the card's name, image, number, rarity, and price.
+type SetCardRow = {
+  name: string; set_name: string | null; set_code: string | null;
+  card_number: string | null; image_url: string | null; rarity: string | null;
+};
+function fromSetCard(row: SetCardRow, id: string): CardView {
+  return {
+    id, game: "pokemon", name: row.name, set_name: row.set_name ?? "", set_code: row.set_code ?? null,
+    card_number: row.card_number ?? null, year: null, image_url: row.image_url ?? null,
+    game_data: { pokemon_api_id: id, ...(row.rarity ? { rarity: row.rarity } : {}) },
+  };
+}
+
+async function resolveFromSetCards(
+  admin: ReturnType<typeof createAdminClient>,
+  id: string,
+): Promise<SetCardRow | null> {
+  // Only native pokemontcg.io-style ids appear as `pokemon_api_id` in set_cards.
+  if (id.startsWith("tcg:") || id.startsWith("manual:")) return null;
+  const { data } = await admin
+    .from("set_cards")
+    .select("name, set_name, set_code, card_number, image_url, rarity")
+    .eq("pokemon_api_id", id)
+    .limit(1)
+    .maybeSingle();
+  return (data as SetCardRow) ?? null;
+}
+
 // Resolve a representative `cards` row (and all sibling rows) for a catalog price key.
 async function resolveCards(admin: ReturnType<typeof createAdminClient>, key: string) {
   let q = admin
@@ -113,6 +145,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (!meta) {
     const sr = await resolveCardById(id);
     if (sr) meta = { name: sr.name, number: sr.number ?? null, setName: sr.set?.name ?? "", image: sr.images?.large ?? sr.images?.small ?? null };
+  }
+  if (!meta) {
+    const sc = await resolveFromSetCards(admin, id);
+    if (sc) meta = { name: sc.name, number: sc.card_number ?? null, setName: sc.set_name ?? "", image: sc.image_url ?? null };
   }
   if (!meta) return { title: "Card Not Found", robots: { index: false } };
 
@@ -150,6 +186,10 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
   if (!card) {
     resolvedSr = await resolveCardById(id);
     if (resolvedSr) card = fromSearchResult(resolvedSr, id);
+  }
+  if (!card) {
+    const sc = await resolveFromSetCards(admin, id);
+    if (sc) card = fromSetCard(sc, id);
   }
   if (!card) notFound();
 
