@@ -113,6 +113,16 @@ export default async function InventoryPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <Link
+          href="/inventory/insights"
+          className="inline-flex w-fit shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-border px-5 py-2.5 text-sm font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 3v18h18" />
+            <path d="M7 15l4-5 3 3 4-6" />
+          </svg>
+          Insights
+        </Link>
+        <Link
           href="/inventory/import"
           className="inline-flex w-fit shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-border px-5 py-2.5 text-sm font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
         >

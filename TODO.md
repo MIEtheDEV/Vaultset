@@ -132,7 +132,7 @@
   `/inventory/import` prominently — "bring your spreadsheet" is the strongest switching path and is
   currently buried. Day 0–7 nudges reuse the 6.1 digest cron. Should also fix `profile_showcase`
   (0 rows despite a complete UI + Pro borders — a discovery problem, not a build problem).
-- [ ] **6.4 Collection Insights** — `recharts` is installed and **only `AreaChart` is used** (1 of
+- [x] **6.4 Collection Insights** — `recharts` is installed and **only `AreaChart` is used** (1 of
   ~10 chart types, at zero install cost). `lib/collectionInsights.ts` (pure aggregations by rarity,
   set, condition, finish, graded vs raw, value concentration, paid vs market) + `CollectionDna`
   (pie/radial rarity mix, bar top-sets) at a new `/inventory/insights`, reusing `RaritySymbol` for

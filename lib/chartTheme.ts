@@ -24,3 +24,41 @@ export const chartTheme = {
   /** --color-danger — losses */
   danger: "#f87171",
 } as const;
+
+/**
+ * Ordinal gold ramp, dim → bright, for dimensions whose order carries meaning
+ * (rarity tier, card condition). One hue with monotone lightness, so the reader
+ * sees the sequence in the colour itself — never a categorical palette, which
+ * would spend the identity channel re-encoding what bar length already shows.
+ *
+ * Direction is dim → bright because the app renders on a dark surface: on a dark
+ * ground, "more" reads as brighter. Index it in reverse for rarest-first lists.
+ *
+ * Validated (not eyeballed) against the app's `--color-surface` #0f1424 as an
+ * ordinal ramp: monotone lightness, every adjacent ΔL ≥ 0.06, single hue (6° of
+ * spread), and the dim end still clears the surface at 2.72:1.
+ *
+ * NOTE: this ramp is specific to a dark surface. On a light ground the bright end
+ * lands at 1.80:1 and fails — if a light theme ever ships, the ramp must be
+ * re-stepped, not flipped.
+ */
+export const ORDINAL_GOLD = [
+  "#6b5a2a",
+  "#8a7433",
+  "#a98e3c",
+  "#c8a344",
+  "#e8b84b",
+] as const;
+
+/**
+ * Pick a ramp step for position `i` of `n`, brightest first.
+ *
+ * Used for rarity, where the list runs rarest → commonest: the chase cards get the
+ * strongest colour. Collapses to the brand gold when there is only one row.
+ */
+export function ordinalGoldStep(i: number, n: number): string {
+  if (n <= 1) return ORDINAL_GOLD[ORDINAL_GOLD.length - 1];
+  const t = i / (n - 1); // 0 = first (brightest) … 1 = last (dimmest)
+  const idx = Math.round((1 - t) * (ORDINAL_GOLD.length - 1));
+  return ORDINAL_GOLD[idx];
+}
