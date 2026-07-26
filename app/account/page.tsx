@@ -48,19 +48,23 @@ export default async function AccountPage({
       .eq("user_id", user.id)
       .maybeSingle(),
     supabase
+      // `select("*")` rather than a column list: the row is one narrow record per
+      // user, and naming columns explicitly means this page breaks the moment a
+      // new push_* column is added to the schema but not yet to this list.
       .from("notification_preferences")
-      .select("push_messages, push_offers, push_followers, push_alerts, push_achievements")
+      .select("*")
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
 
-  // Opt-out model: no row means everything is on.
+  // Opt-out model: no row (or a column that predates a migration) means on.
   const notificationPrefs = {
     push_messages:     (notifPrefs as any)?.push_messages     ?? true,
     push_offers:       (notifPrefs as any)?.push_offers       ?? true,
     push_followers:    (notifPrefs as any)?.push_followers    ?? true,
     push_alerts:       (notifPrefs as any)?.push_alerts       ?? true,
     push_achievements: (notifPrefs as any)?.push_achievements ?? true,
+    push_digest:       (notifPrefs as any)?.push_digest       ?? true,
   };
 
   const isSupporter     = profile?.is_supporter              ?? false;

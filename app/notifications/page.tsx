@@ -186,6 +186,38 @@ export default async function NotificationsPage() {
                   )}
                 </span>
               );
+            } else if (n.type === "daily_digest") {
+              const data = n.data as {
+                change_abs?: number; change_pct?: number;
+                leader_name?: string; leader_pct?: number;
+              };
+              const abs = Number(data.change_abs ?? 0);
+              const pct = Number(data.change_pct ?? 0);
+              const up = abs >= 0;
+              icon = (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={up ? "text-success" : "text-danger"}>
+                  {up
+                    ? <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></>
+                    : <><polyline points="23 18 13.5 8.5 8.5 13.5 1 6" /><polyline points="17 18 23 18 23 12" /></>}
+                </svg>
+              );
+              href = "/dashboard";
+              content = (
+                <span>
+                  Your vault is {up ? "up" : "down"}{" "}
+                  <span className={`font-medium ${up ? "text-success" : "text-danger"}`}>
+                    {up ? "+" : "−"}${Math.abs(abs).toFixed(2)} ({up ? "+" : "−"}{Math.abs(pct).toFixed(1)}%)
+                  </span>
+                  {data.leader_name ? (
+                    <span className="text-foreground-muted">
+                      {" "}— led by {data.leader_name}
+                      {typeof data.leader_pct === "number"
+                        ? ` (${data.leader_pct >= 0 ? "+" : "−"}${Math.abs(data.leader_pct).toFixed(1)}%)`
+                        : ""}
+                    </span>
+                  ) : null}
+                </span>
+              );
             } else if (n.type === "test_push") {
               icon = (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gold">

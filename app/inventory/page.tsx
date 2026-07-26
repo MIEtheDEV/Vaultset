@@ -8,9 +8,7 @@ import { RefreshMarketButton } from "@/components/RefreshMarketButton";
 import { MatchAllListingsButton } from "@/components/MatchAllListingsButton";
 import { FillMissingPricesButton } from "@/components/FillMissingPricesButton";
 import { hasProAccess } from "@/lib/proStatus";
-import { utcToday, apiDailyChange } from "@/lib/priceHistory";
-import { priceApiId } from "@/lib/pricing/cardIdentity";
-import { extractApiCardHistory } from "@/lib/pricing/cardHistory";
+import { loadDailyChanges, type VaultItem } from "@/lib/vaultDaily";
 
 export const metadata: Metadata = {
   title: "Inventory",
@@ -58,56 +56,15 @@ export default async function InventoryPage() {
   const regularItems = (items ?? []).filter((i) => (i as any).transfer_status !== "pending");
   const totalCards   = regularItems.reduce((sum, i) => sum + (i.quantity ?? 1), 0);
 
-  // Day-over-day market-value change per card. Prefer the provider's real 24h move
-  // (JustTCG `priceChange24hr`, from card_prices.raw) so freshly-added cards show a
-  // real ticker immediately; fall back to our own daily snapshot diff, else nothing.
-  const windowStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const { data: histRows } = await supabase
-    .from("price_history")
-    .select("collection_item_id, market_price, snapshotted_at")
-    .eq("user_id", user!.id)
-    .lt("snapshotted_at", utcToday())
-    .gte("snapshotted_at", windowStart)
-    .order("snapshotted_at", { ascending: false });
-
-  const prevValue = new Map<string, number>();
-  for (const r of histRows ?? []) {
-    if (!prevValue.has(r.collection_item_id)) prevValue.set(r.collection_item_id, Number(r.market_price));
-  }
-
-  // Raw pricing payloads (JustTCG) for the cards in view, keyed by their cache id.
-  const apiIds = new Set<string>();
-  for (const it of regularItems) {
-    const c = Array.isArray(it.cards) ? it.cards[0] : it.cards;
-    const id = c ? priceApiId((c.game_data ?? {}) as Record<string, unknown>, c.id) : null;
-    if (id) apiIds.add(id);
-  }
-  const { data: priceRows } = apiIds.size
-    ? await supabase.from("card_prices").select("card_api_id, raw").in("card_api_id", [...apiIds])
-    : { data: [] as { card_api_id: string; raw: unknown }[] };
-  const rawByApiId = new Map<string, unknown>();
-  for (const row of (priceRows ?? []) as { card_api_id: string; raw: unknown }[]) rawByApiId.set(row.card_api_id, row.raw);
-
-  const dailyChanges: Record<string, { abs: number; pct: number }> = {};
-  for (const it of regularItems) {
-    if (it.market_price == null) continue;
-    const c = Array.isArray(it.cards) ? it.cards[0] : it.cards;
-    const gd = (c?.game_data ?? {}) as Record<string, unknown>;
-    const id = c ? priceApiId(gd, c.id) : null;
-    const api = id ? extractApiCardHistory(rawByApiId.get(id), {
-      finish: it.finish, edition: (gd.edition as string) ?? null, condition: it.condition, grader: it.grader,
-    }) : null;
-
-    let change = apiDailyChange(api?.change24hrPct, it.market_price);
-    if (!change) {
-      const prev = prevValue.get(it.id);
-      if (prev != null && prev !== 0) {
-        const abs = it.market_price - prev;
-        change = { abs, pct: (abs / prev) * 100 };
-      }
-    }
-    if (change) dailyChanges[it.id] = change;
-  }
+  // Day-over-day market-value change per card. This logic now lives in
+  // lib/vaultDaily.ts because the dashboard's vault pulse needs exactly the same
+  // numbers — see that module for the source-precedence rules (provider 24h move
+  // first, then our own snapshot diff, then nothing).
+  const dailyChanges = await loadDailyChanges(
+    supabase,
+    user!.id,
+    regularItems as unknown as VaultItem[],
+  );
 
   // Find which inventory items are currently proposed in a pending trade offer
   const { data: pendingSentOffers } = await supabase

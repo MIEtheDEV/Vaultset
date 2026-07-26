@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { after } from "next/server";
 import Image from "next/image";
 import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
@@ -16,6 +17,15 @@ import { withLiveToday } from "@/lib/priceHistory";
 import { timeAgo } from "@/lib/timeAgo";
 import { BADGE_MAP, computeEarnedSlugs, awardBadges, type BadgeSlug } from "@/lib/badges";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { VaultPulse } from "@/components/VaultPulse";
+import { TodaysMovers } from "@/components/TodaysMovers";
+import {
+  loadDailyChanges,
+  computeVaultPulse,
+  pulseChange,
+  type VaultItem,
+  type SnapshotRow,
+} from "@/lib/vaultDaily";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -147,7 +157,14 @@ export default async function DashboardPage() {
     { data: rpcBadgeSlugs },
     { data: sealedValueRows },
   ] = await Promise.all([
-    supabase.from("collection_items").select("quantity, market_price").eq("user_id", user!.id),
+    // Doubles as the input to the vault-pulse / movers computation, so the card
+    // join rides along on a query that already scans every holding rather than
+    // adding a second full pass. (Dashboard query volume is a known issue tracked
+    // in docs/pwa-performance-migration.md.)
+    supabase
+      .from("collection_items")
+      .select("id, quantity, market_price, finish, condition, grader, cards ( id, name, set_name, card_number, image_url, game_data )")
+      .eq("user_id", user!.id),
     supabase.from("collection_items").select("quantity").eq("user_id", user!.id).eq("for_sale", true),
     supabase.from("product_purchases").select("*", { count: "exact", head: true }).eq("user_id", user!.id).or("for_sale.eq.true,for_trade.eq.true"),
     supabase.from("collection_items").select("quantity").eq("user_id", user!.id).eq("for_trade", true),
@@ -171,7 +188,10 @@ export default async function DashboardPage() {
     supabase.from("reviews").select("id", { count: "exact", head: true }).eq("user_id", user!.id),
     supabase
       .from("price_history")
-      .select("snapshotted_at, market_price, collection_items(quantity)")
+      // `collection_item_id` rides along so the same rows can seed both the
+      // portfolio chart (aggregated by date) and the per-card daily deltas,
+      // instead of scanning price_history twice.
+      .select("collection_item_id, snapshotted_at, market_price, collection_items(quantity)")
       .eq("user_id", user!.id)
       .order("snapshotted_at", { ascending: true }),
     supabase
@@ -252,6 +272,36 @@ export default async function DashboardPage() {
   const pendingTrades   = (tradeRows       ?? []).reduce((sum, r) => sum + (r.quantity ?? 1), 0);
   const gradedItemCount = (gradedRows      ?? []).reduce((sum, r) => sum + (r.quantity ?? 1), 0);
   const activeListings  = cardListings + (sealedListings ?? 0);
+
+  // Vault pulse: today's movement plus the biggest individual movers. Reuses the
+  // holdings rows and price_history rows already loaded above, so this costs one
+  // extra query (card_prices for the provider's 24h figures) rather than three.
+  const vaultItems = (quantityData ?? []) as unknown as VaultItem[];
+  const dailyChanges = await loadDailyChanges(supabase, user!.id, vaultItems, {
+    snapshots: (priceHistoryRaw ?? []) as unknown as SnapshotRow[],
+  });
+  const pulse = computeVaultPulse(vaultItems, dailyChanges);
+  const vaultChange = pulseChange(pulse);
+
+  // Visit streak. Read on its own rather than folded into the profiles select
+  // above, and deliberately tolerant: the columns arrive with the Phase 6.1
+  // migration (supabase/phase6_engagement.sql), and until that is applied this
+  // query errors. Falling back to 0 keeps the dashboard up — the flame only
+  // renders from 2 days anyway, so pre-migration it's simply absent.
+  const { data: streakRow } = await supabase
+    .from("profiles")
+    .select("streak_days")
+    .eq("id", user!.id)
+    .maybeSingle();
+  const streakDays = Number((streakRow as { streak_days?: number } | null)?.streak_days ?? 0);
+
+  // Record today's visit *after* the response is flushed. Badge awarding already
+  // writes during render — a known perf defect (docs/pwa-performance-migration.md)
+  // — and the streak must not add to it. Uses the admin client because the
+  // cookie-bound client's request context is gone by the time this runs.
+  after(async () => {
+    await createAdminClient().rpc("touch_streak", { p_user_id: user!.id });
+  });
 
   // Check and award any newly earned achievement badges
   const existingBadgeMap = new Map(
@@ -437,53 +487,24 @@ export default async function DashboardPage() {
         <ReviewPrompt username={username} />
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {dashboardStats.map(({ label, value, icon }) => (
-          <div key={label} className="rounded-2xl border border-border bg-surface p-5">
-            <div className="flex items-start justify-between mb-3 min-h-8">
-              <span className="text-xs font-medium text-foreground-muted uppercase tracking-wide">{label}</span>
-              <span className="text-foreground-muted">{icon}</span>
-            </div>
-            <span className="text-2xl font-bold text-foreground">{value}</span>
-          </div>
-        ))}
-      </div>
+      {/*
+        Vault pulse leads the page. Previously the first thing on screen was four
+        static stat tiles whose numbers only change when you add a card, so two
+        visits a week apart looked identical — nothing here answered "what
+        happened since I was last on?".
+      */}
+      <VaultPulse
+        totalValue={collectionValue}
+        change={vaultChange}
+        series={portfolioHistory.slice(-30)}
+        streakDays={streakDays}
+        canPro={canPro}
+        coveredCount={pulse.covered}
+        totalCount={pulse.total}
+      />
 
-      {/* Portfolio value chart — Pro feature */}
-      {canPro ? (
-        <PortfolioChart data={portfolioHistory} />
-      ) : (
-        <ProUpsell
-          title="Price history charts"
-          description="Track your portfolio's value over time with Pro — daily snapshots across 7D / 30D / 90D / All."
-        />
-      )}
-
-      {/* Quick actions */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {quickActions.map(({ label, href, comingSoon, icon }) => (
-          comingSoon ? (
-            <div
-              key={label}
-              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-surface px-4 py-5 opacity-50 cursor-not-allowed"
-            >
-              <span className="text-foreground-muted">{icon}</span>
-              <span className="text-xs font-medium text-foreground-muted">{label}</span>
-              <span className="text-xs text-gold">Soon</span>
-            </div>
-          ) : (
-            <Link
-              key={label}
-              href={href!}
-              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-surface px-4 py-5 hover:border-gold/40 hover:bg-surface-raised transition-colors group"
-            >
-              <span className="text-foreground-muted group-hover:text-gold transition-colors">{icon}</span>
-              <span className="text-xs font-medium text-foreground-muted group-hover:text-foreground transition-colors">{label}</span>
-            </Link>
-          )
-        ))}
-      </div>
+      {/* Renders nothing when no holding has a recorded move. */}
+      <TodaysMovers up={pulse.movers.up} down={pulse.movers.down} />
 
       {/* Wishlist matches — Available Now */}
       {wishlistMatches.length > 0 && (() => {
@@ -557,6 +578,54 @@ export default async function DashboardPage() {
           </div>
         );
       })()}
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {dashboardStats.map(({ label, value, icon }) => (
+          <div key={label} className="rounded-2xl border border-border bg-surface p-5">
+            <div className="flex items-start justify-between mb-3 min-h-8">
+              <span className="text-xs font-medium text-foreground-muted uppercase tracking-wide">{label}</span>
+              <span className="text-foreground-muted">{icon}</span>
+            </div>
+            <span className="text-2xl font-bold text-foreground">{value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Portfolio value chart — Pro feature */}
+      {canPro ? (
+        <PortfolioChart data={portfolioHistory} />
+      ) : (
+        <ProUpsell
+          title="Price history charts"
+          description="Track your portfolio's value over time with Pro — daily snapshots across 7D / 30D / 90D / All."
+        />
+      )}
+
+      {/* Quick actions */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {quickActions.map(({ label, href, comingSoon, icon }) => (
+          comingSoon ? (
+            <div
+              key={label}
+              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-surface px-4 py-5 opacity-50 cursor-not-allowed"
+            >
+              <span className="text-foreground-muted">{icon}</span>
+              <span className="text-xs font-medium text-foreground-muted">{label}</span>
+              <span className="text-xs text-gold">Soon</span>
+            </div>
+          ) : (
+            <Link
+              key={label}
+              href={href!}
+              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-surface px-4 py-5 hover:border-gold/40 hover:bg-surface-raised transition-colors group"
+            >
+              <span className="text-foreground-muted group-hover:text-gold transition-colors">{icon}</span>
+              <span className="text-xs font-medium text-foreground-muted group-hover:text-foreground transition-colors">{label}</span>
+            </Link>
+          )
+        ))}
+      </div>
 
       {/* Following Feed */}
       {followingIds.length > 0 && (

@@ -1,7 +1,13 @@
 import type { PushPayload } from "@/lib/push";
 
 /** Columns on `notification_preferences` that gate push per notification type. */
-export type PrefKey = "push_offers" | "push_followers" | "push_alerts" | "push_achievements" | "push_messages";
+export type PrefKey =
+  | "push_offers"
+  | "push_followers"
+  | "push_alerts"
+  | "push_achievements"
+  | "push_messages"
+  | "push_digest";
 
 export type NotificationRow = {
   type: string;
@@ -21,6 +27,7 @@ export function prefKeyForType(type: string): PrefKey | null {
     case "price_alert":             return "push_alerts";
     case "wishlist_listing_match":  return "push_alerts";
     case "badge_earned":            return "push_achievements";
+    case "daily_digest":            return "push_digest";
     default:                        return null;
   }
 }
@@ -101,6 +108,31 @@ export function buildPushPayload(n: NotificationRow, actorUsername: string | nul
         body: `You earned the ${str("badge_label") ?? slug ?? "new"} badge`,
         url: "/dashboard",
         tag: slug ? `badge:${slug}` : "badge_earned",
+      };
+    }
+
+    case "daily_digest": {
+      const abs = num("change_abs");
+      const pct = num("change_pct");
+      const up = abs >= 0;
+      const leader = str("leader_name");
+      const leaderPct = typeof data.leader_pct === "number" ? (data.leader_pct as number) : null;
+
+      const headline = `Your vault is ${up ? "up" : "down"} $${Math.abs(abs).toFixed(2)} (${
+        up ? "+" : "−"
+      }${Math.abs(pct).toFixed(1)}%) today`;
+
+      const detail =
+        leader && leaderPct != null
+          ? ` — led by ${leader} (${leaderPct >= 0 ? "+" : "−"}${Math.abs(leaderPct).toFixed(1)}%)`
+          : "";
+
+      return {
+        title: up ? "📈 Vault up today" : "📉 Vault down today",
+        body: headline + detail,
+        url: "/dashboard",
+        // One digest per day: collapse rather than stack if a device was offline.
+        tag: "daily_digest",
       };
     }
 
