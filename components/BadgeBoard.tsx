@@ -82,12 +82,15 @@ export function BadgeBoard({
   const remainingCount = total - earnedCount;
   const isFull = featuredSlugs.length >= MAX_FEATURED;
 
+  // Note: no overflow-hidden on the card — badge detail tooltips must escape it
   return (
-    <div className="rounded-2xl border border-border bg-surface overflow-hidden">
+    <div className="rounded-2xl border border-border bg-surface">
       {/* ── Trigger ──────────────────────────────────────────────────────────── */}
       <button
         onClick={() => setIsOpen((o) => !o)}
-        className="w-full flex items-center gap-3 px-5 py-4 hover:bg-surface-raised transition-colors text-left"
+        className={`w-full flex items-center gap-3 px-5 py-4 hover:bg-surface-raised transition-colors text-left ${
+          isOpen ? "rounded-t-2xl" : "rounded-2xl"
+        }`}
         aria-expanded={isOpen}
       >
         {/* Mini featured hexes */}
@@ -139,13 +142,13 @@ export function BadgeBoard({
       {/* ── Expanded ─────────────────────────────────────────────────────────── */}
       {isOpen && (
         <div className="border-t border-border px-5 pt-5 pb-6">
-          {isOwnProfile && (
-            <p className="text-xs text-foreground-muted mb-4 text-center">
-              {isFull
-                ? "Tap a starred badge to remove it from your featured row"
-                : `Tap an earned badge to feature it above · ${MAX_FEATURED - featuredSlugs.length} slot${MAX_FEATURED - featuredSlugs.length !== 1 ? "s" : ""} open`}
-            </p>
-          )}
+          <p className="text-xs text-foreground-muted mb-4 text-center">
+            {!isOwnProfile
+              ? "Tap a badge for details"
+              : isFull
+              ? "Tap a badge for details · tap its ★ to remove it from your featured row"
+              : `Tap a badge for details · tap its ★ to feature it above · ${MAX_FEATURED - featuredSlugs.length} slot${MAX_FEATURED - featuredSlugs.length !== 1 ? "s" : ""} open`}
+          </p>
 
           <div className="flex flex-wrap gap-x-3 gap-y-5">
             {BADGES.map((badge) => {

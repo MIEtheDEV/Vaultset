@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useId, useRef, useState } from "react";
 import type { BadgeMeta } from "@/lib/badges";
 import { timeAgo } from "@/lib/timeAgo";
 
@@ -469,9 +472,8 @@ export function BadgeChip({
   earnedAt?: string;
   size?: "normal" | "mini";
 }) {
-  const c = earned ? SVG_COLORS[badge.color] : LOCKED;
-
   if (size === "mini") {
+    const c = earned ? SVG_COLORS[badge.color] : LOCKED;
     return (
       <svg
         width="32"
@@ -496,12 +498,100 @@ export function BadgeChip({
     );
   }
 
+  return <FullBadgeChip badge={badge} earned={earned} earnedAt={earnedAt} />;
+}
+
+const TOOLTIP_WIDTH = 200;
+
+type TooltipAlign = "center" | "left" | "right";
+
+// Clicking/tapping also focuses the button, so plain onFocus would fight the tap
+// toggle. :focus-visible narrows it to keyboard focus (matches() throws where the
+// pseudo-class is unsupported, hence the guard).
+function isKeyboardFocus(el: Element) {
+  try {
+    return el.matches(":focus-visible");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Normal-size chip. The detail tooltip opens on desktop hover *and* on tap, so
+ * touch users (who have no hover) can still read what an achievement means.
+ */
+function FullBadgeChip({
+  badge,
+  earned,
+  earnedAt,
+}: {
+  badge: BadgeMeta;
+  earned: boolean;
+  earnedAt?: string;
+}) {
+  const c = earned ? SVG_COLORS[badge.color] : LOCKED;
+  const [isOpen, setIsOpen] = useState(false);
+  const [align, setAlign] = useState<TooltipAlign>("center");
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const tooltipId = useId();
+
+  // A fixed-width tooltip centred on a 60px chip overhangs by ~70px per side, so
+  // edge chips would run off a phone screen. Pick the edge to pin it to instead.
+  const open = () => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (rect) {
+      const center = rect.left + rect.width / 2;
+      const half = TOOLTIP_WIDTH / 2;
+      if (center - half < 8) setAlign("left");
+      else if (center + half > window.innerWidth - 8) setAlign("right");
+      else setAlign("center");
+    }
+    setIsOpen(true);
+  };
+
+  const toggle = () => (isOpen ? setIsOpen(false) : open());
+
+  // Tapping elsewhere (or Escape) dismisses — tapping another badge closes this
+  // one on pointerdown before that badge's click opens it.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (!wrapperRef.current?.contains(e.target as Node)) setIsOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsOpen(false);
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isOpen]);
+
+  const alignClasses =
+    align === "center" ? "left-1/2 -translate-x-1/2" : align === "left" ? "left-0" : "right-0";
+  // 30px = half the 60px chip, so the arrow still points at the hex when the
+  // tooltip is pinned to an edge rather than centred.
+  const arrowClasses =
+    align === "center"
+      ? "left-1/2 -translate-x-1/2"
+      : align === "left"
+      ? "left-[30px] -translate-x-1/2"
+      : "right-[30px] translate-x-1/2";
+
   return (
-    <div className="group relative flex flex-col items-center gap-1.5 w-[60px]">
+    <div ref={wrapperRef} className="relative flex w-[60px] flex-col items-center">
       {/* Tooltip */}
       <div
-        className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-xl border border-border bg-surface-raised px-3 py-2 text-center shadow-xl opacity-0 transition-opacity group-hover:opacity-100"
+        id={tooltipId}
         role="tooltip"
+        style={{ width: TOOLTIP_WIDTH }}
+        className={`pointer-events-none absolute bottom-full z-20 mb-2 rounded-xl border border-border bg-surface-raised px-3 py-2 text-center shadow-xl transition-opacity ${alignClasses} ${
+          isOpen ? "visible opacity-100" : "invisible opacity-0"
+        }`}
       >
         <p className="text-xs font-semibold text-foreground">{badge.label}</p>
         <p className="mt-0.5 text-[10px] text-foreground-muted">{badge.description}</p>
@@ -514,63 +604,96 @@ export function BadgeChip({
           <p className="mt-0.5 text-[10px] text-foreground-muted opacity-60">Not yet earned</p>
         )}
         {/* Arrow */}
-        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-border" />
+        <div
+          className={`absolute top-full border-4 border-transparent border-t-border ${arrowClasses}`}
+        />
       </div>
 
-      {/* Hexagonal badge */}
-      <svg
-        width="56"
-        height="64"
-        viewBox="-2 -2 56 64"
-        aria-hidden="true"
-        className={`transition-transform group-hover:scale-110 ${!earned ? "opacity-30" : ""}`}
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        aria-describedby={isOpen ? tooltipId : undefined}
+        // Touch/pen toggles on pointerdown rather than click: a mouse tap also
+        // fires enter+click, which would open then instantly re-close the tooltip.
+        onPointerDown={(e) => {
+          if (e.pointerType !== "mouse") toggle();
+        }}
+        onPointerEnter={(e) => {
+          if (e.pointerType === "mouse") open();
+        }}
+        onPointerLeave={(e) => {
+          if (e.pointerType === "mouse") setIsOpen(false);
+        }}
+        // Keyboard parity — pointerdown never fires for Enter/Space.
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggle();
+          }
+        }}
+        onFocus={(e) => {
+          if (isKeyboardFocus(e.target)) open();
+        }}
+        onBlur={() => setIsOpen(false)}
+        className="flex flex-col items-center gap-1.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
       >
-        {/* Glow behind hex (earned only) */}
-        {earned && (
-          <polygon points={HEX_POINTS} fill={c.glow} className="blur-[3px]" />
-        )}
-        {/* Hex body */}
-        <polygon
-          points={HEX_POINTS}
-          fill={c.bg}
-          stroke={c.ring}
-          strokeWidth="2"
-        />
-        {/* Icon centered at (26, 30), scaled from 24×24 to ~20×20 */}
-        <g
-          transform="translate(16,20) scale(0.833)"
-          fill="none"
-          stroke={c.icon}
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+        {/* Hexagonal badge */}
+        <svg
+          width="56"
+          height="64"
+          viewBox="-2 -2 56 64"
+          aria-hidden="true"
+          className={`transition-transform ${isOpen ? "scale-110" : ""} ${
+            !earned ? "opacity-30" : ""
+          }`}
         >
-          {BADGE_ICONS[badge.slug]}
-        </g>
-        {/* Lock overlay for unearned */}
-        {!earned && (
-          <g>
-            <circle cx="39" cy="46" r="8" fill="#0c1020" stroke="#1e2440" strokeWidth="1" />
-            <rect x="35.5" y="44.5" width="7" height="5" rx="1" fill="#1e2440" />
-            <path
-              d="M36.8 44.5V43a2.2 2.2 0 014.4 0v1.5"
-              fill="none"
-              stroke="#2a3860"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-            />
+          {/* Glow behind hex (earned only) */}
+          {earned && (
+            <polygon points={HEX_POINTS} fill={c.glow} className="blur-[3px]" />
+          )}
+          {/* Hex body */}
+          <polygon
+            points={HEX_POINTS}
+            fill={c.bg}
+            stroke={c.ring}
+            strokeWidth="2"
+          />
+          {/* Icon centered at (26, 30), scaled from 24×24 to ~20×20 */}
+          <g
+            transform="translate(16,20) scale(0.833)"
+            fill="none"
+            stroke={c.icon}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            {BADGE_ICONS[badge.slug]}
           </g>
-        )}
-      </svg>
+          {/* Lock overlay for unearned */}
+          {!earned && (
+            <g>
+              <circle cx="39" cy="46" r="8" fill="#0c1020" stroke="#1e2440" strokeWidth="1" />
+              <rect x="35.5" y="44.5" width="7" height="5" rx="1" fill="#1e2440" />
+              <path
+                d="M36.8 44.5V43a2.2 2.2 0 014.4 0v1.5"
+                fill="none"
+                stroke="#2a3860"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+              />
+            </g>
+          )}
+        </svg>
 
-      {/* Label */}
-      <span
-        className={`text-center text-[10px] font-medium leading-tight ${
-          earned ? "text-foreground" : "text-foreground-muted opacity-40"
-        }`}
-      >
-        {badge.label}
-      </span>
+        {/* Label */}
+        <span
+          className={`text-center text-[10px] font-medium leading-tight ${
+            earned ? "text-foreground" : "text-foreground-muted opacity-40"
+          }`}
+        >
+          {badge.label}
+        </span>
+      </button>
     </div>
   );
 }
