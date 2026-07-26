@@ -11,6 +11,18 @@
   --color-gold: #e8b84b;
   --color-gold-light: #f5d07a;
   --color-border: #1e2440;
+  /*
+    Semantic status colors. These deliberately match the raw Tailwind shades the
+    app already leans on most (emerald-400 / red-400 / amber-400 / blue-400), so
+    `text-success` renders identically to the existing `text-emerald-400` usage.
+    Existing raw-palette classes are intentionally NOT migrated wholesale — the
+    point is to stop the drift (danger was split across red-400 and red-500,
+    positive across emerald-400 and green-400) for everything written from here on.
+  */
+  --color-success: #34d399;
+  --color-danger: #f87171;
+  --color-warning: #fbbf24;
+  --color-info: #60a5fa;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -134,3 +146,40 @@ body {
 .no-spinner { -moz-appearance: textfield; appearance: textfield; }
 .no-spinner::-webkit-outer-spin-button,
 .no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/*
+  Entrance motion.
+
+  Declared only inside `prefers-reduced-motion: no-preference` so the resting
+  state (fully visible, untransformed) is what reduced-motion users get — rather
+  than defining the animation globally and trying to switch it off afterwards,
+  which risks leaving content stuck at opacity 0 if the override ever misses.
+*/
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rise-in { animation: rise-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  /* Stagger siblings so a group of panels cascades instead of snapping in together. */
+  .rise-in-1 { animation-delay: 60ms; }
+  .rise-in-2 { animation-delay: 120ms; }
+  .rise-in-3 { animation-delay: 180ms; }
+}
+
+/*
+  Reduced-motion guard for the pre-existing infinite loops.
+
+  `.spin-border` (badges/pills) and `.showcase-foil` / `.showcase-gold` (Pro card
+  rings) animate forever. Frozen, each still renders its gradient ring, so the
+  visual treatment survives — only the perpetual motion stops.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .spin-border::before,
+  .spin-border-hover::before,
+  .showcase-foil::before,
+  .showcase-gold::before {
+    animation: none;
+  }
+}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { RevealGroupTile, groupReveals } from "@/components/RevealGroupTile";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const metadata: Metadata = {
   title: "Pack Reveals",
@@ -68,12 +69,18 @@ export default async function RevealsPage() {
       </div>
 
       {(!reveals || reveals.length === 0) ? (
-        <div className="rounded-2xl border border-border bg-surface py-24 text-center space-y-3">
-          <p className="text-sm text-foreground-muted">No reveals logged yet. Be the first!</p>
-          <Link href="/reveals/log" className="inline-block text-sm text-gold hover:underline">
-            Log a pull →
-          </Link>
-        </div>
+        <EmptyState
+          size="lg"
+          icon={
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2 15 8l6 .9-4.5 4.3 1.1 6.1L12 16.5 6.4 19.3l1.1-6.1L3 8.9 9 8z" />
+            </svg>
+          }
+          title="No reveals logged yet"
+          description="Log what you pull from a pack and it shows up here for the community to see."
+          cta="Log a pull"
+          href="/reveals/log"
+        />
       ) : (
         <div className="space-y-6">
           {groups.map((group) => {

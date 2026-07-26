@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const metadata: Metadata = {
   title: "Transaction History",
@@ -112,7 +113,14 @@ export default async function TransactionsPage() {
       <section className="space-y-4">
         <h2 className="font-semibold text-foreground">Sold ({sold.length})</h2>
         {sold.length === 0 ? (
-          <EmptyState message="No completed sales yet." />
+          <EmptyState
+            size="lg"
+            icon={receiptIcon}
+            title="No completed sales yet"
+            description="Once an offer on one of your listings is accepted and confirmed, the deal is recorded here."
+            cta="Manage your listings"
+            href="/inventory"
+          />
         ) : (
           <TransactionTable transactions={sold} counterpartyKey="sender_id" profileMap={profileMap} role="sold" />
         )}
@@ -122,7 +130,14 @@ export default async function TransactionsPage() {
       <section className="space-y-4">
         <h2 className="font-semibold text-foreground">Bought ({bought.length})</h2>
         {bought.length === 0 ? (
-          <EmptyState message="No completed purchases yet." />
+          <EmptyState
+            size="lg"
+            icon={receiptIcon}
+            title="No completed purchases yet"
+            description="Cards you buy from other collectors will show up here once both sides confirm."
+            cta="Browse the marketplace"
+            href="/marketplace"
+          />
         ) : (
           <TransactionTable transactions={bought} counterpartyKey="recipient_id" profileMap={profileMap} role="bought" />
         )}
@@ -231,10 +246,9 @@ function StatCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="rounded-2xl border border-border bg-surface py-12 text-center">
-      <p className="text-sm text-foreground-muted">{message}</p>
-    </div>
-  );
-}
+const receiptIcon = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 2v20l3-2 3 2 3-2 3 2 3-2V2l-3 2-3-2-3 2-3-2z" />
+    <path d="M8 9h8M8 13h5" />
+  </svg>
+);

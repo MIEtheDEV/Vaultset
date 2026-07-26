@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
+import { chartTheme } from "@/lib/chartTheme";
 
 export type PricePoint = { date: string; value: number };
 
@@ -397,7 +398,7 @@ export function PortfolioAnalyticsClient({
                 <svg width="20" height="4" viewBox="0 0 20 4">
                   <line
                     x1="0" y1="2" x2="20" y2="2"
-                    stroke="#6b7194"
+                    stroke={chartTheme.axis}
                     strokeWidth="1.5"
                     strokeDasharray="4 3"
                   />
@@ -421,7 +422,7 @@ export function PortfolioAnalyticsClient({
                 <XAxis
                   dataKey="date"
                   tickFormatter={formatAxisDate}
-                  tick={{ fontSize: 11, fill: "#6b7194" }}
+                  tick={{ fontSize: 11, fill: chartTheme.axis }}
                   axisLine={false}
                   tickLine={false}
                   interval="preserveStartEnd"
@@ -430,7 +431,7 @@ export function PortfolioAnalyticsClient({
                   tickFormatter={(v: number) =>
                     `$${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0)}`
                   }
-                  tick={{ fontSize: 11, fill: "#6b7194" }}
+                  tick={{ fontSize: 11, fill: chartTheme.axis }}
                   axisLine={false}
                   tickLine={false}
                   width={52}
@@ -453,7 +454,7 @@ export function PortfolioAnalyticsClient({
                 {showCostBasisLine && (
                   <ReferenceLine
                     y={totalCostBasis}
-                    stroke="#6b7194"
+                    stroke={chartTheme.axis}
                     strokeDasharray="4 3"
                     strokeWidth={1.5}
                     strokeOpacity={0.6}

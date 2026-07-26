@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { timeAgo } from "@/lib/timeAgo";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const metadata: Metadata = {
   title: "Notifications",
@@ -47,9 +48,19 @@ export default async function NotificationsPage() {
       </div>
 
       {!notifications || notifications.length === 0 ? (
-        <div className="rounded-2xl border border-border bg-surface py-16 text-center">
-          <p className="text-sm text-foreground-muted">No notifications yet.</p>
-        </div>
+        <EmptyState
+          size="lg"
+          icon={
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+          }
+          title="No notifications yet"
+          description="Offers, price alerts, new followers, and achievements all land here."
+          cta="Turn on push notifications"
+          href="/account"
+        />
       ) : (
         <div className="rounded-2xl border border-border bg-surface divide-y divide-border overflow-hidden">
           {notifications.map((n) => {

@@ -15,6 +15,7 @@ import { PortfolioChart } from "@/components/PortfolioChart";
 import { withLiveToday } from "@/lib/priceHistory";
 import { timeAgo } from "@/lib/timeAgo";
 import { BADGE_MAP, computeEarnedSlugs, awardBadges, type BadgeSlug } from "@/lib/badges";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -65,32 +66,6 @@ const stats = [
   },
 ];
 
-
-function EmptyState({ icon, title, description, cta, href }: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  cta: string;
-  href: string;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-raised text-foreground-muted">
-        {icon}
-      </div>
-      <div>
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        <p className="mt-0.5 text-xs text-foreground-muted">{description}</p>
-      </div>
-      <Link
-        href={href}
-        className="mt-1 rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
-      >
-        {cta}
-      </Link>
-    </div>
-  );
-}
 
 function greeting() {
   const hour = new Date().getHours();

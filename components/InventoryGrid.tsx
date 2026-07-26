@@ -12,6 +12,7 @@ import { RemoveCardButton } from "@/components/RemoveCardButton";
 import { ListAtMarketButton } from "@/components/ListAtMarketButton";
 import { RefreshValueButton } from "@/components/RefreshValueButton";
 import { DailyChange } from "@/components/DailyChange";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { priceApiId } from "@/lib/pricing/cardIdentity";
 
 const conditionLabel: Record<string, string> = {
@@ -174,24 +175,19 @@ export function InventoryGrid({ items, proposedItemIds = [], canRefresh = false,
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-surface py-24 text-center gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-raised text-foreground-muted">
+      <EmptyState
+        size="lg"
+        icon={
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <rect x="2" y="3" width="20" height="14" rx="2" />
             <path d="M8 21h8M12 17v4" />
           </svg>
-        </div>
-        <div>
-          <p className="font-semibold text-foreground">Your vault is empty</p>
-          <p className="mt-1 text-sm text-foreground-muted">Add cards manually to start tracking your collection.</p>
-        </div>
-        <Link
-          href="/inventory/add"
-          className="rounded-full bg-gold px-6 py-2.5 text-sm font-semibold text-background hover:bg-gold-light transition-colors"
-        >
-          Add your first card
-        </Link>
-      </div>
+        }
+        title="Your vault is empty"
+        description="Add cards manually to start tracking your collection."
+        cta="Add your first card"
+        href="/inventory/add"
+      />
     );
   }
 
