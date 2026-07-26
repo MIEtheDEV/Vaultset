@@ -3435,3 +3435,10 @@ ALTER TABLE "public"."profiles"
   ADD COLUMN IF NOT EXISTS "onboarding_dismissed_at" timestamp with time zone;
 
 COMMENT ON COLUMN "public"."profiles"."onboarding_dismissed_at" IS 'When the first-run checklist was dismissed, or auto-retired on completion. NULL = still showing.';
+
+-- Column-level SELECT grants for the Phase 6 profile columns. `profiles` grants
+-- SELECT per column, and ADD COLUMN does not extend an existing column grant —
+-- without this the dashboard's profiles read fails for `authenticated`, profileData
+-- is null, and every Pro/supporter flag derived from it reads false.
+GRANT SELECT ("last_active_on", "streak_days", "streak_best", "onboarding_dismissed_at")
+  ON TABLE "public"."profiles" TO "anon", "authenticated";

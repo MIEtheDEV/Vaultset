@@ -201,3 +201,28 @@ alter table public.profiles
 
 comment on column public.profiles.onboarding_dismissed_at is
   'When the first-run checklist was dismissed, or auto-retired on completion. NULL = still showing.';
+
+-- ---------------------------------------------------------------------------
+-- 5. REQUIRED: column-level SELECT grants for the new columns
+-- ---------------------------------------------------------------------------
+-- `public.profiles` grants SELECT to anon/authenticated **per column**, not
+-- table-wide, and `ALTER TABLE ... ADD COLUMN` does not extend an existing
+-- column-level grant. Without this, the four columns above are readable only by
+-- postgres/service_role.
+--
+-- Skipping it is not a partial failure, it is a total one: the dashboard's
+-- `profiles` select runs as `authenticated` and names onboarding_dismissed_at, so
+-- the whole row read is rejected, profileData comes back null, and every field
+-- derived from it collapses to false — is_supporter, pwa_installed_at,
+-- isProSubscriber and hasProAccess. Paying subscribers get shown upgrade prompts
+-- while their subscription data sits untouched and correct.
+--
+-- (This is exactly what happened in production on 2026-07-26. It also silently
+-- suppressed the streak, whose "tolerant" read was failing on permissions rather
+-- than returning zero.)
+--
+-- Granted to both roles to match the convention of the 23 pre-existing columns;
+-- an asymmetric grant only relocates the same failure to a logged-out path.
+
+grant select (last_active_on, streak_days, streak_best, onboarding_dismissed_at)
+  on public.profiles to anon, authenticated;
