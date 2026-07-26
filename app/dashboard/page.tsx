@@ -15,8 +15,13 @@ import { isUserAdmin } from "@/lib/auth/admin";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { withLiveToday } from "@/lib/priceHistory";
 import { timeAgo } from "@/lib/timeAgo";
-import { BADGE_MAP, computeEarnedSlugs, awardBadges, type BadgeSlug } from "@/lib/badges";
+import { BADGE_MAP, computeEarnedSlugs, awardBadges, type BadgeSlug, type BadgeStats } from "@/lib/badges";
+import { nextMilestones } from "@/lib/badgeProgress";
+import { getSetCompletionSummaries } from "@/lib/sets/masterset";
+import { recordCompletionsFromSummaries } from "@/lib/sets/setCompletion";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { NextMilestones } from "@/components/NextMilestones";
+import { Celebrate, type CelebrationEvent } from "@/components/ui/Celebrate";
 import { VaultPulse } from "@/components/VaultPulse";
 import { TodaysMovers } from "@/components/TodaysMovers";
 import {
@@ -307,7 +312,7 @@ export default async function DashboardPage() {
   const existingBadgeMap = new Map(
     (badgeData ?? []).map((b) => [b.badge_slug as BadgeSlug, b.earned_at as string])
   );
-  const inMemorySlugs = computeEarnedSlugs({
+  const badgeStats: BadgeStats = {
     totalCards,
     activeListings,
     forTradeCount: pendingTrades ?? 0,
@@ -315,7 +320,8 @@ export default async function DashboardPage() {
     collectionValue,
     followerCount: userFollowerCount ?? 0,
     followingCount: followingIds.length,
-  });
+  };
+  const inMemorySlugs = computeEarnedSlugs(badgeStats);
   const dbSlugs = (rpcBadgeSlugs ?? []) as BadgeSlug[];
   const computedSlugs = [...new Set([...inMemorySlugs, ...dbSlugs])];
   const newSlugs = computedSlugs.filter((s) => !existingBadgeMap.has(s));
@@ -333,6 +339,39 @@ export default async function DashboardPage() {
       }))
     );
   }
+
+  // Progress toward the next milestones.
+  //
+  // Set completion is the strongest "collect them all" pull in the product, so
+  // in-progress sets are folded in alongside the badge thresholds. The summaries
+  // call is skipped entirely for an empty vault, where it would do real work to
+  // return nothing. (It is the same call /masterset makes; dashboard query volume
+  // overall is tracked in docs/pwa-performance-migration.md.)
+  const setSummaries = totalCards > 0
+    ? await getSetCompletionSummaries(supabase, user!.id)
+    : [];
+
+  const earnedForProgress = new Set<BadgeSlug>([...existingBadgeMap.keys(), ...computedSlugs]);
+  const milestones = nextMilestones(badgeStats, earnedForProgress, setSummaries, 3);
+
+  // Sweep every completed set into `user_set_completions`. Until now a completion
+  // was only recorded if the user happened to open that set's own page, so the
+  // table was empty in production even for sets that were genuinely finished.
+  // Runs after the response is flushed, like the streak write.
+  if (setSummaries.length > 0) {
+    after(async () => {
+      await recordCompletionsFromSummaries(createAdminClient(), user!.id, setSummaries);
+    });
+  }
+
+  // Celebrate anything earned on this load. Deduped client-side by key, because
+  // this list is recomputed on every render — without that, finishing a set would
+  // re-throw confetti every time the dashboard opened.
+  const celebrations: CelebrationEvent[] = awardedSlugs.map((slug) => ({
+    key: `badge:${slug}`,
+    title: `${BADGE_MAP.get(slug)?.label ?? slug} unlocked`,
+    description: BADGE_MAP.get(slug)?.description,
+  }));
 
   // Badge activity events: all earned (from DB) + any newly awarded this load
   const nowIso = new Date().toISOString();
@@ -433,6 +472,9 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
 
+      {/* Confetti + toast for anything earned on this load. Renders no markup. */}
+      <Celebrate events={celebrations} />
+
       <InstallPwaCallout serverInstalled={pwaInstalled} />
 
       {/* Header */}
@@ -505,6 +547,9 @@ export default async function DashboardPage() {
 
       {/* Renders nothing when no holding has a recorded move. */}
       <TodaysMovers up={pulse.movers.up} down={pulse.movers.down} />
+
+      {/* Renders nothing once there is nothing left to chase. */}
+      <NextMilestones milestones={milestones} />
 
       {/* Wishlist matches — Available Now */}
       {wishlistMatches.length > 0 && (() => {
