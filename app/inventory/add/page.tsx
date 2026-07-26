@@ -12,6 +12,7 @@ import { RaritySelect } from "@/components/RaritySelect";
 import { PokemonTCGProvider } from "@/lib/search/PokemonTCGProvider";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
 import { deriveIsEx, isPromoCard } from "@/lib/cards/cardTraits";
+import { deriveFinishes, sortFinishes, FINISH_LABELS } from "@/lib/sets/setCardFinishes";
 
 // Instantiated once at module level — demonstrates encapsulation:
 // all game-specific rarity and search logic lives inside these classes.
@@ -192,7 +193,7 @@ export default function AddCardPage() {
   const [loading, setLoading]               = useState(false);
   const [error, setError]                   = useState("");
   const [duplicateWarning, setDuplicateWarning] = useState(false);
-  const [duplicateItems, setDuplicateItems] = useState<{ id: string; condition: string | null; grader: string | null; grade: number | null; quantity: number }[]>([]);
+  const [duplicateItems, setDuplicateItems] = useState<{ id: string; condition: string | null; grader: string | null; grade: number | null; quantity: number; finish: string | null }[]>([]);
 
   // Scanner telemetry: how the card was selected (scan/search/manual), which scan
   // result rank, and an identity snapshot to diff against the final saved values.
@@ -238,6 +239,24 @@ export default function AddCardPage() {
   // variant/finish, so those become manual selectors (variantInfo === null).
   const isPromo = rarity === "promo";
   const variantInfo = isPromo ? null : raritySystem.getVariantInfo(rarity);
+
+  // The finishes THIS card was actually printed in, from its TCGplayer price keys
+  // — the same derivation master-set completion uses for its denominator
+  // (lib/sets/setCardFinishes). A rarity's locked finish says which printing the
+  // rarity SYMBOL implies, not that it's the card's only printing: 1,185 of our
+  // 1,502 rare_holo cards also exist as a reverse holo. Hard-locking the field hid
+  // those copies entirely — they couldn't be recorded, and their master-set slots
+  // could never be filled. So lock only when the card genuinely has one printing;
+  // otherwise let the collector say which one is in their hand. Purely additive:
+  // the rarity's finish (or the booster-context trio) is always still offered.
+  const printedFinishes = (() => {
+    const priceKeys = Object.keys(tcgplayerData?.prices ?? {});
+    const derived = priceKeys.length
+      ? deriveFinishes({ priceKeys, rarityKey: rarity || null }).finishes
+      : [];
+    const base = variantInfo ? [variantInfo.finishKey] : SELECTABLE_FINISHES.map((f) => f.value);
+    return sortFinishes([...new Set([...base, ...derived])]);
+  })();
 
   function applyRarity(mappedRarity: string) {
     setRarity(mappedRarity);
@@ -370,12 +389,18 @@ export default function AddCardPage() {
 
     if (matchingCardIds.length === 0) return false;
 
-    const { data: existing } = await supabase
+    // Finish is part of a copy's identity, not a detail of it — a holo and a
+    // reverse holo of the same card are different collectibles that occupy
+    // different master-set slots. Matching on card identity alone reported an
+    // existing holo as a duplicate of the reverse holo being added.
+    const base = supabase
       .from("collection_items")
-      .select("id, condition, grader, grade, quantity")
+      .select("id, condition, grader, grade, quantity, finish")
       .eq("user_id", user.id)
       .in("card_id", matchingCardIds)
-      .is("transfer_status", null)
+      .is("transfer_status", null);
+
+    const { data: existing } = await (finish ? base.eq("finish", finish) : base.is("finish", null))
       .limit(5);
 
     if ((existing ?? []).length === 0) return false;
@@ -680,18 +705,23 @@ export default function AddCardPage() {
                     <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
-              ) : variantInfo ? (
-                <div className={lockedFieldClass()}>
-                  <span className="text-sm text-foreground">{variantInfo.finishLabel}</span>
-                  <span className="text-xs text-foreground-muted">auto</span>
-                </div>
-              ) : (
+              ) : printedFinishes.length > 1 ? (
                 <select value={finish} onChange={(e) => setFinish(e.target.value)} className={selectClass()}>
                   <option value="">Select finish</option>
-                  {SELECTABLE_FINISHES.map(({ value, label }) => (
-                    <option key={value} value={value}>{label}</option>
+                  {printedFinishes.map((value) => (
+                    <option key={value} value={value}>{FINISH_LABELS[value] ?? value}</option>
                   ))}
                 </select>
+              ) : (
+                <div className={lockedFieldClass()}>
+                  <span className="text-sm text-foreground">{variantInfo?.finishLabel ?? "—"}</span>
+                  <span className="text-xs text-foreground-muted">auto</span>
+                </div>
+              )}
+              {printedFinishes.length > 1 && variantInfo && (
+                <p className="mt-1.5 text-xs text-foreground-muted">
+                  This card exists in more than one printing — pick the one you have.
+                </p>
               )}
             </div>
 
@@ -851,7 +881,11 @@ export default function AddCardPage() {
         {duplicateWarning && (
           <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-5 space-y-4">
             <div>
-              <p className="text-sm font-semibold text-yellow-400">This card is already in your vault.</p>
+              <p className="text-sm font-semibold text-yellow-400">
+                {finish
+                  ? `The ${(FINISH_LABELS[finish] ?? finish).toLowerCase()} printing of this card is already in your vault.`
+                  : "This card is already in your vault."}
+              </p>
               <p className="mt-1 text-sm text-foreground-muted">
                 You can add another entry (e.g. a different condition, grade, or price) or go back to review your existing {duplicateItems.length === 1 ? "copy" : "copies"}.
               </p>
@@ -866,6 +900,7 @@ export default function AddCardPage() {
                     className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-2.5 text-sm hover:border-gold/30 transition-colors"
                   >
                     <span className="text-foreground-muted capitalize">
+                      {item.finish ? `${FINISH_LABELS[item.finish] ?? item.finish} · ` : ""}
                       {item.grader
                         ? `${item.grader} ${item.grade}`
                         : (item.condition?.replace(/_/g, " ") ?? "Unknown condition")}
