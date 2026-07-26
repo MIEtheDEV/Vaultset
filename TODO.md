@@ -95,7 +95,7 @@
 > Four independently shippable slices, ordered by leverage. Phase 6.0 unblocks the rest;
 > Phase 6.1 is the only item that creates a return trigger.
 
-- [ ] **6.0 Feedback & motion foundation** — the missing `components/ui/` layer. Today there are
+- [x] **6.0 Feedback & motion foundation** — the missing `components/ui/` layer. Today there are
   **zero toasts, zero skeletons, zero `loading.tsx`/`error.tsx` across ~90 routes, and one
   `aria-live` in the whole app**; every async action is a silent wait or a hard refresh. Add
   `sonner` + `canvas-confetti`; create `components/ui/{Toast,EmptyState,Skeleton,Celebrate}.tsx`;
@@ -104,7 +104,7 @@
   empties. Add semantic tokens (`--color-success/danger/warning/info`) to stop the ~600-hit raw
   palette drift, plus `prefers-reduced-motion`-guarded entrance utilities — and retrofit that guard
   onto the existing infinite `.spin-border` / `.showcase-foil` / `.showcase-gold` loops.
-- [ ] **6.1 Daily Vault Loop** — *the return trigger.* New `lib/vaultDaily.ts` (pure) computing
+- [x] **6.1 Daily Vault Loop** — *the return trigger.* New `lib/vaultDaily.ts` (pure) computing
   the day's portfolio delta + top movers, reusing `dailyChange`/`apiDailyChange`/`withLiveToday`
   from `lib/priceHistory.ts`. `VaultPulse` (delta headline + 30-day sparkline + streak flame) leads
   the dashboard, and wishlist matches move above the fold from position 7. Visit streak
@@ -114,7 +114,7 @@
   pattern: it inserts a `daily_digest` notification and the existing `dispatch_push_notification()`
   AFTER INSERT trigger delivers the push with no new plumbing. Scheduled by `pg_cron` at 13:00 UTC
   (~8am ET), **after** the 02:00 UTC snapshot.
-- [ ] **6.2 Progression & Celebration** — the reward machinery never celebrates: badges are awarded
+- [x] **6.2 Progression & Celebration** — the reward machinery never celebrates: badges are awarded
   during dashboard render then appear as one line in a list. First, extract the hardcoded threshold
   if-chain at `lib/badges.ts:171-203` into a `BADGE_THRESHOLDS` data table (with a Jest **parity
   test** against current output — this is the highest-risk refactor in the phase, and the blocker
