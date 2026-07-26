@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { chartTheme } from "@/lib/chartTheme";
 
 export type PricePoint = { date: string; value: number };
 
@@ -109,7 +110,7 @@ export function PortfolioChart({ data }: { data: PricePoint[] }) {
             <XAxis
               dataKey="date"
               tickFormatter={formatAxisDate}
-              tick={{ fontSize: 11, fill: "#6b7194" }}
+              tick={{ fontSize: 11, fill: chartTheme.axis }}
               axisLine={false}
               tickLine={false}
               interval="preserveStartEnd"
@@ -118,7 +119,7 @@ export function PortfolioChart({ data }: { data: PricePoint[] }) {
               tickFormatter={(v: number) =>
                 `$${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0)}`
               }
-              tick={{ fontSize: 11, fill: "#6b7194" }}
+              tick={{ fontSize: 11, fill: chartTheme.axis }}
               axisLine={false}
               tickLine={false}
               width={52}

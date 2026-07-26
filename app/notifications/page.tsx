@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { timeAgo } from "@/lib/timeAgo";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const metadata: Metadata = {
   title: "Notifications",
@@ -47,9 +48,19 @@ export default async function NotificationsPage() {
       </div>
 
       {!notifications || notifications.length === 0 ? (
-        <div className="rounded-2xl border border-border bg-surface py-16 text-center">
-          <p className="text-sm text-foreground-muted">No notifications yet.</p>
-        </div>
+        <EmptyState
+          size="lg"
+          icon={
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+          }
+          title="No notifications yet"
+          description="Offers, price alerts, new followers, and achievements all land here."
+          cta="Turn on push notifications"
+          href="/account"
+        />
       ) : (
         <div className="rounded-2xl border border-border bg-surface divide-y divide-border overflow-hidden">
           {notifications.map((n) => {
@@ -173,6 +184,53 @@ export default async function NotificationsPage() {
                   {data.badge_description && (
                     <span className="text-foreground-muted"> — {data.badge_description}</span>
                   )}
+                </span>
+              );
+            } else if (n.type === "daily_digest") {
+              const data = n.data as {
+                change_abs?: number; change_pct?: number;
+                leader_name?: string; leader_abs?: number;
+              };
+              const abs = Number(data.change_abs ?? 0);
+              const pct = Number(data.change_pct ?? 0);
+              const up = abs >= 0;
+              icon = (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={up ? "text-success" : "text-danger"}>
+                  {up
+                    ? <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></>
+                    : <><polyline points="23 18 13.5 8.5 8.5 13.5 1 6" /><polyline points="17 18 23 18 23 12" /></>}
+                </svg>
+              );
+              href = "/dashboard";
+              content = (
+                <span>
+                  Your vault is {up ? "up" : "down"}{" "}
+                  <span className={`font-medium ${up ? "text-success" : "text-danger"}`}>
+                    {up ? "+" : "−"}${Math.abs(abs).toFixed(2)} ({up ? "+" : "−"}{Math.abs(pct).toFixed(1)}%)
+                  </span>
+                  {data.leader_name ? (
+                    <span className="text-foreground-muted">
+                      {" "}— led by {data.leader_name}
+                      {typeof data.leader_abs === "number"
+                        ? ` (${data.leader_abs >= 0 ? "+" : "−"}$${Math.abs(data.leader_abs).toFixed(2)})`
+                        : ""}
+                    </span>
+                  ) : null}
+                </span>
+              );
+            } else if (n.type === "onboarding_nudge") {
+              icon = (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gold">
+                  <rect x="2" y="3" width="20" height="14" rx="2" />
+                  <path d="M8 21h8M12 17v4" />
+                </svg>
+              );
+              href = "/inventory/add";
+              content = (
+                <span>
+                  Your vault is still empty —{" "}
+                  <span className="font-medium text-foreground">add your first card</span>{" "}
+                  <span className="text-foreground-muted">to start tracking its value</span>
                 </span>
               );
             } else if (n.type === "test_push") {

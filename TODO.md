@@ -75,6 +75,104 @@
 - [ ] **Shipping integration** — Label generation or shipping cost estimation; required before collecting transaction fees on shipped orders.
 - [ ] **Multi-game support** — Polymorphic `CardSearchProvider` and `RaritySystem` architecture is complete; only Pokémon TCG is implemented. To add a new game: implement the two abstract classes in `lib/search/` and `lib/rarity/`, then register in their respective `index.ts` factories.
 
+### Phase 6 — Engagement & Retention
+
+> **Why this phase exists.** Phases 1–5 built extraordinary *breadth* — a multi-tier pricing
+> engine, perceptual-hash scanning, variant-aware Master Sets, 50 badges, a full web-push stack,
+> Stripe Pro — but **no loop and no reward**. Engagement was implicitly treated as "done" once
+> badges + follows + notifications shipped, so this roadmap contained zero engagement items.
+> The retention *plumbing* is fully built and load-bearing; **nothing recurring uses it**:
+> `pg_cron` runs (daily price snapshot), web-push is wired end-to-end, `price_history` has
+> ~3.2k rows and `card_price_snapshots` ~2.3k — and every badge/completion award still fires
+> lazily only when a user is *already* on the page. There is no digest, no streak, no `last_seen`.
+>
+> **Sequencing constraint.** Production is pre-traction (14 profiles, 173 cards, 0 offers,
+> 3 reveals). Crowd-dependent mechanics (comments, social feeds, leaderboard seasons) would ship
+> into an empty room and read as dead. Everything below is **single-player or outward-shareable** —
+> valuable to a user with nobody else on the platform. Reactions/comments are deliberately
+> deferred (see backlog).
+>
+> Four independently shippable slices, ordered by leverage. Phase 6.0 unblocks the rest;
+> Phase 6.1 is the only item that creates a return trigger.
+
+- [x] **6.0 Feedback & motion foundation** — the missing `components/ui/` layer. Today there are
+  **zero toasts, zero skeletons, zero `loading.tsx`/`error.tsx` across ~90 routes, and one
+  `aria-live` in the whole app**; every async action is a silent wait or a hard refresh. Add
+  `sonner` + `canvas-confetti`; create `components/ui/{Toast,EmptyState,Skeleton,Celebrate}.tsx`;
+  extract the local non-exported `EmptyState` at `app/dashboard/page.tsx:69-93` (with a `size` prop
+  to absorb the larger hand-rolled variant in `InventoryGrid`) and replace the bare one-liner
+  empties. Add semantic tokens (`--color-success/danger/warning/info`) to stop the ~600-hit raw
+  palette drift, plus `prefers-reduced-motion`-guarded entrance utilities — and retrofit that guard
+  onto the existing infinite `.spin-border` / `.showcase-foil` / `.showcase-gold` loops.
+- [x] **6.1 Daily Vault Loop** — *the return trigger.* New `lib/vaultDaily.ts` (pure) computing
+  the day's portfolio delta + top movers, reusing `dailyChange`/`apiDailyChange`/`withLiveToday`
+  from `lib/priceHistory.ts`. `VaultPulse` (delta headline + 30-day sparkline + streak flame) leads
+  the dashboard, and wishlist matches move above the fold from position 7. Visit streak
+  (`profiles.last_active_on` / `streak_days` / `streak_best` + a `touch_streak()` fn called **off**
+  the render path — see the perf defect in `docs/pwa-performance-migration.md:34`). **Daily digest
+  push** via `app/api/digest/daily/route.ts`, secret-authed on the existing `PUSH_DISPATCH_SECRET`
+  pattern: it inserts a `daily_digest` notification and the existing `dispatch_push_notification()`
+  AFTER INSERT trigger delivers the push with no new plumbing. Scheduled by `pg_cron` at 13:00 UTC
+  (~8am ET), **after** the 02:00 UTC snapshot.
+- [x] **6.2 Progression & Celebration** — the reward machinery never celebrates: badges are awarded
+  during dashboard render then appear as one line in a list. First, extract the hardcoded threshold
+  if-chain at `lib/badges.ts:171-203` into a `BADGE_THRESHOLDS` data table (with a Jest **parity
+  test** against current output — this is the highest-risk refactor in the phase, and the blocker
+  for any progress UI). Then `lib/badgeProgress.ts` + `NextMilestones` ("3 more cards → Century"),
+  reusing `BadgeChip`'s existing locked state and folding in nearest-to-complete sets from
+  `getSetCompletionSummaries()`. Confetti + toast on badge earn and set completion. Shareable
+  achievement PNG via the installed `html-to-image` / `CardStudio` pipeline. Also fixes
+  **`user_set_completions`**, which has full RLS/index/policy but **0 rows and no reader** — its
+  writer only fires when a user views a set they *already* completed, so it never populates.
+- [x] **6.3 First-run Activation** — a new user currently lands on four zeros, a Pro lock card, and
+  three empty panels; **no onboarding exists anywhere in the codebase**. `lib/onboarding.ts` derives
+  checklist state from data we already have (**no new table**): username, ≥1 card, a chase set, push
+  enabled, a showcase pin. `OnboardingChecklist` replaces the wall-of-zeros while incomplete, then
+  collapses to a progress strip (dismissible via `profiles.onboarding_dismissed_at`). Surfaces
+  `/inventory/import` prominently — "bring your spreadsheet" is the strongest switching path and is
+  currently buried. Day 0–7 nudges reuse the 6.1 digest cron. Should also fix `profile_showcase`
+  (0 rows despite a complete UI + Pro borders — a discovery problem, not a build problem).
+- [x] **6.4 Collection Insights** — `recharts` is installed and **only `AreaChart` is used** (1 of
+  ~10 chart types, at zero install cost). `lib/collectionInsights.ts` (pure aggregations by rarity,
+  set, condition, finish, graded vs raw, value concentration, paid vs market) + `CollectionDna`
+  (pie/radial rarity mix, bar top-sets) at a new `/inventory/insights`, reusing `RaritySymbol` for
+  legends. Plus a shareable **"Vault Recap"** PNG (cards added, value growth, best pull, sets
+  progressed) — an outward-share artifact that doubles as acquisition.
+
+**Paywall boundaries set for this phase** (added to the Free vs. Pro reference below):
+the **daily delta headline is free** (a value delta is not history browsing — gating it would make
+6.1 useless to exactly the users most likely to churn; the Pro gate stays on the *chart* and
+`/dashboard/analytics`), and **collection distribution is free** while cost-basis/ROI stays Pro.
+
+### Engagement Backlog (documented, not scheduled)
+
+Surfaced by the 2026-07-26 engagement audit; captured here so they aren't rediscovered later.
+
+- [ ] **Following feed carries only listings** (`app/dashboard/page.tsx:237-249`) — follow a
+  collector who doesn't sell and your feed is empty *forever*. Should also carry reveals, badge
+  earns, and set completions. Cheap: the dashboard already merges 7 event types for the private
+  activity feed, so a following-scoped version is largely a query change.
+- [ ] **`/reveals` is invisible** — absent from `AppNav`, `robots: { index: false }`, and
+  login-gated. The most inherently viral surface in the product cannot be found or shared.
+- [ ] **Reactions / comments — deliberately deferred.** Zero comments, likes, or reactions exist
+  anywhere in the codebase, so every social surface is publish-only. Revisit once there is enough
+  content and enough users that a reaction has an audience (3 reveals total today).
+- [ ] **`watchlist` is a passive bookmark list** — no `target_price`, no notification hook. A
+  price-drop alert would reuse the `notifications` → push chokepoint verbatim. The `deal_watcher`
+  badge needs 10 items and the table has 1 row.
+- [ ] **`card_add_events` is unread** — 699 rows of scan-acceptance telemetry
+  (`scan_candidate_index`, `accepted_first`, `modified_fields`, `feedback`) written by
+  `app/api/scan-event/route.ts` and queried by nothing. Compare `scan_diagnostics`, which has an
+  admin viewer.
+- [ ] **Dashboard perf** — ~19 parallel Supabase queries + 3 sequential follow-ups, an unbounded
+  per-user `price_history` fetch, and badge-award **writes during render**. Overlaps Phase 5's PWA
+  migration.
+- [ ] **Badge thresholds are duplicated** between `lib/badges.ts` (22 slugs) and the SQL
+  `check_user_badges()` (~28 slugs). 6.2 extracts the TS half to data; the SQL half stays duplicated.
+- [ ] **Schema snapshot drift** — `get_wishlist_matches()` is called from `app/dashboard/page.tsx`
+  and `app/wishlist/page.tsx` but is **missing from `supabase/schema_6-22.sql`**; regenerate the
+  snapshot. Conversely `get_platform_listed_value()` is in the snapshot and called from nowhere.
+
 ---
 
 ## Completed
@@ -96,11 +194,16 @@
 ## Free vs. Pro Reference
 
 > Gating decisions decided 2026-06-13; the table below is the reference.
+> Phase 6 rows added 2026-07-26.
 
 | Feature | Free | Pro |
 |---|---|---|
 | Card inventory | Unlimited | Unlimited |
 | Current market value | Yes | Yes |
+| Daily value change (delta + movers) | Yes | Yes |
+| Daily digest push | Yes | Yes |
+| Milestone progress + celebrations | Yes | Yes |
+| Collection distribution / breakdowns | Yes | Yes |
 | Active marketplace listings | Unlimited | Unlimited |
 | Market price refresh | Auto (passive, shared cache) | On-demand (manual) |
 | Watchlist | Yes | Yes |

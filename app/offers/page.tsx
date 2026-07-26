@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { timeAgo } from "@/lib/timeAgo";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const metadata: Metadata = {
   title: "My Offers",
@@ -115,7 +116,14 @@ export default async function OffersPage() {
         </h2>
 
         {activeReceived.length === 0 && historyReceived.length === 0 ? (
-          <EmptyState message="No offers received yet." />
+          <EmptyState
+            size="lg"
+            icon={offerIcon}
+            title="No offers received yet"
+            description="When a collector makes an offer on one of your listings, it lands here."
+            cta="Manage your listings"
+            href="/inventory"
+          />
         ) : (
           <div className="space-y-3">
             {activeReceived.length > 0 && (
@@ -133,7 +141,14 @@ export default async function OffersPage() {
         <h2 className="font-semibold text-foreground">Sent</h2>
 
         {activeSent.length === 0 && historySent.length === 0 ? (
-          <EmptyState message="No offers sent yet. Browse the marketplace to make offers." />
+          <EmptyState
+            size="lg"
+            icon={offerIcon}
+            title="No offers sent yet"
+            description="Find a card you want and send the seller a cash, trade, or bundle offer."
+            cta="Browse the marketplace"
+            href="/marketplace"
+          />
         ) : (
           <div className="space-y-3">
             {activeSent.length > 0 && (
@@ -263,10 +278,9 @@ function HistorySection({
   );
 }
 
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="rounded-2xl border border-border bg-surface py-12 text-center">
-      <p className="text-sm text-foreground-muted">{message}</p>
-    </div>
-  );
-}
+const offerIcon = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V4a2 2 0 0 1 2-2h8l8.59 8.59a2 2 0 0 1 0 2.82z" />
+    <circle cx="7.5" cy="7.5" r="1.5" />
+  </svg>
+);

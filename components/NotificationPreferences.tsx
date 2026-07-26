@@ -10,9 +10,11 @@ type Prefs = {
   push_followers: boolean;
   push_alerts: boolean;
   push_achievements: boolean;
+  push_digest: boolean;
 };
 
 const ROWS: { key: keyof Prefs; label: string; description: string }[] = [
+  { key: "push_digest",       label: "Daily vault digest",     description: "One summary each morning of how your collection's value moved." },
   { key: "push_messages",     label: "Messages",               description: "New chat messages. Mute individual conversations from the thread." },
   { key: "push_offers",       label: "Offers",                 description: "New cash, trade, and bundle offers on your listings." },
   { key: "push_alerts",       label: "Price & wishlist alerts", description: "When a wishlist card is listed or drops to your target price." },

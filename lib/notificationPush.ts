@@ -1,7 +1,13 @@
 import type { PushPayload } from "@/lib/push";
 
 /** Columns on `notification_preferences` that gate push per notification type. */
-export type PrefKey = "push_offers" | "push_followers" | "push_alerts" | "push_achievements" | "push_messages";
+export type PrefKey =
+  | "push_offers"
+  | "push_followers"
+  | "push_alerts"
+  | "push_achievements"
+  | "push_messages"
+  | "push_digest";
 
 export type NotificationRow = {
   type: string;
@@ -21,6 +27,10 @@ export function prefKeyForType(type: string): PrefKey | null {
     case "price_alert":             return "push_alerts";
     case "wishlist_listing_match":  return "push_alerts";
     case "badge_earned":            return "push_achievements";
+    case "daily_digest":            return "push_digest";
+    // Same "unsolicited daily outreach" bucket as the digest — someone who muted
+    // that has clearly opted out of us initiating contact.
+    case "onboarding_nudge":        return "push_digest";
     default:                        return null;
   }
 }
@@ -103,6 +113,41 @@ export function buildPushPayload(n: NotificationRow, actorUsername: string | nul
         tag: slug ? `badge:${slug}` : "badge_earned",
       };
     }
+
+    case "daily_digest": {
+      const abs = num("change_abs");
+      const pct = num("change_pct");
+      const up = abs >= 0;
+      const leader = str("leader_name");
+      const leaderAbs = typeof data.leader_abs === "number" ? (data.leader_abs as number) : null;
+
+      const headline = `Your vault is ${up ? "up" : "down"} $${Math.abs(abs).toFixed(2)} (${
+        up ? "+" : "−"
+      }${Math.abs(pct).toFixed(1)}%) today`;
+
+      // Dollars, not percent — the leader is whichever holding contributed the most
+      // money, so quoting its percentage invites "+228%" next to a 16p move.
+      const detail =
+        leader && leaderAbs != null
+          ? ` — led by ${leader} (${leaderAbs >= 0 ? "+" : "−"}$${Math.abs(leaderAbs).toFixed(2)})`
+          : "";
+
+      return {
+        title: up ? "📈 Vault up today" : "📉 Vault down today",
+        body: headline + detail,
+        url: "/dashboard",
+        // One digest per day: collapse rather than stack if a device was offline.
+        tag: "daily_digest",
+      };
+    }
+
+    case "onboarding_nudge":
+      return {
+        title: "Your vault is empty",
+        body: "Add your first card to start tracking its value — scanning one takes a few seconds.",
+        url: "/inventory/add",
+        tag: "onboarding_nudge",
+      };
 
     case "new_review":
       return {

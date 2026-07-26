@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { after } from "next/server";
 import Image from "next/image";
 import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
@@ -14,7 +15,24 @@ import { isUserAdmin } from "@/lib/auth/admin";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { withLiveToday } from "@/lib/priceHistory";
 import { timeAgo } from "@/lib/timeAgo";
-import { BADGE_MAP, computeEarnedSlugs, awardBadges, type BadgeSlug } from "@/lib/badges";
+import { BADGE_MAP, computeEarnedSlugs, awardBadges, type BadgeSlug, type BadgeStats } from "@/lib/badges";
+import { nextMilestones } from "@/lib/badgeProgress";
+import { getSetCompletionSummaries } from "@/lib/sets/masterset";
+import { recordCompletionsFromSummaries } from "@/lib/sets/setCompletion";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { NextMilestones } from "@/components/NextMilestones";
+import { Celebrate, type CelebrationEvent } from "@/components/ui/Celebrate";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
+import { buildOnboarding, loadOnboardingFacts } from "@/lib/onboarding";
+import { VaultPulse } from "@/components/VaultPulse";
+import { TodaysMovers } from "@/components/TodaysMovers";
+import {
+  loadDailyChanges,
+  computeVaultPulse,
+  pulseChange,
+  type VaultItem,
+  type SnapshotRow,
+} from "@/lib/vaultDaily";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -65,32 +83,6 @@ const stats = [
   },
 ];
 
-
-function EmptyState({ icon, title, description, cta, href }: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  cta: string;
-  href: string;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-raised text-foreground-muted">
-        {icon}
-      </div>
-      <div>
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        <p className="mt-0.5 text-xs text-foreground-muted">{description}</p>
-      </div>
-      <Link
-        href={href}
-        className="mt-1 rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
-      >
-        {cta}
-      </Link>
-    </div>
-  );
-}
 
 function greeting() {
   const hour = new Date().getHours();
@@ -172,7 +164,14 @@ export default async function DashboardPage() {
     { data: rpcBadgeSlugs },
     { data: sealedValueRows },
   ] = await Promise.all([
-    supabase.from("collection_items").select("quantity, market_price").eq("user_id", user!.id),
+    // Doubles as the input to the vault-pulse / movers computation, so the card
+    // join rides along on a query that already scans every holding rather than
+    // adding a second full pass. (Dashboard query volume is a known issue tracked
+    // in docs/pwa-performance-migration.md.)
+    supabase
+      .from("collection_items")
+      .select("id, quantity, market_price, finish, condition, grader, cards ( id, name, set_name, card_number, image_url, game_data )")
+      .eq("user_id", user!.id),
     supabase.from("collection_items").select("quantity").eq("user_id", user!.id).eq("for_sale", true),
     supabase.from("product_purchases").select("*", { count: "exact", head: true }).eq("user_id", user!.id).or("for_sale.eq.true,for_trade.eq.true"),
     supabase.from("collection_items").select("quantity").eq("user_id", user!.id).eq("for_trade", true),
@@ -188,7 +187,7 @@ export default async function DashboardPage() {
       )
     `).eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("market_refresh_log").select("refreshed_at").eq("user_id", user!.id).maybeSingle(),
-    supabase.from("profiles").select("is_supporter, is_pro, pro_plan, pro_expires_at, pro_auto_renews, pwa_installed_at").eq("id", user!.id).single(),
+    supabase.from("profiles").select("is_supporter, is_pro, pro_plan, pro_expires_at, pro_auto_renews, pwa_installed_at, onboarding_dismissed_at").eq("id", user!.id).single(),
     supabase.rpc("get_wishlist_matches", { p_user_id: user!.id }),
     supabase.from("wishlist_items").select("id, card_name, set_name, card_number, image_url, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("product_purchases").select("id, name, product_type, for_sale, for_trade, list_price, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
@@ -196,7 +195,10 @@ export default async function DashboardPage() {
     supabase.from("reviews").select("id", { count: "exact", head: true }).eq("user_id", user!.id),
     supabase
       .from("price_history")
-      .select("snapshotted_at, market_price, collection_items(quantity)")
+      // `collection_item_id` rides along so the same rows can seed both the
+      // portfolio chart (aggregated by date) and the per-card daily deltas,
+      // instead of scanning price_history twice.
+      .select("collection_item_id, snapshotted_at, market_price, collection_items(quantity)")
       .eq("user_id", user!.id)
       .order("snapshotted_at", { ascending: true }),
     supabase
@@ -278,11 +280,41 @@ export default async function DashboardPage() {
   const gradedItemCount = (gradedRows      ?? []).reduce((sum, r) => sum + (r.quantity ?? 1), 0);
   const activeListings  = cardListings + (sealedListings ?? 0);
 
+  // Vault pulse: today's movement plus the biggest individual movers. Reuses the
+  // holdings rows and price_history rows already loaded above, so this costs one
+  // extra query (card_prices for the provider's 24h figures) rather than three.
+  const vaultItems = (quantityData ?? []) as unknown as VaultItem[];
+  const dailyChanges = await loadDailyChanges(supabase, user!.id, vaultItems, {
+    snapshots: (priceHistoryRaw ?? []) as unknown as SnapshotRow[],
+  });
+  const pulse = computeVaultPulse(vaultItems, dailyChanges);
+  const vaultChange = pulseChange(pulse);
+
+  // Visit streak. Read on its own rather than folded into the profiles select
+  // above, and deliberately tolerant: the columns arrive with the Phase 6.1
+  // migration (supabase/phase6_engagement.sql), and until that is applied this
+  // query errors. Falling back to 0 keeps the dashboard up — the flame only
+  // renders from 2 days anyway, so pre-migration it's simply absent.
+  const { data: streakRow } = await supabase
+    .from("profiles")
+    .select("streak_days")
+    .eq("id", user!.id)
+    .maybeSingle();
+  const streakDays = Number((streakRow as { streak_days?: number } | null)?.streak_days ?? 0);
+
+  // Record today's visit *after* the response is flushed. Badge awarding already
+  // writes during render — a known perf defect (docs/pwa-performance-migration.md)
+  // — and the streak must not add to it. Uses the admin client because the
+  // cookie-bound client's request context is gone by the time this runs.
+  after(async () => {
+    await createAdminClient().rpc("touch_streak", { p_user_id: user!.id });
+  });
+
   // Check and award any newly earned achievement badges
   const existingBadgeMap = new Map(
     (badgeData ?? []).map((b) => [b.badge_slug as BadgeSlug, b.earned_at as string])
   );
-  const inMemorySlugs = computeEarnedSlugs({
+  const badgeStats: BadgeStats = {
     totalCards,
     activeListings,
     forTradeCount: pendingTrades ?? 0,
@@ -290,7 +322,8 @@ export default async function DashboardPage() {
     collectionValue,
     followerCount: userFollowerCount ?? 0,
     followingCount: followingIds.length,
-  });
+  };
+  const inMemorySlugs = computeEarnedSlugs(badgeStats);
   const dbSlugs = (rpcBadgeSlugs ?? []) as BadgeSlug[];
   const computedSlugs = [...new Set([...inMemorySlugs, ...dbSlugs])];
   const newSlugs = computedSlugs.filter((s) => !existingBadgeMap.has(s));
@@ -308,6 +341,66 @@ export default async function DashboardPage() {
       }))
     );
   }
+
+  // Progress toward the next milestones.
+  //
+  // Set completion is the strongest "collect them all" pull in the product, so
+  // in-progress sets are folded in alongside the badge thresholds. The summaries
+  // call is skipped entirely for an empty vault, where it would do real work to
+  // return nothing. (It is the same call /masterset makes; dashboard query volume
+  // overall is tracked in docs/pwa-performance-migration.md.)
+  const setSummaries = totalCards > 0
+    ? await getSetCompletionSummaries(supabase, user!.id)
+    : [];
+
+  const earnedForProgress = new Set<BadgeSlug>([...existingBadgeMap.keys(), ...computedSlugs]);
+  const milestones = nextMilestones(badgeStats, earnedForProgress, setSummaries, 3);
+
+  // First-run checklist. The three extra count queries only run while onboarding is
+  // still live: once it's dismissed — or auto-retired below on completion — an
+  // established account pays nothing for this.
+  const onboardingDismissed = Boolean(
+    (profileData as { onboarding_dismissed_at?: string | null } | null)?.onboarding_dismissed_at,
+  );
+  const onboarding = onboardingDismissed
+    ? null
+    : buildOnboarding(
+        await loadOnboardingFacts(supabase, user!.id, {
+          hasUsername: Boolean(username),
+          cardCount: totalCards,
+        }),
+      );
+
+  // Retire the checklist for good once every step is done, so it shows its
+  // "you're all set" state exactly once rather than on every future visit.
+  if (onboarding?.complete) {
+    after(async () => {
+      await createAdminClient()
+        .from("profiles")
+        .update({ onboarding_dismissed_at: new Date().toISOString() })
+        .eq("id", user!.id)
+        .is("onboarding_dismissed_at", null);
+    });
+  }
+
+  // Sweep every completed set into `user_set_completions`. Until now a completion
+  // was only recorded if the user happened to open that set's own page, so the
+  // table was empty in production even for sets that were genuinely finished.
+  // Runs after the response is flushed, like the streak write.
+  if (setSummaries.length > 0) {
+    after(async () => {
+      await recordCompletionsFromSummaries(createAdminClient(), user!.id, setSummaries);
+    });
+  }
+
+  // Celebrate anything earned on this load. Deduped client-side by key, because
+  // this list is recomputed on every render — without that, finishing a set would
+  // re-throw confetti every time the dashboard opened.
+  const celebrations: CelebrationEvent[] = awardedSlugs.map((slug) => ({
+    key: `badge:${slug}`,
+    title: `${BADGE_MAP.get(slug)?.label ?? slug} unlocked`,
+    description: BADGE_MAP.get(slug)?.description,
+  }));
 
   // Badge activity events: all earned (from DB) + any newly awarded this load
   const nowIso = new Date().toISOString();
@@ -408,6 +501,9 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
 
+      {/* Confetti + toast for anything earned on this load. Renders no markup. */}
+      <Celebrate events={celebrations} />
+
       <InstallPwaCallout serverInstalled={pwaInstalled} />
 
       {/* Header */}
@@ -462,53 +558,31 @@ export default async function DashboardPage() {
         <ReviewPrompt username={username} />
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {dashboardStats.map(({ label, value, icon }) => (
-          <div key={label} className="rounded-2xl border border-border bg-surface p-5">
-            <div className="flex items-start justify-between mb-3 min-h-8">
-              <span className="text-xs font-medium text-foreground-muted uppercase tracking-wide">{label}</span>
-              <span className="text-foreground-muted">{icon}</span>
-            </div>
-            <span className="text-2xl font-bold text-foreground">{value}</span>
-          </div>
-        ))}
-      </div>
+      {/* Setup checklist — above the pulse, because for a new account it *is* the
+          page. Self-retires once complete or dismissed. */}
+      {onboarding && <OnboardingChecklist state={onboarding} />}
 
-      {/* Portfolio value chart — Pro feature */}
-      {canPro ? (
-        <PortfolioChart data={portfolioHistory} />
-      ) : (
-        <ProUpsell
-          title="Price history charts"
-          description="Track your portfolio's value over time with Pro — daily snapshots across 7D / 30D / 90D / All."
-        />
-      )}
+      {/*
+        Vault pulse leads the page. Previously the first thing on screen was four
+        static stat tiles whose numbers only change when you add a card, so two
+        visits a week apart looked identical — nothing here answered "what
+        happened since I was last on?".
+      */}
+      <VaultPulse
+        totalValue={collectionValue}
+        change={vaultChange}
+        series={portfolioHistory.slice(-30)}
+        streakDays={streakDays}
+        canPro={canPro}
+        coveredCount={pulse.covered}
+        totalCount={pulse.total}
+      />
 
-      {/* Quick actions */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {quickActions.map(({ label, href, comingSoon, icon }) => (
-          comingSoon ? (
-            <div
-              key={label}
-              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-surface px-4 py-5 opacity-50 cursor-not-allowed"
-            >
-              <span className="text-foreground-muted">{icon}</span>
-              <span className="text-xs font-medium text-foreground-muted">{label}</span>
-              <span className="text-xs text-gold">Soon</span>
-            </div>
-          ) : (
-            <Link
-              key={label}
-              href={href!}
-              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-surface px-4 py-5 hover:border-gold/40 hover:bg-surface-raised transition-colors group"
-            >
-              <span className="text-foreground-muted group-hover:text-gold transition-colors">{icon}</span>
-              <span className="text-xs font-medium text-foreground-muted group-hover:text-foreground transition-colors">{label}</span>
-            </Link>
-          )
-        ))}
-      </div>
+      {/* Renders nothing when no holding has a recorded move. */}
+      <TodaysMovers up={pulse.movers.up} down={pulse.movers.down} />
+
+      {/* Renders nothing once there is nothing left to chase. */}
+      <NextMilestones milestones={milestones} />
 
       {/* Wishlist matches — Available Now */}
       {wishlistMatches.length > 0 && (() => {
@@ -583,6 +657,54 @@ export default async function DashboardPage() {
         );
       })()}
 
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {dashboardStats.map(({ label, value, icon }) => (
+          <div key={label} className="rounded-2xl border border-border bg-surface p-5">
+            <div className="flex items-start justify-between mb-3 min-h-8">
+              <span className="text-xs font-medium text-foreground-muted uppercase tracking-wide">{label}</span>
+              <span className="text-foreground-muted">{icon}</span>
+            </div>
+            <span className="text-2xl font-bold text-foreground">{value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Portfolio value chart — Pro feature */}
+      {canPro ? (
+        <PortfolioChart data={portfolioHistory} />
+      ) : (
+        <ProUpsell
+          title="Price history charts"
+          description="Track your portfolio's value over time with Pro — daily snapshots across 7D / 30D / 90D / All."
+        />
+      )}
+
+      {/* Quick actions */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {quickActions.map(({ label, href, comingSoon, icon }) => (
+          comingSoon ? (
+            <div
+              key={label}
+              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-surface px-4 py-5 opacity-50 cursor-not-allowed"
+            >
+              <span className="text-foreground-muted">{icon}</span>
+              <span className="text-xs font-medium text-foreground-muted">{label}</span>
+              <span className="text-xs text-gold">Soon</span>
+            </div>
+          ) : (
+            <Link
+              key={label}
+              href={href!}
+              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-surface px-4 py-5 hover:border-gold/40 hover:bg-surface-raised transition-colors group"
+            >
+              <span className="text-foreground-muted group-hover:text-gold transition-colors">{icon}</span>
+              <span className="text-xs font-medium text-foreground-muted group-hover:text-foreground transition-colors">{label}</span>
+            </Link>
+          )
+        ))}
+      </div>
+
       {/* Following Feed */}
       {followingIds.length > 0 && (
         <div className="rounded-2xl border border-border bg-surface">
@@ -633,7 +755,13 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {/* Main grid */}
+      {/*
+        Main grid — suppressed entirely for an account with no cards. Its three
+        panels (Recently Added, Watchlist, Wishlist) would all be empty, and the
+        onboarding checklist above already offers the same actions with better
+        framing. Showing both was the "wall of nothing" this phase exists to fix.
+      */}
+      {totalCards > 0 && (
       <div className="grid lg:grid-cols-3 gap-6">
 
         {/* Collection summary */}
@@ -824,8 +952,11 @@ export default async function DashboardPage() {
 
         </div>{/* end right column */}
       </div>
+      )}
 
-      {/* Recent activity */}
+      {/* Recent activity — nothing to report before the first card, and the
+          checklist is a better use of that space. */}
+      {totalCards > 0 && (
       <div className="rounded-2xl border border-border bg-surface">
         <div className="border-b border-border px-6 py-4">
           <h2 className="font-semibold text-foreground">Recent Activity</h2>
@@ -906,6 +1037,7 @@ export default async function DashboardPage() {
           />
         )}
       </div>
+      )}
 
     </div>
   );

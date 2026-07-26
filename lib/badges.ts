@@ -168,38 +168,65 @@ export type BadgeStats = {
   followingCount: number;
 };
 
-export function computeEarnedSlugs(stats: BadgeStats): BadgeSlug[] {
-  const earned: BadgeSlug[] = [];
+/**
+ * The count-derivable badges, as data rather than an if-chain.
+ *
+ * Extracted so the same numbers can drive both awarding and a
+ * progress-to-next-badge UI. While these lived as hardcoded `if` statements there
+ * was no way to ask "how far off is the next one?", which is why the app could
+ * award a badge but never show anyone what they were working toward.
+ *
+ * Order is significant: `computeEarnedSlugs` returns slugs in this order, and it
+ * matches the original if-chain exactly so the output is unchanged. There is a
+ * parity test pinning this (`__tests__/lib/badges.test.ts`) — if you reorder these
+ * rows, that test is what will tell you.
+ *
+ * NOTE: the other ~28 slugs are awarded by the SQL `check_user_badges()` RPC and
+ * still hold their thresholds in that function. Milestones therefore only cover
+ * the badges listed here. Unifying the two is tracked in TODO.md's backlog.
+ */
+export type BadgeThreshold = {
+  slug: BadgeSlug;
+  stat: keyof BadgeStats;
+  threshold: number;
+};
+
+export const BADGE_THRESHOLDS: BadgeThreshold[] = [
   // Collection size
-  if (stats.totalCards >= 1)         earned.push("first_card");
-  if (stats.totalCards >= 10)        earned.push("collector");
-  if (stats.totalCards >= 100)       earned.push("century");
-  if (stats.totalCards >= 1000)      earned.push("thousand");
-  if (stats.totalCards >= 5000)      earned.push("crown_collector");
+  { slug: "first_card",         stat: "totalCards",      threshold: 1     },
+  { slug: "collector",          stat: "totalCards",      threshold: 10    },
+  { slug: "century",            stat: "totalCards",      threshold: 100   },
+  { slug: "thousand",           stat: "totalCards",      threshold: 1000  },
+  { slug: "crown_collector",    stat: "totalCards",      threshold: 5000  },
   // Collection value
-  if (stats.collectionValue >= 1000)  earned.push("high_roller");
-  if (stats.collectionValue >= 5000)  earned.push("portfolio_builder");
-  if (stats.collectionValue >= 10000) earned.push("high_stakes");
-  if (stats.collectionValue >= 50000) earned.push("vault_guardian");
+  { slug: "high_roller",        stat: "collectionValue", threshold: 1000  },
+  { slug: "portfolio_builder",  stat: "collectionValue", threshold: 5000  },
+  { slug: "high_stakes",        stat: "collectionValue", threshold: 10000 },
+  { slug: "vault_guardian",     stat: "collectionValue", threshold: 50000 },
   // Marketplace
-  if (stats.activeListings >= 1)     earned.push("first_listing");
-  if (stats.activeListings >= 5)     earned.push("active_seller");
-  if (stats.activeListings >= 10)    earned.push("market_maker");
+  { slug: "first_listing",      stat: "activeListings",  threshold: 1     },
+  { slug: "active_seller",      stat: "activeListings",  threshold: 5     },
+  { slug: "market_maker",       stat: "activeListings",  threshold: 10    },
   // Trading
-  if (stats.forTradeCount >= 1)      earned.push("trader");
+  { slug: "trader",             stat: "forTradeCount",   threshold: 1     },
   // Grading
-  if (stats.gradedCount >= 1)        earned.push("graded");
-  if (stats.gradedCount >= 10)       earned.push("grading_enthusiast");
-  if (stats.gradedCount >= 25)       earned.push("grading_expert");
+  { slug: "graded",             stat: "gradedCount",     threshold: 1     },
+  { slug: "grading_enthusiast", stat: "gradedCount",     threshold: 10    },
+  { slug: "grading_expert",     stat: "gradedCount",     threshold: 25    },
   // Social: followers
-  if (stats.followerCount >= 1)      earned.push("rising_star");
-  if (stats.followerCount >= 10)     earned.push("connected");
-  if (stats.followerCount >= 50)     earned.push("popular");
-  if (stats.followerCount >= 100)    earned.push("influencer");
+  { slug: "rising_star",        stat: "followerCount",   threshold: 1     },
+  { slug: "connected",          stat: "followerCount",   threshold: 10    },
+  { slug: "popular",            stat: "followerCount",   threshold: 50    },
+  { slug: "influencer",         stat: "followerCount",   threshold: 100   },
   // Social: following
-  if (stats.followingCount >= 5)     earned.push("community");
-  if (stats.followingCount >= 25)    earned.push("connector");
-  return earned;
+  { slug: "community",          stat: "followingCount",  threshold: 5     },
+  { slug: "connector",          stat: "followingCount",  threshold: 25    },
+];
+
+export function computeEarnedSlugs(stats: BadgeStats): BadgeSlug[] {
+  return BADGE_THRESHOLDS
+    .filter(({ stat, threshold }) => stats[stat] >= threshold)
+    .map(({ slug }) => slug);
 }
 
 export async function awardBadges(

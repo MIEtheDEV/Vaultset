@@ -275,6 +275,16 @@ export default async function ProfilePage({
     (cardListings ?? []).filter((l) => l.for_trade).reduce((s, l) => s + ((l as any).quantity ?? 1), 0) +
     (sealedListings?.filter((l) => l.for_trade).length ?? 0);
 
+  // Completed sets. `user_set_completions` has been written for a while but read by
+  // nothing — its own schema comment claims it "powers badges, profile, and the Pro
+  // marketplace completion signals", none of which actually queried it. This is that
+  // reader. The tile is hidden at zero rather than showing every collector a "0".
+  const { count: setsCompleted } = await supabase
+    .from("user_set_completions")
+    .select("set_code", { count: "exact", head: true })
+    .eq("user_id", profile.id)
+    .eq("tier", "complete");
+
   const isFollowing    = !!followState;
   const followsYouBack = !!followsYouBackState;
   const myFollowingIds = (myFollowingData ?? []).map((f: any) => f.following_id as string);
@@ -870,11 +880,15 @@ export default async function ProfilePage({
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      {/* Stats — 6 columns only when the completed-sets tile is present, so the row
+          never wraps to leave one orphan tile on a second line. */}
+      <div className={`grid grid-cols-2 sm:grid-cols-3 gap-4 ${(setsCompleted ?? 0) > 0 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
         {[
           { label: "Total Cards",     value: totalCards,     href: null },
           { label: "Unique Sets",     value: uniqueSets,     href: null },
+          ...((setsCompleted ?? 0) > 0
+            ? [{ label: "Sets Completed", value: setsCompleted as number, href: `/masterset` }]
+            : []),
           { label: "Graded",          value: gradedCount,    href: null },
           { label: "Active Listings", value: activeListings, href: `/marketplace/user/${profile.username}` },
           { label: "For Trade",       value: forTradeCount,  href: null },
@@ -899,6 +913,7 @@ export default async function ProfilePage({
         isOwnProfile={isOwnProfile}
         profileUserId={profile.id}
         initialFeaturedSlugs={featuredBadgeSlugs}
+        username={profile.username}
       />
 
       {/* Tabbed content */}
