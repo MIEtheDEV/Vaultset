@@ -79,7 +79,17 @@ end;
 $$;
 
 alter function public.touch_streak(uuid) owner to postgres;
-grant all on function public.touch_streak(uuid) to authenticated, service_role;
+
+-- Postgres grants EXECUTE to PUBLIC on every new function, and for a SECURITY
+-- DEFINER function in `public` that means anon can invoke it over PostgREST at
+-- /rest/v1/rpc/touch_streak. A `grant ... to authenticated` does NOT remove that
+-- default, so the revoke is the part that actually matters here.
+--
+-- This is only ever called from the dashboard through the service-role admin
+-- client, so no user-facing role needs it. (It also takes an arbitrary user id,
+-- which would otherwise let any caller advance someone else's streak.)
+revoke all on function public.touch_streak(uuid) from public, anon, authenticated;
+grant execute on function public.touch_streak(uuid) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 2. Daily-digest push preference
@@ -140,6 +150,13 @@ end;
 $$;
 
 alter function public.run_daily_digest() owner to postgres;
+
+-- Same PUBLIC-grant trap as touch_streak, but this one is the serious case: left
+-- open, any anonymous caller could hit /rest/v1/rpc/run_daily_digest and trigger a
+-- push fan-out to every subscribed user, as often as they liked. Only pg_cron
+-- (running as postgres) needs to call this.
+revoke all on function public.run_daily_digest() from public, anon, authenticated;
+grant execute on function public.run_daily_digest() to service_role;
 
 -- Re-schedule idempotently.
 select cron.unschedule('daily-vault-digest')

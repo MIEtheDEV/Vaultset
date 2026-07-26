@@ -3302,36 +3302,124 @@ ALTER FUNCTION "public"."set_card_name_counts"() OWNER TO "postgres";
 GRANT EXECUTE ON FUNCTION "public"."set_card_name_counts"() TO "service_role";
 
 
+-- ============================================================================
+-- Phase 6.1 — Daily Vault Loop (added 2026-07-26; applied to production via MCP).
+-- Appended manually — regenerate with `supabase db dump` to normalize ordering.
+-- Source of truth for this change: supabase/phase6_engagement.sql
+-- ============================================================================
+
+-- Visit streak. Before this the schema had no notion of when a user was last
+-- seen; the existing "longevity" badges had nothing time-based to measure.
+ALTER TABLE "public"."profiles"
+  ADD COLUMN IF NOT EXISTS "last_active_on" "date",
+  ADD COLUMN IF NOT EXISTS "streak_days" integer DEFAULT 0 NOT NULL,
+  ADD COLUMN IF NOT EXISTS "streak_best" integer DEFAULT 0 NOT NULL;
+
+COMMENT ON COLUMN "public"."profiles"."last_active_on" IS 'UTC date of the user''s last recorded visit. Drives streak_days.';
+COMMENT ON COLUMN "public"."profiles"."streak_days" IS 'Consecutive days visited, counting today. Reset to 1 after a missed day.';
+COMMENT ON COLUMN "public"."profiles"."streak_best" IS 'Longest streak_days ever reached — never decreases.';
+
+-- Advance one user's streak. Same-day calls are a no-op, so it is safe to call
+-- on every dashboard load. Called after the response is flushed, never during
+-- render (badge awarding already writes during render — a known perf defect).
+CREATE OR REPLACE FUNCTION "public"."touch_streak"("p_user_id" "uuid") RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+  v_last    date;
+  v_streak  integer;
+  v_new     integer;
+begin
+  select last_active_on, streak_days
+    into v_last, v_streak
+  from public.profiles
+  where id = p_user_id
+  for update;
+
+  if not found then
+    return 0;
+  end if;
+
+  if v_last = current_date then
+    return v_streak;
+  elsif v_last = current_date - 1 then
+    v_new := coalesce(v_streak, 0) + 1;
+  else
+    v_new := 1;
+  end if;
+
+  update public.profiles
+     set last_active_on = current_date,
+         streak_days    = v_new,
+         streak_best    = greatest(coalesce(streak_best, 0), v_new)
+   where id = p_user_id;
+
+  return v_new;
+end;
+$$;
 
 
+ALTER FUNCTION "public"."touch_streak"("uuid") OWNER TO "postgres";
 
 
+-- Daily-digest push preference. Opt-out, matching the other push_* columns.
+ALTER TABLE "public"."notification_preferences"
+  ADD COLUMN IF NOT EXISTS "push_digest" boolean DEFAULT true NOT NULL;
+
+COMMENT ON COLUMN "public"."notification_preferences"."push_digest" IS 'Daily vault digest ("your vault moved $X today"). Opt-out.';
 
 
+-- Fires the daily digest endpoint. Reuses push_dispatch_config for the base URL
+-- and secret, swapping the path, so there is a single place to configure the
+-- deployment host. Never raises: a failed digest must not surface as a cron error.
+CREATE OR REPLACE FUNCTION "public"."run_daily_digest"() RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'extensions', 'net'
+    AS $$
+declare
+  v_url    text;
+  v_secret text;
+begin
+  select dispatch_url, dispatch_secret into v_url, v_secret
+  from public.push_dispatch_config where id = 1;
+
+  if v_url is null or v_url = '' then
+    return;
+  end if;
+
+  v_url := regexp_replace(v_url, '/api/push/dispatch/?$', '/api/digest/daily');
+
+  perform net.http_post(
+    url     := v_url,
+    headers := jsonb_build_object(
+      'Content-Type',  'application/json',
+      'x-push-secret', coalesce(v_secret, '')
+    ),
+    body    := '{}'::jsonb
+  );
+exception when others then
+  return;
+end;
+$$;
 
 
+ALTER FUNCTION "public"."run_daily_digest"() OWNER TO "postgres";
 
 
+-- Both functions are SECURITY DEFINER in `public`, so Postgres' default PUBLIC
+-- execute grant would expose them over PostgREST at /rest/v1/rpc/<name>. Neither
+-- is called from a user's own client: the digest is invoked by pg_cron and
+-- touch_streak via the service-role admin client. run_daily_digest is the
+-- important one — left open, an anonymous caller could trigger a push fan-out to
+-- every subscribed user at will.
+REVOKE ALL ON FUNCTION "public"."touch_streak"("uuid") FROM PUBLIC, "anon", "authenticated";
+GRANT EXECUTE ON FUNCTION "public"."touch_streak"("uuid") TO "service_role";
+
+REVOKE ALL ON FUNCTION "public"."run_daily_digest"() FROM PUBLIC, "anon", "authenticated";
+GRANT EXECUTE ON FUNCTION "public"."run_daily_digest"() TO "service_role";
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+-- pg_cron: 13:00 UTC (~8am ET). MUST stay after the 02:00 `daily-price-snapshot`
+-- job — the digest diffs today's live value against the latest prior snapshot.
+--   select cron.schedule('daily-vault-digest', '0 13 * * *', $$select public.run_daily_digest();$$);
