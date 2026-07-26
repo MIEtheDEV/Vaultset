@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPokemonSets } from "@/lib/sets/getPokemonSets";
 import { normalizeCardNumber } from "@/lib/search/cardNumber";
-import { sortFinishes } from "@/lib/sets/setCardFinishes";
+import { sortFinishes, FINISH_ORDER } from "@/lib/sets/setCardFinishes";
 import { selectChaseCards as rankChaseCards } from "@/lib/sets/chaseCards";
 import { headlineMarketValue } from "@/lib/pricing/headlineMarketValue";
 
@@ -85,6 +85,30 @@ const selectChaseCards = (cards: CardStatus[]): CardStatus[] =>
     key: c.pokemon_api_id ?? c.card_number,
   }));
 
+// PostgREST caps every response at 1,000 rows and gives NO signal that it
+// truncated — a short array is indistinguishable from "that's all of them". Both
+// reads below blow past that in normal use (13 touched sets = 2,172 catalog rows;
+// a serious collector's inventory is thousands of lots), and the truncation was
+// silent in the worst way: a set whose rows fell past the cutoff came back with
+// NOTHING, so `getSetCompletionSummaries` scored it 0 and the index rendered
+// "no progress" for sets the user demonstrably owns. Always page these.
+const PAGE_SIZE = 1000;
+
+/** Read every row of a range-able query, one PAGE_SIZE window at a time. The
+ *  caller MUST apply a stable .order() — unordered paging can repeat or skip rows. */
+async function fetchAllRows<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data } = await page(from, from + PAGE_SIZE - 1);
+    if (!data?.length) break;
+    out.push(...data);
+    if (data.length < PAGE_SIZE) break;
+  }
+  return out;
+}
+
 // JustTCG prefixes set names like "SV07: Stellar Crown" / "ME03: Perfect Order" /
 // "ME: Ascended Heroes"; pokemontcg.io uses the bare name. Strip a leading
 // "<code>: " so the name→code fallback still resolves these.
@@ -122,15 +146,19 @@ export async function loadOwnedIndex(
   userId: string,
 ): Promise<OwnedIndex> {
   const nameToCode = await nameToCodeMap();
-  const { data } = await supabase
-    .from("collection_items")
-    .select("finish, cards!inner(set_code, set_name, card_number)")
-    .eq("user_id", userId);
+  const data = await fetchAllRows((from, to) =>
+    supabase
+      .from("collection_items")
+      .select("finish, cards!inner(set_code, set_name, card_number)")
+      .eq("user_id", userId)
+      .order("id")
+      .range(from, to),
+  );
 
   const bySet = new Map<string, OwnedNumbers>();
   const touchedCodes = new Set<string>();
 
-  for (const row of (data ?? []) as unknown as {
+  for (const row of data as unknown as {
     finish: string | null;
     cards: { set_code: string | null; set_name: string | null; card_number: string | null };
   }[]) {
@@ -166,6 +194,27 @@ function resolveOwnedFinishes(cardFinishes: string[], owned: Set<string> | undef
   return sortFinishes([...captured]);
 }
 
+/**
+ * A card's effective finish list plus the subset owned. The catalog's list is
+ * derived from TCGplayer price keys and is explicitly best-effort — SV/ME-era and
+ * not-yet-priced sets are flagged `partial` and can under-report printings (a
+ * brand-new set with no price data collapses to a single guessed finish). A finish
+ * the user actually holds is physical evidence that printing exists, so it joins
+ * BOTH sides of the ratio: without this, owning the holo *and* the reverse holo of
+ * a card the catalog only knows as non-holo scored 0/1 instead of 2/2. Widening
+ * the denominator too is what keeps completion honest (never >100%).
+ */
+function resolveCardFinishes(
+  cardFinishes: string[],
+  owned: Set<string> | undefined,
+): { finishes: string[]; ownedFinishes: string[] } {
+  const extra = [...(owned ?? [])].filter(
+    (f) => FINISH_ORDER.includes(f) && !cardFinishes.includes(f),
+  );
+  const finishes = extra.length ? sortFinishes([...cardFinishes, ...extra]) : cardFinishes;
+  return { finishes, ownedFinishes: resolveOwnedFinishes(finishes, owned) };
+}
+
 /** Full per-set view: every card with ownership overlay + both progress tiers. */
 export async function getMasterSetView(
   supabase: SupabaseClient,
@@ -194,12 +243,14 @@ export async function getMasterSetView(
 
   const ownedNumbers = ownedIndex.bySet.get(setCode);
   const cards: CardStatus[] = setRows.map((r) => {
-    const ownedFinishes = resolveOwnedFinishes(r.finishes, ownedNumbers?.get(r.card_number));
+    const owned = ownedNumbers?.get(r.card_number);
+    const { finishes, ownedFinishes } = resolveCardFinishes(r.finishes, owned);
     return {
       ...r,
+      finishes, // widened by any printing the user's own copies prove exists
       ownedFinishes,
-      ownedComplete: (ownedNumbers?.get(r.card_number)?.size ?? 0) > 0,
-      ownedMaster: r.finishes.length > 0 && ownedFinishes.length >= r.finishes.length,
+      ownedComplete: (owned?.size ?? 0) > 0,
+      ownedMaster: finishes.length > 0 && ownedFinishes.length >= finishes.length,
       value: r.pokemon_api_id ? headlineMarketValue(priceMap.get(r.pokemon_api_id)) : null,
     };
   });
@@ -305,11 +356,17 @@ export async function getSetCompletionSummaries(
   const touched = [...ownedIndex.touchedCodes];
   const finishesBySet = new Map<string, Map<string, string[]>>();
   if (touched.length > 0) {
-    const { data: rows } = await supabase
-      .from("set_cards")
-      .select("set_code, card_number, finishes")
-      .in("set_code", touched);
-    for (const r of (rows ?? []) as { set_code: string; card_number: string; finishes: string[] }[]) {
+    const rows = await fetchAllRows<{ set_code: string; card_number: string; finishes: string[] }>(
+      (from, to) =>
+        supabase
+          .from("set_cards")
+          .select("set_code, card_number, finishes")
+          .in("set_code", touched)
+          .order("set_code")
+          .order("card_number")
+          .range(from, to),
+    );
+    for (const r of rows) {
       let m = finishesBySet.get(r.set_code);
       if (!m) { m = new Map(); finishesBySet.set(r.set_code, m); }
       m.set(r.card_number, r.finishes);
@@ -321,12 +378,18 @@ export async function getSetCompletionSummaries(
     const cardFinishes = finishesBySet.get(t.set_code);
     let completeOwned = 0;
     let masterOwned = 0;
+    // Extra denominator slots for printings the catalog missed but the user owns —
+    // mirrors the per-set view so the index and the set page agree (see
+    // resolveCardFinishes). The RPC's master_total can't know about these.
+    let masterExtra = 0;
     if (ownedNumbers && cardFinishes) {
       for (const [num, finishes] of cardFinishes) {
         const owned = ownedNumbers.get(num);
         if (!owned || owned.size === 0) continue;
         completeOwned += 1;
-        masterOwned += resolveOwnedFinishes(finishes, owned).length;
+        const eff = resolveCardFinishes(finishes, owned);
+        masterOwned += eff.ownedFinishes.length;
+        masterExtra += eff.finishes.length - finishes.length;
       }
     }
     const m = meta.get(t.set_code);
@@ -339,7 +402,7 @@ export async function getSetCompletionSummaries(
       releaseDate: m?.releaseDate,
       printedTotal: m?.printedTotal,
       complete: { owned: completeOwned, total: t.complete_total },
-      master: { owned: masterOwned, total: t.master_total },
+      master: { owned: masterOwned, total: t.master_total + masterExtra },
       hasPartial: t.has_partial,
     };
   });

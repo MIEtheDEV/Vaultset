@@ -9,6 +9,9 @@ const config: Config = {
   testMatch: ["<rootDir>/__tests__/**/*.test.{ts,tsx}"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
+    // `server-only` throws by design outside an RSC bundle. Stub it so server
+    // modules that import it (lib/sets/masterset) are unit-testable.
+    "^server-only$": "<rootDir>/__mocks__/server-only.ts",
   },
 };
 
