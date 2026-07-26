@@ -124,7 +124,7 @@
   achievement PNG via the installed `html-to-image` / `CardStudio` pipeline. Also fixes
   **`user_set_completions`**, which has full RLS/index/policy but **0 rows and no reader** — its
   writer only fires when a user views a set they *already* completed, so it never populates.
-- [ ] **6.3 First-run Activation** — a new user currently lands on four zeros, a Pro lock card, and
+- [x] **6.3 First-run Activation** — a new user currently lands on four zeros, a Pro lock card, and
   three empty panels; **no onboarding exists anywhere in the codebase**. `lib/onboarding.ts` derives
   checklist state from data we already have (**no new table**): username, ≥1 card, a chase set, push
   enabled, a showcase pin. `OnboardingChecklist` replaces the wall-of-zeros while incomplete, then

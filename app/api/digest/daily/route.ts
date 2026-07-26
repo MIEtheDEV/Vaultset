@@ -32,6 +32,19 @@ import {
 const MIN_MOVE_USD = 0.5;
 
 /**
+ * Window for the one-time "you haven't added a card yet" nudge. Waiting two days
+ * avoids pestering someone who signed up an hour ago; stopping at a week avoids
+ * poking accounts that have clearly moved on.
+ *
+ * Limitation worth knowing: this only reaches users who already enabled push,
+ * since that's the eligibility gate for the whole job. Someone who signed up and
+ * left without enabling notifications has no channel here — reaching them would
+ * need transactional email, which isn't wired for this.
+ */
+const NUDGE_AFTER_DAYS = 2;
+const NUDGE_UNTIL_DAYS = 7;
+
+/**
  * Hard ceiling on users processed per run. Each user costs ~3 queries, which is
  * comfortable at current scale but not something to let grow unbounded — if this
  * cap is ever hit the run logs it rather than silently truncating.
@@ -88,9 +101,30 @@ export async function POST(req: Request) {
       .map((p) => p.user_id as string),
   );
 
+  // Account ages, for the day 0–7 activation nudge below.
+  const { data: profileRows } = userIds.length
+    ? await admin.from("profiles").select("id, created_at").in("id", userIds)
+    : { data: [] as { id: string; created_at: string }[] };
+
+  const createdAt = new Map(
+    (profileRows ?? []).map((p) => [p.id as string, new Date(p.created_at as string).getTime()]),
+  );
+
+  // One nudge per account, ever.
+  const { data: priorNudges } = userIds.length
+    ? await admin
+        .from("notifications")
+        .select("user_id")
+        .eq("type", "onboarding_nudge")
+        .in("user_id", userIds)
+    : { data: [] as { user_id: string }[] };
+
+  const alreadyNudged = new Set((priorNudges ?? []).map((n) => n.user_id as string));
+
   let sent = 0;
   let skippedFlat = 0;
   let skippedEmpty = 0;
+  let nudged = 0;
   const failures: string[] = [];
 
   for (const userId of userIds) {
@@ -105,8 +139,27 @@ export async function POST(req: Request) {
         .eq("user_id", userId);
 
       const vaultItems = (items ?? []) as unknown as VaultItem[];
+
       if (vaultItems.length === 0) {
-        skippedEmpty += 1;
+        // Nothing to report on — but an account that signed up, enabled
+        // notifications and then never added a card is precisely who is worth one
+        // nudge. Sent once, only in the first week, so it reads as a helping hand
+        // rather than nagging.
+        const created = createdAt.get(userId);
+        const ageDays = created != null ? Math.floor((Date.now() - created) / 86_400_000) : null;
+
+        if (ageDays != null && ageDays >= NUDGE_AFTER_DAYS && ageDays <= NUDGE_UNTIL_DAYS && !alreadyNudged.has(userId)) {
+          const { error } = await admin.from("notifications").insert({
+            user_id: userId,
+            type: "onboarding_nudge",
+            actor_id: null,
+            data: { age_days: ageDays },
+          });
+          if (error) failures.push(`${userId}: ${error.message}`);
+          else nudged += 1;
+        } else {
+          skippedEmpty += 1;
+        }
         continue;
       }
 
@@ -135,7 +188,11 @@ export async function POST(req: Request) {
           covered: pulse.covered,
           total: pulse.total,
           leader_name: leader?.name ?? null,
-          leader_pct: leader ? Number(leader.change.pct.toFixed(1)) : null,
+          // The leader's quantity-weighted dollar contribution — the same basis it
+          // was ranked on. Percentages are deliberately NOT quoted here: a 20p
+          // energy card doubling is a +228% headline attached to a 16p move, which
+          // is accurate and completely misleading at the same time.
+          leader_abs: leader ? Number((leader.change.abs * leader.quantity).toFixed(2)) : null,
         },
       });
 
@@ -157,6 +214,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     eligible: userIds.length,
     sent,
+    nudged,
     skippedFlat,
     skippedEmpty,
     optedOut: optedOut.size,

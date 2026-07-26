@@ -22,6 +22,8 @@ import { recordCompletionsFromSummaries } from "@/lib/sets/setCompletion";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NextMilestones } from "@/components/NextMilestones";
 import { Celebrate, type CelebrationEvent } from "@/components/ui/Celebrate";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
+import { buildOnboarding, loadOnboardingFacts } from "@/lib/onboarding";
 import { VaultPulse } from "@/components/VaultPulse";
 import { TodaysMovers } from "@/components/TodaysMovers";
 import {
@@ -185,7 +187,7 @@ export default async function DashboardPage() {
       )
     `).eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("market_refresh_log").select("refreshed_at").eq("user_id", user!.id).maybeSingle(),
-    supabase.from("profiles").select("is_supporter, is_pro, pro_plan, pro_expires_at, pro_auto_renews, pwa_installed_at").eq("id", user!.id).single(),
+    supabase.from("profiles").select("is_supporter, is_pro, pro_plan, pro_expires_at, pro_auto_renews, pwa_installed_at, onboarding_dismissed_at").eq("id", user!.id).single(),
     supabase.rpc("get_wishlist_matches", { p_user_id: user!.id }),
     supabase.from("wishlist_items").select("id, card_name, set_name, card_number, image_url, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("product_purchases").select("id, name, product_type, for_sale, for_trade, list_price, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
@@ -353,6 +355,33 @@ export default async function DashboardPage() {
 
   const earnedForProgress = new Set<BadgeSlug>([...existingBadgeMap.keys(), ...computedSlugs]);
   const milestones = nextMilestones(badgeStats, earnedForProgress, setSummaries, 3);
+
+  // First-run checklist. The three extra count queries only run while onboarding is
+  // still live: once it's dismissed — or auto-retired below on completion — an
+  // established account pays nothing for this.
+  const onboardingDismissed = Boolean(
+    (profileData as { onboarding_dismissed_at?: string | null } | null)?.onboarding_dismissed_at,
+  );
+  const onboarding = onboardingDismissed
+    ? null
+    : buildOnboarding(
+        await loadOnboardingFacts(supabase, user!.id, {
+          hasUsername: Boolean(username),
+          cardCount: totalCards,
+        }),
+      );
+
+  // Retire the checklist for good once every step is done, so it shows its
+  // "you're all set" state exactly once rather than on every future visit.
+  if (onboarding?.complete) {
+    after(async () => {
+      await createAdminClient()
+        .from("profiles")
+        .update({ onboarding_dismissed_at: new Date().toISOString() })
+        .eq("id", user!.id)
+        .is("onboarding_dismissed_at", null);
+    });
+  }
 
   // Sweep every completed set into `user_set_completions`. Until now a completion
   // was only recorded if the user happened to open that set's own page, so the
@@ -528,6 +557,10 @@ export default async function DashboardPage() {
       {totalCards >= 10 && (existingReviewCount ?? 0) === 0 && (
         <ReviewPrompt username={username} />
       )}
+
+      {/* Setup checklist — above the pulse, because for a new account it *is* the
+          page. Self-retires once complete or dismissed. */}
+      {onboarding && <OnboardingChecklist state={onboarding} />}
 
       {/*
         Vault pulse leads the page. Previously the first thing on screen was four
@@ -722,7 +755,13 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {/* Main grid */}
+      {/*
+        Main grid — suppressed entirely for an account with no cards. Its three
+        panels (Recently Added, Watchlist, Wishlist) would all be empty, and the
+        onboarding checklist above already offers the same actions with better
+        framing. Showing both was the "wall of nothing" this phase exists to fix.
+      */}
+      {totalCards > 0 && (
       <div className="grid lg:grid-cols-3 gap-6">
 
         {/* Collection summary */}
@@ -913,8 +952,11 @@ export default async function DashboardPage() {
 
         </div>{/* end right column */}
       </div>
+      )}
 
-      {/* Recent activity */}
+      {/* Recent activity — nothing to report before the first card, and the
+          checklist is a better use of that space. */}
+      {totalCards > 0 && (
       <div className="rounded-2xl border border-border bg-surface">
         <div className="border-b border-border px-6 py-4">
           <h2 className="font-semibold text-foreground">Recent Activity</h2>
@@ -995,6 +1037,7 @@ export default async function DashboardPage() {
           />
         )}
       </div>
+      )}
 
     </div>
   );

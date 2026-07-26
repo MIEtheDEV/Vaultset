@@ -189,7 +189,7 @@ export default async function NotificationsPage() {
             } else if (n.type === "daily_digest") {
               const data = n.data as {
                 change_abs?: number; change_pct?: number;
-                leader_name?: string; leader_pct?: number;
+                leader_name?: string; leader_abs?: number;
               };
               const abs = Number(data.change_abs ?? 0);
               const pct = Number(data.change_pct ?? 0);
@@ -211,11 +211,26 @@ export default async function NotificationsPage() {
                   {data.leader_name ? (
                     <span className="text-foreground-muted">
                       {" "}— led by {data.leader_name}
-                      {typeof data.leader_pct === "number"
-                        ? ` (${data.leader_pct >= 0 ? "+" : "−"}${Math.abs(data.leader_pct).toFixed(1)}%)`
+                      {typeof data.leader_abs === "number"
+                        ? ` (${data.leader_abs >= 0 ? "+" : "−"}$${Math.abs(data.leader_abs).toFixed(2)})`
                         : ""}
                     </span>
                   ) : null}
+                </span>
+              );
+            } else if (n.type === "onboarding_nudge") {
+              icon = (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gold">
+                  <rect x="2" y="3" width="20" height="14" rx="2" />
+                  <path d="M8 21h8M12 17v4" />
+                </svg>
+              );
+              href = "/inventory/add";
+              content = (
+                <span>
+                  Your vault is still empty —{" "}
+                  <span className="font-medium text-foreground">add your first card</span>{" "}
+                  <span className="text-foreground-muted">to start tracking its value</span>
                 </span>
               );
             } else if (n.type === "test_push") {

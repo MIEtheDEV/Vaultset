@@ -9,8 +9,23 @@ describe("prefKeyForType", () => {
     expect(prefKeyForType("daily_digest")).toBe("push_digest");
   });
 
+  it("gates the activation nudge on the same preference as the digest", () => {
+    // Both are outreach we initiate; muting one should mute the other.
+    expect(prefKeyForType("onboarding_nudge")).toBe("push_digest");
+  });
+
   it("still fails open for unmapped types", () => {
     expect(prefKeyForType("something_new")).toBeNull();
+  });
+});
+
+describe("buildPushPayload — onboarding_nudge", () => {
+  it("points at the add-card page rather than the empty inventory list", () => {
+    const p = buildPushPayload({ type: "onboarding_nudge", data: { age_days: 3 } }, null);
+
+    expect(p.url).toBe("/inventory/add");
+    expect(p.tag).toBe("onboarding_nudge");
+    expect(p.body.length).toBeGreaterThan(0);
   });
 });
 
@@ -38,33 +53,54 @@ describe("buildPushPayload — daily_digest", () => {
     expect(p.body).not.toContain("−−");
   });
 
-  it("names the leading mover when there is one", () => {
+  it("names the leading mover in dollars, not percent", () => {
     const p = buildPushPayload(
       {
         type: "daily_digest",
-        data: { change_abs: 30, change_pct: 4, leader_name: "Charizard ex", leader_pct: 8.24 },
+        data: { change_abs: 30, change_pct: 4, leader_name: "Charizard ex", leader_abs: 12.5 },
       },
       null,
     );
 
-    expect(p.body).toBe("Your vault is up $30.00 (+4.0%) today — led by Charizard ex (+8.2%)");
+    expect(p.body).toBe("Your vault is up $30.00 (+4.0%) today — led by Charizard ex (+$12.50)");
+  });
+
+  it("never quotes a leader percentage, however dramatic", () => {
+    // A 20p energy card doubling is a real +228% that contributed 16p. Quoting the
+    // percentage would be accurate and completely misleading at once — this is a
+    // regression guard for exactly that, seen in real production data.
+    const p = buildPushPayload(
+      {
+        type: "daily_digest",
+        data: { change_abs: 1.07, change_pct: 0.65, leader_name: "Telepathic Psychic Energy", leader_abs: 0.16 },
+      },
+      null,
+    );
+
+    expect(p.body).toBe(
+      "Your vault is up $1.07 (+0.7%) today — led by Telepathic Psychic Energy (+$0.16)",
+    );
+    // The portfolio headline keeps its percentage; the leader clause must not have one.
+    const leaderClause = p.body.slice(p.body.indexOf("led by"));
+    expect(leaderClause).not.toContain("%");
+    expect(p.body).not.toContain("228");
   });
 
   it("signs a declining leader correctly", () => {
     const p = buildPushPayload(
       {
         type: "daily_digest",
-        data: { change_abs: -30, change_pct: -4, leader_name: "Umbreon VMAX", leader_pct: -9 },
+        data: { change_abs: -30, change_pct: -4, leader_name: "Umbreon VMAX", leader_abs: -9 },
       },
       null,
     );
 
-    expect(p.body).toContain("led by Umbreon VMAX (−9.0%)");
+    expect(p.body).toContain("led by Umbreon VMAX (−$9.00)");
   });
 
   it("omits the leader clause when the name is missing", () => {
     const p = buildPushPayload(
-      { type: "daily_digest", data: { change_abs: 5, change_pct: 1, leader_pct: 3 } },
+      { type: "daily_digest", data: { change_abs: 5, change_pct: 1, leader_abs: 3 } },
       null,
     );
 

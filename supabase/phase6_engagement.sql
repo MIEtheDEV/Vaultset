@@ -1,4 +1,4 @@
--- Phase 6.1 — Daily Vault Loop
+-- Phase 6 engagement — database changes
 --
 -- Apply in the Supabase SQL Editor, then refresh the committed snapshot with
 -- `supabase db dump` (see CLAUDE.md — this repo tracks schema as a single
@@ -6,11 +6,17 @@
 --
 -- Idempotent: safe to re-run.
 --
--- What this adds:
+-- Sections 1–3 (Phase 6.1, Daily Vault Loop) run inside one transaction:
 --   1. Visit-streak columns on `profiles` + `touch_streak()` to advance them.
 --   2. A `push_digest` preference column so the daily digest is opt-out like
 --      every other push type.
 --   3. A pg_cron job that calls /api/digest/daily once a day.
+--
+-- Section 4 (Phase 6.3, first-run activation) was added later and sits after that
+-- COMMIT, so it applies on its own. It is a single additive column with no
+-- dependency on the above.
+--
+-- Both halves are already applied to production (2026-07-26, via MCP).
 
 begin;
 
@@ -177,3 +183,21 @@ commit;
 -- -- Streak advance should be idempotent within a day:
 -- select public.touch_streak('<user-uuid>');  -- returns the new streak
 -- select public.touch_streak('<user-uuid>');  -- returns the same number
+
+
+-- ---------------------------------------------------------------------------
+-- 4. Phase 6.3 — First-run activation
+-- ---------------------------------------------------------------------------
+-- Lets a user retire the onboarding checklist, and lets the app auto-retire it on
+-- completion. Server-side rather than localStorage so it follows the user across
+-- devices — finishing setup on a phone should not leave a checklist on the laptop.
+--
+-- Also doubles as the "has this account finished onboarding?" flag, which is what
+-- keeps the checklist's three count queries off the dashboard for established
+-- accounts.
+
+alter table public.profiles
+  add column if not exists onboarding_dismissed_at timestamp with time zone;
+
+comment on column public.profiles.onboarding_dismissed_at is
+  'When the first-run checklist was dismissed, or auto-retired on completion. NULL = still showing.';

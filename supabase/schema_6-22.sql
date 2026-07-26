@@ -3423,3 +3423,15 @@ GRANT EXECUTE ON FUNCTION "public"."run_daily_digest"() TO "service_role";
 -- pg_cron: 13:00 UTC (~8am ET). MUST stay after the 02:00 `daily-price-snapshot`
 -- job — the digest diffs today's live value against the latest prior snapshot.
 --   select cron.schedule('daily-vault-digest', '0 13 * * *', $$select public.run_daily_digest();$$);
+
+
+-- ============================================================================
+-- Phase 6.3 — First-run activation (added 2026-07-26; applied to production via MCP).
+-- Appended manually — regenerate with `supabase db dump` to normalize ordering.
+-- Source of truth for this change: supabase/phase6_engagement.sql
+-- ============================================================================
+
+ALTER TABLE "public"."profiles"
+  ADD COLUMN IF NOT EXISTS "onboarding_dismissed_at" timestamp with time zone;
+
+COMMENT ON COLUMN "public"."profiles"."onboarding_dismissed_at" IS 'When the first-run checklist was dismissed, or auto-retired on completion. NULL = still showing.';
