@@ -470,14 +470,19 @@ export function BadgeChip({
   badge: BadgeMeta;
   earned?: boolean;
   earnedAt?: string;
-  size?: "normal" | "mini";
+  size?: "normal" | "mini" | "hero";
 }) {
-  if (size === "mini") {
+  // "mini" and "hero" are the same pure static SVG at two scales — no tooltip, no
+  // pointer handling. "hero" exists so the shareable achievement card can render
+  // the real badge art (colours, hex geometry and per-slug icon all live in this
+  // module) instead of an approximation drawn somewhere else.
+  if (size === "mini" || size === "hero") {
     const c = earned ? SVG_COLORS[badge.color] : LOCKED;
+    const px = size === "hero" ? { w: 116, h: 130 } : { w: 32, h: 36 };
     return (
       <svg
-        width="32"
-        height="36"
+        width={px.w}
+        height={px.h}
         viewBox="-2 -2 56 64"
         aria-hidden="true"
         className={!earned ? "opacity-20" : ""}

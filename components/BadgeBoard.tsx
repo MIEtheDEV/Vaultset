@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { BADGES, BADGE_MAP, type BadgeMeta, type BadgeSlug } from "@/lib/badges";
 import { BadgeChip } from "@/components/BadgeChip";
 import { createClient } from "@/utils/supabase/client";
@@ -12,6 +13,8 @@ type Props = {
   isOwnProfile?: boolean;
   profileUserId: string;
   initialFeaturedSlugs: string[];
+  /** Needed to link an earned badge to its shareable card. */
+  username: string;
 };
 
 const MAX_FEATURED = 5;
@@ -41,6 +44,7 @@ export function BadgeBoard({
   isOwnProfile = false,
   profileUserId,
   initialFeaturedSlugs,
+  username,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -189,6 +193,34 @@ export function BadgeBoard({
                         <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" />
                       </svg>
                     </button>
+                  )}
+
+                  {/*
+                    Share affordance for your own earned badges. Sits bottom-right
+                    so it can't collide with the featured ★ at top-right.
+                  */}
+                  {isOwnProfile && earned && (
+                    <Link
+                      href={`/profile/${username}/achievement/${badge.slug}`}
+                      title={`Share ${badge.label}`}
+                      aria-label={`Share ${badge.label}`}
+                      className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-surface text-foreground-muted transition-colors hover:border-gold/60 hover:text-gold"
+                    >
+                      <svg
+                        width="8"
+                        height="8"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" />
+                        <polyline points="16 6 12 2 8 6" />
+                        <line x1="12" y1="2" x2="12" y2="15" />
+                      </svg>
+                    </Link>
                   )}
                 </div>
               );
