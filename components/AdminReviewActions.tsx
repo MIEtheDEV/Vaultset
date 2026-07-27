@@ -1,21 +1,33 @@
 "use client";
 
 import { useTransition } from "react";
-import { approveReview, rejectReview, togglePin } from "@/app/admin/reviews/actions";
+import { approveReview, publishHeldReview, rejectReview, togglePin } from "@/app/admin/reviews/actions";
 
 export function AdminReviewActions({
   reviewId,
   approved,
   pinned,
+  hidden = false,
 }: {
   reviewId: string;
   approved: boolean;
   pinned: boolean;
+  hidden?: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      {hidden && (
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() => startTransition(() => publishHeldReview(reviewId))}
+          className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+        >
+          Publish (false positive)
+        </button>
+      )}
       {!approved && (
         <button
           type="button"

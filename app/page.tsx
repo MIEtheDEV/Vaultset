@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { UserNav } from "@/components/UserNav";
 import { HeroCardStack } from "@/components/HeroCardStack";
 import { RotatingHeadline } from "@/components/RotatingHeadline";
@@ -9,6 +10,7 @@ import { InstallAppButton } from "@/components/InstallAppButton";
 import { InstallPwaCallout } from "@/components/InstallPwaCallout";
 import { HomeMobileNav } from "@/components/HomeMobileNav";
 import { CardSearchBrowser } from "@/components/CardSearchBrowser";
+import { EditReviewButton } from "@/components/EditReviewButton";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
@@ -165,18 +167,33 @@ function formatCount(n: number): string {
 
 export default async function Home() {
   const supabase = await createClient();
+  const reviewsAdmin = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
   const username = user?.user_metadata?.username as string | undefined;
 
   // Whether this user has already installed the PWA — suppresses install prompts.
   let pwaInstalled = false;
+  // The homepage review CTA follows the same standard as the dashboard prompt:
+  // only collectors with 10+ cards are asked, so reviews come from people who
+  // have actually used the product. `ownReview` pre-fills the modal for editing
+  // (RLS lets a user read their own row, approved or not).
+  let ownReview: { rating: number; body: string; anonymous: boolean } | null = null;
+  let canReview = false;
   if (user) {
-    const { data: installProfile } = await supabase
-      .from("profiles")
-      .select("pwa_installed_at")
-      .eq("id", user.id)
-      .single();
+    const [{ data: installProfile }, { data: reviewRow }, { data: quantityRows }] = await Promise.all([
+      supabase.from("profiles").select("pwa_installed_at").eq("id", user.id).single(),
+      supabase.from("reviews").select("rating, body, anonymous").eq("user_id", user.id).maybeSingle(),
+      // Deliberately NOT the collector_collection_stats() RPC: it's SECURITY DEFINER,
+      // so Postgres won't inline it — the planner groups every user's holdings and
+      // then filters (measured 4.8ms vs 1.0ms, and it scales with platform size
+      // rather than this user's collection). This runs as an index scan on
+      // collection_items_user_id_idx, in the same round trip either way.
+      supabase.from("collection_items").select("quantity").eq("user_id", user.id),
+    ]);
     pwaInstalled = Boolean(installProfile?.pwa_installed_at);
+    ownReview = reviewRow ?? null;
+    const ownedCards = quantityRows?.reduce((sum, r) => sum + (r.quantity ?? 1), 0) ?? 0;
+    canReview = ownedCards >= 10 || !!reviewRow;
   }
 
   const [
@@ -190,18 +207,25 @@ export default async function Home() {
     supabase.from("cards").select("game").not("game", "is", null),
     supabase.from("profiles").select("id", { count: "exact", head: true }),
     supabase.rpc("get_platform_market_value"),
-    supabase.from("reviews").select("id, rating, body, display_name, pinned").eq("approved", true).order("pinned", { ascending: false }).order("created_at", { ascending: false }),
+    // Every review, approved or not. `approved` curates which ones this page
+    // *features* — the rating and count reflect all of them, and /reviews lists them
+    // all unfiltered. Read with the service role because RLS hides unapproved rows
+    // from the anon client, the same way /reviews does. `hidden` rows (hate speech,
+    // spam) are excluded outright: not displayed, and not counted in the rating.
+    reviewsAdmin.from("reviews").select("id, rating, body, display_name, anonymous, pinned, approved").eq("hidden", false).order("pinned", { ascending: false }).order("created_at", { ascending: false }),
   ]);
 
   const totalCards     = (totalCardsData as number) ?? 0;
   const supportedGames = new Set(gamesData?.map((r) => r.game)).size;
   const marketVolume   = (marketValueData as number) ?? 0;
   const allReviews     = reviewsData ?? [];
-  const reviews        = allReviews.slice(0, 3);
+  // Aggregate = all reviews; the featured strip = the curated (approved) ones.
   const reviewCount    = allReviews.length;
   const reviewAverage  = reviewCount > 0
     ? allReviews.reduce((sum, r) => sum + (r.rating as number), 0) / reviewCount
     : 0;
+  const approvedReviews = allReviews.filter((r) => r.approved);
+  const reviews         = approvedReviews.slice(0, 3);
 
   function formatCurrency(n: number): string {
     if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
@@ -344,7 +368,7 @@ export default async function Home() {
           <div className="flex flex-col gap-5 sm:gap-8">
             <div className="spin-border inline-flex w-fit items-center gap-2 rounded-full border border-gold/20 bg-gold/5 px-4 py-1.5 text-sm text-gold">
               <span className="h-1.5 w-1.5 rounded-full bg-gold animate-pulse" />
-              Now in Early Access — Free to Join
+              {user ? "Now in Early Access" : "Now in Early Access — Free to Join"}
             </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.15]">
@@ -363,16 +387,21 @@ export default async function Home() {
             </p>
 
             <div className="flex flex-wrap gap-4">
-              <Link href="/register" className="rounded-full bg-gold px-6 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
-                Start for Free
+              <Link
+                href={user ? "/dashboard" : "/register"}
+                className="rounded-full bg-gold px-6 py-3 font-semibold text-background hover:bg-gold-light transition-colors"
+              >
+                {user ? "Go to Your Dashboard" : "Start for Free"}
               </Link>
               <Link href="#how-it-works" className="rounded-full border border-border px-6 py-3 font-semibold text-foreground hover:border-gold/40 hover:bg-surface transition-colors">
                 See How It Works
               </Link>
             </div>
-            <p className="text-sm text-foreground-muted">
-              No credit card required · Core features always free
-            </p>
+            {!user && (
+              <p className="text-sm text-foreground-muted">
+                No credit card required · Core features always free
+              </p>
+            )}
           </div>
 
           <HeroCardStack />
@@ -472,12 +501,20 @@ export default async function Home() {
               </li>
             </ul>
             <div className="flex flex-wrap gap-4 pt-2">
-              <Link href="/register" className="rounded-full bg-gold px-6 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
-                Start tracking free
-              </Link>
-              <Link href="/sets" className="rounded-full border border-border px-6 py-3 font-semibold text-foreground hover:border-gold/40 hover:bg-surface-raised transition-colors">
-                Browse every set
-              </Link>
+              {user ? (
+                <Link href="/sets" className="rounded-full bg-gold px-6 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
+                  Track your sets
+                </Link>
+              ) : (
+                <>
+                  <Link href="/register" className="rounded-full bg-gold px-6 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
+                    Start tracking free
+                  </Link>
+                  <Link href="/sets" className="rounded-full border border-border px-6 py-3 font-semibold text-foreground hover:border-gold/40 hover:bg-surface-raised transition-colors">
+                    Browse every set
+                  </Link>
+                </>
+              )}
             </div>
           </div>
 
@@ -620,32 +657,56 @@ export default async function Home() {
                     </div>
                     <p className="text-sm text-foreground leading-relaxed">&ldquo;{review.body as string}&rdquo;</p>
                     <p className="text-xs text-foreground-muted font-medium">
-                      — {(review.display_name as string) ?? "Vaultset collector"}
+                      — {review.anonymous ? "Anonymous collector" : ((review.display_name as string) ?? "Vaultset collector")}
                       <span className="ml-1.5 text-gold text-xs">Verified collector</span>
                     </p>
                   </div>
                 ))}
               </div>
-              {reviewCount > 3 && (
-                <div className="text-center mt-8">
-                  <Link href="/reviews" className="text-sm text-gold hover:underline transition-colors">
-                    Read all {reviewCount} reviews →
-                  </Link>
+              {(reviewCount > reviews.length || (username && canReview)) && (
+                <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
+                  {reviewCount > reviews.length && (
+                    <Link href="/reviews" className="text-sm text-gold hover:underline transition-colors">
+                      Read all {reviewCount} reviews →
+                    </Link>
+                  )}
+                  {username && canReview && (
+                    <EditReviewButton
+                      variant="button"
+                      username={username}
+                      existingRating={ownReview?.rating ?? undefined}
+                      existingBody={ownReview?.body ?? undefined}
+                      existingAnonymous={ownReview?.anonymous ?? undefined}
+                    />
+                  )}
                 </div>
               )}
             </>
           ) : (
             <div className="text-center py-12 space-y-4">
-              <p className="text-foreground-muted text-lg">No reviews yet — be the first.</p>
-              {user ? (
-                <Link href="/account" className="inline-block rounded-full border border-gold/40 px-6 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10 transition-colors">
-                  Leave a Review
-                </Link>
-              ) : (
+              <p className="text-foreground-muted text-lg">
+                {reviewCount > 0 ? (
+                  <>
+                    {reviewCount} collector review{reviewCount !== 1 ? "s" : ""} so far —{" "}
+                    <Link href="/reviews" className="text-gold hover:underline transition-colors">read them all →</Link>
+                  </>
+                ) : (
+                  "No reviews yet — be the first."
+                )}
+              </p>
+              {!username ? (
                 <Link href="/register" className="inline-block rounded-full border border-gold/40 px-6 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10 transition-colors">
                   Join &amp; Leave a Review
                 </Link>
-              )}
+              ) : canReview ? (
+                <EditReviewButton
+                  variant="button"
+                  username={username}
+                  existingRating={ownReview?.rating ?? undefined}
+                  existingBody={ownReview?.body ?? undefined}
+                  existingAnonymous={ownReview?.anonymous ?? undefined}
+                />
+              ) : null}
             </div>
           )}
         </div>
@@ -696,18 +757,30 @@ export default async function Home() {
       <section className="py-24 border-t border-border bg-surface">
         <div className="mx-auto max-w-7xl px-6 text-center space-y-8">
           <div className="space-y-4">
-            <h2 className="text-4xl font-bold tracking-tight">Ready to open the vault?</h2>
+            <h2 className="text-4xl font-bold tracking-tight">
+              {user ? "Your vault is waiting" : "Ready to open the vault?"}
+            </h2>
             <p className="text-foreground-muted text-lg max-w-xl mx-auto">
-              Join collectors who manage, track, and grow their Pokémon TCG collections on Vaultset — free, forever.
+              {user
+                ? "Pick up where you left off — add cards, check your portfolio, and see what collectors are listing."
+                : "Join collectors who manage, track, and grow their Pokémon TCG collections on Vaultset — free, forever."}
             </p>
           </div>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link href="/register" className="rounded-full bg-gold px-8 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
-              Create Free Account
-            </Link>
-            <Link href="/pricing" className="rounded-full border border-border px-8 py-3 font-semibold text-foreground hover:border-gold/40 hover:bg-surface-raised transition-colors">
-              View Pricing
-            </Link>
+            {user ? (
+              <Link href="/dashboard" className="rounded-full bg-gold px-8 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
+                Open Your Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link href="/register" className="rounded-full bg-gold px-8 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
+                  Create Free Account
+                </Link>
+                <Link href="/pricing" className="rounded-full border border-border px-8 py-3 font-semibold text-foreground hover:border-gold/40 hover:bg-surface-raised transition-colors">
+                  View Pricing
+                </Link>
+              </>
+            )}
             <Link href="/marketplace" className="rounded-full border border-border px-8 py-3 font-semibold text-foreground hover:border-gold/40 hover:bg-surface-raised transition-colors">
               Browse the Market
             </Link>

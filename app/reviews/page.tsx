@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { SignedIn, SignedOut } from "@/components/AuthGate";
 
 export const metadata: Metadata = {
   title: "Collector Reviews",
@@ -11,10 +12,14 @@ export const metadata: Metadata = {
 export default async function ReviewsPage() {
   const admin = createAdminClient();
 
+  // Every review is listed here — `approved` only decides which ones the homepage
+  // features, so it isn't filtered on. `hidden` is: hate speech and spam links are
+  // withheld from the page and the aggregate rating until an admin clears them.
+  // Read with the service role because RLS hides unapproved rows from the anon client.
   const { data: reviews } = await admin
     .from("reviews")
-    .select("id, rating, body, display_name, created_at")
-    .eq("approved", true)
+    .select("id, rating, body, display_name, anonymous, created_at")
+    .eq("hidden", false)
     .order("pinned", { ascending: false })
     .order("created_at", { ascending: false });
 
@@ -33,10 +38,11 @@ export default async function ReviewsPage() {
     operatingSystem: "Web",
     url: "https://www.vaultset.app",
     aggregateRating: { "@type": "AggregateRating", ratingValue: average.toFixed(1), reviewCount: count, bestRating: 5, worstRating: 1 },
+    // Marked-up reviews mirror what the page actually lists — all of them.
     review: all.slice(0, 20).map((r) => ({
       "@type": "Review",
       reviewRating: { "@type": "Rating", ratingValue: r.rating, bestRating: 5, worstRating: 1 },
-      author: { "@type": "Person", name: (r.display_name as string) ?? "Vaultset collector" },
+      author: { "@type": "Person", name: r.anonymous ? "Anonymous collector" : ((r.display_name as string) ?? "Vaultset collector") },
       reviewBody: r.body as string,
       ...(r.created_at ? { datePublished: new Date(r.created_at as string).toISOString().slice(0, 10) } : {}),
     })),
@@ -90,7 +96,7 @@ export default async function ReviewsPage() {
           )}
         </div>
 
-        {/* Reviews grid */}
+        {/* Reviews grid — every review, unfiltered */}
         {count === 0 ? (
           <div className="rounded-2xl border border-border bg-surface py-24 text-center">
             <p className="text-sm text-foreground-muted">No reviews yet — check back soon.</p>
@@ -104,7 +110,7 @@ export default async function ReviewsPage() {
                 </div>
                 <p className="text-sm text-foreground leading-relaxed">&ldquo;{review.body as string}&rdquo;</p>
                 <p className="text-xs text-foreground-muted font-medium">
-                  — {(review.display_name as string) ?? "Vaultset collector"}
+                  — {review.anonymous ? "Anonymous collector" : ((review.display_name as string) ?? "Vaultset collector")}
                   <span className="ml-1.5 text-gold text-xs">Verified collector</span>
                 </p>
               </div>
@@ -112,15 +118,26 @@ export default async function ReviewsPage() {
           </div>
         )}
 
-        {/* CTA */}
+        {/* CTA — signup for visitors, "leave a review" once signed in */}
         <div className="text-center space-y-4 pt-8 border-t border-border">
-          <p className="text-foreground-muted">Ready to start tracking your collection?</p>
-          <Link
-            href="/register"
-            className="inline-block rounded-full bg-gold px-8 py-3 font-semibold text-background hover:bg-gold-light transition-colors"
-          >
-            Create Free Account
-          </Link>
+          <SignedOut>
+            <p className="text-foreground-muted">Ready to start tracking your collection?</p>
+            <Link
+              href="/register"
+              className="inline-block rounded-full bg-gold px-8 py-3 font-semibold text-background hover:bg-gold-light transition-colors"
+            >
+              Create Free Account
+            </Link>
+          </SignedOut>
+          <SignedIn>
+            <p className="text-foreground-muted">Collecting on Vaultset? Tell other collectors what you think.</p>
+            <Link
+              href="/account"
+              className="inline-block rounded-full border border-gold/40 px-8 py-3 font-semibold text-gold hover:bg-gold/10 transition-colors"
+            >
+              Leave a Review
+            </Link>
+          </SignedIn>
         </div>
 
       </main>

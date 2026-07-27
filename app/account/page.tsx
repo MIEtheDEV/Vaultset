@@ -44,7 +44,7 @@ export default async function AccountPage({
       .order("created_at", { ascending: false }),
     supabase
       .from("reviews")
-      .select("rating, body, display_name")
+      .select("rating, body, anonymous")
       .eq("user_id", user.id)
       .maybeSingle(),
     supabase
@@ -113,7 +113,7 @@ export default async function AccountPage({
             username={username}
             existingRating={existingReview?.rating ?? undefined}
             existingBody={existingReview?.body ?? undefined}
-            existingDisplayName={existingReview?.display_name ?? undefined}
+            existingAnonymous={existingReview?.anonymous ?? undefined}
           />
         </div>
       </div>

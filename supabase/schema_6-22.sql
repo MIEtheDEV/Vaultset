@@ -517,6 +517,22 @@ $$;
 ALTER FUNCTION "public"."guard_profile_protected_columns"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."enforce_review_display_name"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  begin
+    if new.display_name is not null
+       and new.display_name is distinct from (select username from public.profiles where id = new.user_id) then
+      raise exception 'reviews.display_name must equal the owner''s username or be NULL (got %)', new.display_name;
+    end if;
+    return new;
+  end; $$;
+
+
+ALTER FUNCTION "public"."enforce_review_display_name"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."guard_review_approval"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -529,6 +545,15 @@ CREATE OR REPLACE FUNCTION "public"."guard_review_approval"() RETURNS "trigger"
     end if;
     if new.approved is distinct from old.approved then
       raise exception 'Not allowed to change review approval status';
+    end if;
+    if new.hidden is distinct from old.hidden
+       or new.moderation_flags is distinct from old.moderation_flags
+       or new.body_raw is distinct from old.body_raw
+       or new.anonymous is distinct from old.anonymous then
+      raise exception 'Not allowed to change review moderation state';
+    end if;
+    if new.body is distinct from old.body then
+      raise exception 'Review text must be submitted through the review form';
     end if;
     return new;
   end; $$;
@@ -602,6 +627,12 @@ begin
   update public.profiles
   set username = new.raw_user_meta_data->>'username'
   where id = new.id;
+
+  -- Runs after the profiles update so the invariant trigger sees the new username.
+  update public.reviews
+  set display_name = new.raw_user_meta_data->>'username'
+  where user_id = new.id
+    and display_name is not null;
   return new;
 end;
 $$;
@@ -1291,12 +1322,31 @@ CREATE TABLE IF NOT EXISTS "public"."reviews" (
     "approved" boolean DEFAULT false NOT NULL,
     "pinned" boolean DEFAULT false NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "hidden" boolean DEFAULT false NOT NULL,
+    "moderation_flags" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    "body_raw" "text",
+    "anonymous" boolean DEFAULT false NOT NULL,
     CONSTRAINT "reviews_body_check" CHECK (("char_length"("body") <= 140)),
     CONSTRAINT "reviews_rating_check" CHECK ((("rating" >= 1) AND ("rating" <= 5)))
 );
 
 
 ALTER TABLE "public"."reviews" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."reviews"."hidden" IS 'Withheld from all public surfaces (and the aggregate rating) pending admin review. Set by lib/reviews/moderation.ts on submit.';
+
+
+COMMENT ON COLUMN "public"."reviews"."moderation_flags" IS 'Why the review was flagged: hate_speech | link_or_contact | profanity_masked.';
+
+
+COMMENT ON COLUMN "public"."reviews"."body_raw" IS 'Original unmasked body, stored only when masking changed the text. Admin-only; lets a false positive be restored.';
+
+
+COMMENT ON COLUMN "public"."reviews"."anonymous" IS 'When true the author is shown as "Anonymous collector" publicly. display_name still holds their username; only the rendering changes.';
+
+
+COMMENT ON COLUMN "public"."reviews"."display_name" IS 'Always the owner''s profiles.username (or NULL). Enforced by enforce_review_display_name() — never free text.';
 
 
 CREATE TABLE IF NOT EXISTS "public"."scan_diagnostics" (
@@ -1775,6 +1825,10 @@ CREATE INDEX "reviews_approved_idx" ON "public"."reviews" USING "btree" ("approv
 
 
 
+CREATE INDEX "reviews_hidden_idx" ON "public"."reviews" USING "btree" ("hidden");
+
+
+
 CREATE INDEX "reviews_user_id_idx" ON "public"."reviews" USING "btree" ("user_id");
 
 
@@ -1824,6 +1878,10 @@ CREATE OR REPLACE TRIGGER "follows_notification_trigger" AFTER INSERT ON "public
 
 
 CREATE OR REPLACE TRIGGER "guard_profile_protected_columns" BEFORE UPDATE ON "public"."profiles" FOR EACH ROW EXECUTE FUNCTION "public"."guard_profile_protected_columns"();
+
+
+
+CREATE OR REPLACE TRIGGER "enforce_review_display_name" BEFORE INSERT OR UPDATE ON "public"."reviews" FOR EACH ROW EXECUTE FUNCTION "public"."enforce_review_display_name"();
 
 
 
@@ -2748,6 +2806,12 @@ GRANT ALL ON FUNCTION "public"."get_platform_market_value"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."guard_profile_protected_columns"() TO "anon";
 GRANT ALL ON FUNCTION "public"."guard_profile_protected_columns"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."guard_profile_protected_columns"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."enforce_review_display_name"() TO "anon";
+GRANT ALL ON FUNCTION "public"."enforce_review_display_name"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."enforce_review_display_name"() TO "service_role";
 
 
 
