@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getListedBySpecies, distinctListedSpecies } from "@/lib/hubs/hubQueries";
 import { MarketplaceHubGrid } from "@/components/hubs/MarketplaceHubGrid";
+import { SignedOut } from "@/components/AuthGate";
 import { speciesName } from "@/lib/cards/species";
 
 export const revalidate = 3600;
@@ -53,9 +54,11 @@ export default async function MarketplacePokemonPage({ params }: { params: Promi
         <h1 className="text-3xl font-bold text-foreground">{display} Cards For Sale &amp; Trade</h1>
         <p className="mt-2 text-foreground-muted max-w-2xl">
           {display} cards listed by collectors on Vaultset across sets, with live market values. Open a
-          card to see all listings and grades —{" "}
-          <Link href="/register" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">create a free account</Link> or{" "}
-          <Link href="/login" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">sign in</Link> to buy or make an offer.
+          card to see all listings and grades.{" "}
+          <SignedOut>
+            <Link href="/register" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">Create a free account</Link> or{" "}
+            <Link href="/login" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">sign in</Link> to buy or make an offer.
+          </SignedOut>
         </p>
         <p className="mt-2 text-sm">
           <Link href={`/pokemon/${encodeURIComponent(name)}`} className="text-gold hover:text-gold-light transition-colors">

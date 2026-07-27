@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getListedBySet, distinctListedSetCodes } from "@/lib/hubs/hubQueries";
 import { getPokemonSets } from "@/lib/sets/getPokemonSets";
 import { MarketplaceHubGrid } from "@/components/hubs/MarketplaceHubGrid";
+import { SignedOut } from "@/components/AuthGate";
 
 export const revalidate = 3600;
 export const dynamicParams = true;
@@ -53,9 +54,11 @@ export default async function MarketplaceSetPage({ params }: { params: Promise<{
         <h1 className="text-3xl font-bold text-foreground">{name} Cards For Sale &amp; Trade</h1>
         <p className="mt-2 text-foreground-muted max-w-2xl">
           {cards.length} {name} card{cards.length !== 1 ? "s" : ""} listed by collectors on Vaultset,
-          with live market values. Open a card to see all listings, prices, and grades —{" "}
-          <Link href="/register" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">create a free account</Link> or{" "}
-          <Link href="/login" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">sign in</Link> to buy or make an offer.
+          with live market values. Open a card to see all listings, prices, and grades.{" "}
+          <SignedOut>
+            <Link href="/register" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">Create a free account</Link> or{" "}
+            <Link href="/login" className="text-gold underline underline-offset-2 hover:text-gold-light transition-colors">sign in</Link> to buy or make an offer.
+          </SignedOut>
         </p>
         <p className="mt-2 text-sm">
           <Link href={`/sets/${encodeURIComponent(setCode)}`} className="text-gold hover:text-gold-light transition-colors">

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { getPokemonSets } from "@/lib/sets/getPokemonSets";
+import { SignedIn, SignedOut } from "@/components/AuthGate";
 
 export const revalidate = 86400;
 
@@ -96,9 +97,11 @@ export default async function MasterSetTrackerPage() {
           including reverse holos and secret rares.
         </p>
         <div className="flex flex-wrap gap-4">
-          <Link href="/register" className="rounded-full bg-gold px-6 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
-            Start tracking free
-          </Link>
+          <SignedOut>
+            <Link href="/register" className="rounded-full bg-gold px-6 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
+              Start tracking free
+            </Link>
+          </SignedOut>
           <Link href="/sets" className="rounded-full border border-border px-6 py-3 font-semibold text-foreground hover:border-gold/40 hover:bg-surface transition-colors">
             Browse every set
           </Link>
@@ -188,9 +191,16 @@ export default async function MasterSetTrackerPage() {
           Free, unlimited, and works with every Pokémon TCG set. Add your cards and watch your
           collection complete itself.
         </p>
-        <Link href="/register" className="inline-block rounded-full bg-gold px-8 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
-          Create your free account
-        </Link>
+        <SignedOut>
+          <Link href="/register" className="inline-block rounded-full bg-gold px-8 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
+            Create your free account
+          </Link>
+        </SignedOut>
+        <SignedIn>
+          <Link href="/inventory/add" className="inline-block rounded-full bg-gold px-8 py-3 font-semibold text-background hover:bg-gold-light transition-colors">
+            Add cards to your collection
+          </Link>
+        </SignedIn>
       </section>
     </div>
   );
