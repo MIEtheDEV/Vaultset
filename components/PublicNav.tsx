@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { AppNav } from "@/components/AppNav";
+import { useSignedIn } from "@/components/AuthGate";
 
 // Nav for public/crawlable pages. Resolves auth in the browser (like the existing
 // nav badges + UserNav) instead of the server layout, so the page subtree is NOT
@@ -12,6 +13,9 @@ import { AppNav } from "@/components/AppNav";
 // resolves, signed-in visitors get the full AppNav.
 export function PublicNav() {
   const [username, setUsername] = useState<string | null>(null);
+  // Resolves a beat before `username` does (instant auth-cookie read), so signed-in
+  // visitors never see the Sign in / Start for Free pair flash by.
+  const signedIn = useSignedIn();
 
   useEffect(() => {
     const supabase = createClient();
@@ -36,12 +40,16 @@ export function PublicNav() {
           </span>
         </Link>
         <div className="flex items-center gap-3">
-          <Link href="/login" className="text-sm text-foreground-muted hover:text-foreground transition-colors">
-            Sign in
-          </Link>
-          <Link href="/register" className="rounded-full bg-gold px-4 py-2 text-sm font-semibold text-background hover:bg-gold-light transition-colors">
-            Start for Free
-          </Link>
+          {!signedIn && (
+            <>
+              <Link href="/login" className="text-sm text-foreground-muted hover:text-foreground transition-colors">
+                Sign in
+              </Link>
+              <Link href="/register" className="rounded-full bg-gold px-4 py-2 text-sm font-semibold text-background hover:bg-gold-light transition-colors">
+                Start for Free
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </nav>

@@ -11,21 +11,21 @@ export function ReviewModal({
   onSubmitted,
   initialRating = 0,
   initialBody = "",
-  initialDisplayName,
+  initialAnonymous = false,
 }: {
   username: string;
   onClose: () => void;
   onSubmitted: () => void;
   initialRating?: number;
   initialBody?: string;
-  initialDisplayName?: string;
+  initialAnonymous?: boolean;
 }) {
-  const [rating,      setRating]      = useState(initialRating);
-  const [hovered,     setHovered]     = useState(0);
-  const [body,        setBody]        = useState(initialBody);
-  const [displayName, setDisplayName] = useState(initialDisplayName ?? username);
-  const [error,       setError]       = useState("");
-  const [isPending,   startTransition] = useTransition();
+  const [rating,     setRating]      = useState(initialRating);
+  const [hovered,    setHovered]     = useState(0);
+  const [body,       setBody]        = useState(initialBody);
+  const [anonymous,  setAnonymous]   = useState(initialAnonymous);
+  const [error,      setError]       = useState("");
+  const [isPending,  startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,8 +37,8 @@ export function ReviewModal({
       try {
         await submitReview({
           rating,
-          body:        body.trim(),
-          displayName: displayName.trim() || username,
+          body: body.trim(),
+          anonymous,
         });
         onSubmitted();
       } catch (err) {
@@ -106,18 +106,25 @@ export function ReviewModal({
             </p>
           </div>
 
-          {/* Display name */}
+          {/* Attribution — the profile username or nothing. No free-text names. */}
           <div>
-            <label className="block text-xs font-medium text-foreground-muted mb-1.5">
-              Display name <span className="font-normal">(shown publicly)</span>
+            <p className="text-xs font-medium text-foreground-muted mb-1.5">Posting as</p>
+            <label className="flex items-start gap-2.5 rounded-xl border border-border bg-surface-raised px-4 py-3 cursor-pointer hover:border-gold/40 transition-colors">
+              <input
+                type="checkbox"
+                checked={anonymous}
+                onChange={(e) => setAnonymous(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
+              />
+              <span className="text-sm text-foreground">
+                Post anonymously
+                <span className="block text-xs text-foreground-muted mt-0.5">
+                  {anonymous
+                    ? "Shown as “Anonymous collector” — your username stays private."
+                    : `Shown as “${username}”.`}
+                </span>
+              </span>
             </label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              maxLength={30}
-              className="w-full rounded-xl border border-border bg-surface-raised px-4 py-2.5 text-sm text-foreground focus:border-gold focus:outline-none"
-            />
           </div>
 
           {error && <p className="text-xs text-red-400">{error}</p>}

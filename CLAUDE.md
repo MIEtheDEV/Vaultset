@@ -167,7 +167,19 @@ POKEWALLET_API_KEY=   # PokéWallet (scaffold, not yet wired)
 
 Keys are in the Supabase dashboard under **Settings → API**.
 
-**Database:** The schema is tracked as a single committed snapshot, `supabase/schema_6-22.sql`, regenerated from the live database with `supabase db dump`. There are no per-file migrations. Apply DB changes directly in the Supabase SQL Editor, then refresh the snapshot so the repo reflects production. To bootstrap a fresh project, run the snapshot against an empty database.
+**Database:** The schema is tracked as a single committed snapshot, `supabase/schema_6-22.sql`, and there are no per-file migrations. Apply DB changes directly in the Supabase SQL Editor, then **edit the snapshot by hand** to match, so the repo reflects production. To bootstrap a fresh project, run the snapshot against an empty database.
+
+The snapshot is hand-maintained rather than regenerated: `supabase db dump` runs `pg_dump` inside a pinned Postgres container, and this project doesn't use Docker (no local `pg_dump` either). So after applying DDL, mirror it into the snapshot in `pg_dump` style — column definitions inside the `CREATE TABLE`, `COMMENT ON COLUMN` statements after the `ALTER TABLE ... OWNER TO` line, indexes alongside the existing `CREATE INDEX` block, function bodies edited in place — then verify against production rather than trusting the edit:
+
+```sql
+-- confirm columns, indexes, and function bodies actually match the snapshot
+select column_name, data_type, column_default from information_schema.columns
+  where table_schema = 'public' and table_name = '<table>' order by ordinal_position;
+select indexname from pg_indexes where schemaname = 'public' and tablename = '<table>';
+select prosrc from pg_proc where proname = '<function>';
+```
+
+**Watch for column-level grants.** Some tables grant privileges per column, so a new column can be invisible to `anon`/`authenticated` until granted explicitly (this caused a shipped bug where Pro users saw upgrade prompts). Check with `information_schema.column_privileges` before assuming a new column is readable; `public.reviews` is table-level and inherits automatically.
 
 **Supabase Auth redirect URLs** (Authentication → URL Configuration):
 - Local: `http://localhost:3000/auth/callback`
