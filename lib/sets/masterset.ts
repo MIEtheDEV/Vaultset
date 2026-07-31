@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPokemonSets } from "@/lib/sets/getPokemonSets";
 import { normalizeCardNumber } from "@/lib/search/cardNumber";
 import { sortFinishes, FINISH_ORDER } from "@/lib/sets/setCardFinishes";
+import { compareCardNumbers } from "@/lib/sets/cardNumberSort";
 import { selectChaseCards as rankChaseCards } from "@/lib/sets/chaseCards";
 import { headlineMarketValue } from "@/lib/pricing/headlineMarketValue";
 
@@ -242,6 +243,11 @@ export async function getMasterSetView(
   const priceMap = new Map((priceRows ?? []).map((p) => [p.card_api_id as string, p.prices]));
 
   const ownedNumbers = ownedIndex.bySet.get(setCode);
+  // `.order("card_number")` above is a TEXT sort on the normalized number, which
+  // reads 1, 10, 100, … 11, 110. Re-sort numerically so the grid's default is
+  // binder order; the client can re-sort from there. (Doing it here rather than in
+  // SQL keeps the DB order deterministic for the query itself and costs nothing —
+  // the largest set is 304 cards.)
   const cards: CardStatus[] = setRows.map((r) => {
     const owned = ownedNumbers?.get(r.card_number);
     const { finishes, ownedFinishes } = resolveCardFinishes(r.finishes, owned);
@@ -253,7 +259,7 @@ export async function getMasterSetView(
       ownedMaster: finishes.length > 0 && ownedFinishes.length >= finishes.length,
       value: r.pokemon_api_id ? headlineMarketValue(priceMap.get(r.pokemon_api_id)) : null,
     };
-  });
+  }).sort((a, b) => compareCardNumbers(a.card_number, b.card_number));
 
   const complete: Progress = {
     owned: cards.filter((c) => c.ownedComplete).length,

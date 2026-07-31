@@ -5,12 +5,22 @@ import Link from "next/link";
 import Image from "next/image";
 import { getRaritySystem } from "@/lib/rarity";
 import { FINISH_LABELS } from "@/lib/sets/setCardFinishes";
+import { compareCardNumbers } from "@/lib/sets/cardNumberSort";
 import type { CardStatus, Progress } from "@/lib/sets/masterset";
 
 const raritySystem = getRaritySystem("pokemon");
 
 type Mode = "complete" | "master";
 type Ownership = "all" | "needed" | "captured";
+type Sort = "number" | "name" | "rarity" | "value" | "missing";
+
+const SORT_LABELS: Record<Sort, string> = {
+  number: "Card number",
+  name: "Name (A–Z)",
+  rarity: "Rarity",
+  value: "Value (high → low)",
+  missing: "Missing first",
+};
 
 export function MasterSetGrid({
   cards,
@@ -28,6 +38,10 @@ export function MasterSetGrid({
   const [mode, setMode] = useState<Mode>("complete");
   const [ownership, setOwnership] = useState<Ownership>("all");
   const [rarity, setRarity] = useState<string>("all");
+  // Collector number is the default: it's the order the set exists in physically,
+  // so a collector scanning the grid can find a specific card without reading
+  // every tile. Every other sort is a deliberate re-frame of that baseline.
+  const [sort, setSort] = useState<Sort>("number");
 
   const progress = mode === "complete" ? complete : master;
   const pct = progress.total > 0 ? Math.round((progress.owned / progress.total) * 100) : 0;
@@ -41,14 +55,42 @@ export function MasterSetGrid({
   );
 
   const visible = useMemo(() => {
-    return cards.filter((c) => {
+    const filtered = cards.filter((c) => {
       if (rarity !== "all" && c.rarity !== rarity) return false;
       const captured = mode === "master" ? c.ownedMaster : c.ownedComplete;
       if (ownership === "needed" && captured) return false;
       if (ownership === "captured" && !captured) return false;
       return true;
     });
-  }, [cards, mode, ownership, rarity]);
+
+    // Every sort falls back to collector number, so ties never render in an
+    // arbitrary order — two commons of the same rarity, or two unpriced cards,
+    // still read in binder order rather than shuffling between renders.
+    const byNumber = (a: CardStatus, b: CardStatus) =>
+      compareCardNumbers(a.card_number, b.card_number);
+
+    const comparators: Record<Sort, (a: CardStatus, b: CardStatus) => number> = {
+      number: byNumber,
+      name: (a, b) => a.name.localeCompare(b.name, "en") || byNumber(a, b),
+      // Rarity ranks through the polymorphic rarity system, rarest first —
+      // ascending, because a lower `sort` means a HIGHER rarity there. Unknown
+      // rarities fall back to 999 and land at the end.
+      rarity: (a, b) =>
+        raritySystem.getSortOrder(a.rarity ?? "") - raritySystem.getSortOrder(b.rarity ?? "") ||
+        byNumber(a, b),
+      // Unpriced cards sort last rather than as $0 — "no data" isn't "worthless".
+      value: (a, b) =>
+        (b.value ?? -Infinity) - (a.value ?? -Infinity) || byNumber(a, b),
+      // What's left to chase, in binder order.
+      missing: (a, b) => {
+        const capturedA = mode === "master" ? a.ownedMaster : a.ownedComplete;
+        const capturedB = mode === "master" ? b.ownedMaster : b.ownedComplete;
+        return Number(capturedA) - Number(capturedB) || byNumber(a, b);
+      },
+    };
+
+    return filtered.sort(comparators[sort]);
+  }, [cards, mode, ownership, rarity, sort]);
 
   return (
     <div className="space-y-6">
@@ -110,11 +152,22 @@ export function MasterSetGrid({
         <select
           value={rarity}
           onChange={(e) => setRarity(e.target.value)}
+          aria-label="Filter by rarity"
           className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-gold/50 focus:outline-none"
         >
           <option value="all">All rarities</option>
           {rarityOptions.map((r) => (
             <option key={r.key} value={r.key}>{r.label}</option>
+          ))}
+        </select>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as Sort)}
+          aria-label="Sort cards"
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-gold/50 focus:outline-none"
+        >
+          {(Object.keys(SORT_LABELS) as Sort[]).map((s) => (
+            <option key={s} value={s}>Sort: {SORT_LABELS[s]}</option>
           ))}
         </select>
         <span className="text-sm text-foreground-muted">
