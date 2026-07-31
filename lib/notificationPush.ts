@@ -96,9 +96,25 @@ export function buildPushPayload(n: NotificationRow, actorUsername: string | nul
 
     case "wishlist_listing_match": {
       const listingId = str("listing_id");
+      const cardName = str("card_name") ?? "A card on your wishlist";
+      // A bulk listing arrives as one notification covering many cards, with
+      // card_name/listing_id as a representative pick.
+      const extra = Math.max(0, num("match_count") - 1);
+
+      if (extra > 0) {
+        return {
+          title: "Wishlist matches",
+          body: `${cardName} and ${extra} more card${extra === 1 ? "" : "s"} on your wishlist were just listed`,
+          // Deep-link to the seller's storefront; a single listing would strand
+          // the other cards this covers.
+          url: actorUsername ? `/marketplace/user/${actorUsername}` : "/marketplace",
+          tag: actorUsername ? `wishlist_match:seller:${actorUsername}` : "wishlist_match",
+        };
+      }
+
       return {
         title: "Wishlist match",
-        body: `${str("card_name") ?? "A card on your wishlist"} was just listed`,
+        body: `${cardName} was just listed`,
         url: listingId ? `/marketplace/${listingId}` : "/notifications",
         tag: listingId ? `wishlist_match:${listingId}` : "wishlist_match",
       };

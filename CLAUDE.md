@@ -132,6 +132,59 @@ card) alongside a **Complete Set** tier (one of each card number).
 - **Achievements:** `set_finisher` / `master_setter` badges awarded lazily on set-page view
   (`lib/sets/setCompletion.ts`); completions recorded in `user_set_completions`.
 
+### Bulk Edit (`lib/bulk/`, Pro)
+
+Filter-driven inventory updates: pick a set / rarity / value band, see exactly what
+it will touch, apply, undo. Distinct from the checkbox bulk actions in
+`InventoryGrid` — **selection is a predicate, not a list of ids**. The client sends
+a filter descriptor and the database resolves it, so an edit reaches every matching
+card rather than only what's rendered, and the set can't be spoofed.
+
+- **Descriptors (`lib/bulk/types.ts`):** `BulkFilter` (sets, rarities, conditions,
+  market-value band, for-sale/for-trade/graded tri-states) and `BulkAction`
+  (`price_market_pct`, `price_list_pct`, `clear_list_price`, `set_for_sale`,
+  `set_for_trade`). Both are normalized + bounds-checked server-side —
+  `normalizeFilter`/`normalizeAction` run on untrusted input because server actions
+  are directly callable.
+- **Price anchoring:** `price_market_pct` is anchored to each card's tracked
+  `market_price`, so it's **idempotent** — re-running it is a no-op.
+  `price_list_pct` is relative to the current `list_price` and therefore
+  **compounds**. Both take a hard price `floor` (applied *after* rounding, so a
+  −20% on a $0.10 common can't land below the shipping-loss line) and a rounding
+  mode (cent / quarter / half / whole / .99).
+- **SQL layer:** `bulk_edit_match` (filter → item ids, flagging `locked` rows),
+  `bulk_edit_price` / `bulk_edit_applicable` (arithmetic), `bulk_edit_preview`
+  (dry run: counts + before/after listed value), `bulk_edit_apply`, `bulk_edit_undo`.
+  All `security invoker` so RLS applies. `bulk_edit_match` pins its `p_user` param
+  to `auth.uid()` — it's client-callable, so without that a signed-in user could
+  pass someone else's id.
+- **Undo:** `bulk_edit_apply` snapshots the pre-edit `list_price`/`for_sale`/
+  `for_trade` of every row it touches into `bulk_edit_item_changes` **in the same
+  transaction** as the update, so the previewed count and the applied count can't
+  drift. Last 10 batches per user are retained.
+- **Never touched:** rows with `on_hold = true` or a non-null `transfer_status` —
+  a reprice must not disturb a card committed to an open offer. Preview reports
+  these as skipped rather than silently narrowing the set.
+- **Gating:** preview is open to all authenticated users (free users can build a
+  filter and see the impact); `applyBulkEdit`/`undoBulkEdit` check `isPro`
+  server-side, same as `refreshItemMarketValue`.
+- **Wishlist notifications are rolled up.** `notify_wishlist_listing_match` is a
+  **statement-level** trigger (transition tables `old_rows`/`new_rows`), not
+  per-row — a bulk edit is one `UPDATE`, so every newly-listed card collapses into
+  **one** notification per wisher carrying `match_count`. Previously this was
+  `FOR EACH ROW`, so bulk-listing a 30-card set fired 30 notifications *and* 30
+  push sends (`push_dispatch_after_insert` is per notification row) at every
+  wisher at once. Notes:
+  - Transition tables can't be combined with `UPDATE OF <columns>`, so the update
+    trigger fires on *every* update and `notify_wishlist_matches` filters for the
+    real transition into availability.
+  - The anti-respam guard moved from inferring history out of `notifications` to
+    its own `wishlist_listing_notices` ledger — one narrow row per (wisher,
+    listing) — because one notification no longer maps to one listing.
+  - `match_count = 1` produces the exact payload shape it always did, so
+    non-bulk listings are unaffected. `> 1` is what `/notifications` and
+    `buildPushPayload` branch on, deep-linking to the seller's storefront.
+
 ### Authentication & Middleware
 
 `proxy.ts` is the Next.js middleware file (exports `proxy` function + `config` matcher). It:

@@ -7,6 +7,8 @@ import { MarkReceivedButton } from "@/components/MarkReceivedButton";
 import { RefreshMarketButton } from "@/components/RefreshMarketButton";
 import { MatchAllListingsButton } from "@/components/MatchAllListingsButton";
 import { FillMissingPricesButton } from "@/components/FillMissingPricesButton";
+import { BulkEditPanel, type BulkFacets } from "@/components/BulkEditPanel";
+import { RARITY_NONE } from "@/lib/bulk/types";
 import { hasProAccess } from "@/lib/proStatus";
 import { loadDailyChanges, type VaultItem } from "@/lib/vaultDaily";
 
@@ -98,6 +100,29 @@ export default async function InventoryPage() {
     .single();
   const canPro = hasProAccess(profile as any); // manual market refresh is Pro
 
+  // Bulk Edit filter options, derived from what the user actually owns — there's
+  // no point offering a set or rarity they hold nothing from. Cards with no
+  // rarity recorded (most of the catalog) collapse into one selectable bucket.
+  const conditionOrder = ["mint", "near_mint", "lightly_played", "moderately_played", "heavily_played", "damaged"];
+  const facets: BulkFacets = (() => {
+    const sets = new Set<string>();
+    const rarities = new Set<string>();
+    const conditions = new Set<string>();
+    for (const item of regularItems) {
+      const card = Array.isArray(item.cards) ? item.cards[0] : item.cards;
+      if (card?.set_name) sets.add(card.set_name);
+      const rarity = (card?.game_data as Record<string, unknown> | null)?.rarity;
+      rarities.add(typeof rarity === "string" && rarity ? rarity : RARITY_NONE);
+      const { condition } = item as { condition: string | null };
+      if (condition) conditions.add(condition);
+    }
+    return {
+      sets: [...sets].sort((a, b) => a.localeCompare(b)),
+      rarities: [...rarities],
+      conditions: conditionOrder.filter((c) => conditions.has(c)),
+    };
+  })();
+
   return (
     <div className="space-y-8">
 
@@ -187,6 +212,9 @@ export default async function InventoryPage() {
           </div>
         </div>
       )}
+
+      {/* Bulk Edit — filter-driven updates across a whole set or rarity */}
+      {regularItems.length > 0 && <BulkEditPanel facets={facets} canPro={canPro} />}
 
       {/* Pending Arrivals */}
       {pendingItems.length > 0 && (

@@ -132,6 +132,249 @@ CREATE OR REPLACE FUNCTION "public"."auto_expire_offers"() RETURNS "trigger"
 ALTER FUNCTION "public"."auto_expire_offers"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."bulk_edit_applicable"("p_type" "text", "p_market" numeric, "p_list" numeric) RETURNS boolean
+    LANGUAGE "sql" IMMUTABLE
+    AS $$
+    select case p_type
+        when 'price_market_pct' then p_market is not null
+        when 'price_list_pct'   then p_list   is not null
+        when 'clear_list_price' then p_list   is not null
+        else true
+    end;
+$$;
+
+
+ALTER FUNCTION "public"."bulk_edit_applicable"("p_type" "text", "p_market" numeric, "p_list" numeric) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."bulk_edit_apply"("p_filter" "jsonb", "p_action" "jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
+    AS $$
+declare
+    v_user    uuid := auth.uid();
+    v_type    text := coalesce(p_action->>'type', '');
+    v_batch   uuid;
+    v_updated integer := 0;
+begin
+    if v_user is null then
+        raise exception 'Not authenticated' using errcode = '28000';
+    end if;
+
+    if v_type not in ('price_market_pct', 'price_list_pct', 'clear_list_price',
+                      'set_for_sale', 'set_for_trade') then
+        raise exception 'Unknown bulk edit action: %', v_type using errcode = '22023';
+    end if;
+
+    insert into public.bulk_edit_batches (user_id, filter, action)
+    values (v_user, p_filter, p_action)
+    returning id into v_batch;
+
+    insert into public.bulk_edit_item_changes (batch_id, item_id, prior)
+    select v_batch,
+           ci.id,
+           jsonb_build_object(
+               'list_price', ci.list_price,
+               'for_sale',   ci.for_sale,
+               'for_trade',  ci.for_trade
+           )
+      from public.collection_items ci
+      join public.bulk_edit_match(v_user, p_filter) m on m.item_id = ci.id
+     where not m.locked
+       and public.bulk_edit_applicable(v_type, ci.market_price, ci.list_price);
+
+    update public.collection_items ci
+       set list_price = case v_type
+               when 'price_market_pct' then public.bulk_edit_price(ci.market_price * (1 + (p_action->>'pct')::numeric / 100), p_action)
+               when 'price_list_pct'   then public.bulk_edit_price(ci.list_price   * (1 + (p_action->>'pct')::numeric / 100), p_action)
+               when 'clear_list_price' then null
+               else ci.list_price
+           end,
+           for_sale  = case when v_type = 'set_for_sale'  then (p_action->>'value')::boolean else ci.for_sale  end,
+           for_trade = case when v_type = 'set_for_trade' then (p_action->>'value')::boolean else ci.for_trade end
+      from public.bulk_edit_item_changes ch
+     where ch.batch_id = v_batch
+       and ch.item_id  = ci.id
+       and ci.user_id  = v_user;
+
+    get diagnostics v_updated = row_count;
+
+    update public.bulk_edit_batches set item_count = v_updated where id = v_batch;
+
+    if v_updated = 0 then
+        delete from public.bulk_edit_batches where id = v_batch;
+        return jsonb_build_object('batchId', null, 'updated', 0);
+    end if;
+
+    delete from public.bulk_edit_batches b
+     where b.user_id = v_user
+       and b.id not in (
+           select id from public.bulk_edit_batches
+            where user_id = v_user
+            order by created_at desc
+            limit 10
+       );
+
+    return jsonb_build_object('batchId', v_batch, 'updated', v_updated);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."bulk_edit_apply"("p_filter" "jsonb", "p_action" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."bulk_edit_match"("p_user" "uuid", "p_filter" "jsonb") RETURNS TABLE("item_id" "uuid", "locked" boolean)
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO 'public'
+    AS $$
+    select ci.id,
+           (ci.on_hold or ci.transfer_status is not null) as locked
+      from public.collection_items ci
+      join public.cards c on c.id = ci.card_id
+     -- p_user is caller-supplied and this function is client-callable, so it is
+     -- pinned to the session's own identity. Without this, a signed-in user
+     -- could pass someone else's id and enumerate their listed items.
+     where p_user = auth.uid()
+       and ci.user_id = p_user
+       and (p_filter->'sets' is null
+            or jsonb_array_length(p_filter->'sets') = 0
+            or c.set_name in (select jsonb_array_elements_text(p_filter->'sets')))
+       and (p_filter->'rarities' is null
+            or jsonb_array_length(p_filter->'rarities') = 0
+            or coalesce(c.game_data->>'rarity', '__none__')
+               in (select jsonb_array_elements_text(p_filter->'rarities')))
+       and (p_filter->>'minValue' is null or ci.market_price >= (p_filter->>'minValue')::numeric)
+       and (p_filter->>'maxValue' is null or ci.market_price <= (p_filter->>'maxValue')::numeric)
+       and (p_filter->>'forSale'  is null or ci.for_sale  = (p_filter->>'forSale')::boolean)
+       and (p_filter->>'forTrade' is null or ci.for_trade = (p_filter->>'forTrade')::boolean)
+       and (p_filter->>'graded' is null
+            or ((p_filter->>'graded')::boolean     and ci.grader is not null)
+            or (not (p_filter->>'graded')::boolean and ci.grader is null))
+       and (p_filter->'conditions' is null
+            or jsonb_array_length(p_filter->'conditions') = 0
+            or ci.condition in (select jsonb_array_elements_text(p_filter->'conditions')));
+$$;
+
+
+ALTER FUNCTION "public"."bulk_edit_match"("p_user" "uuid", "p_filter" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."bulk_edit_preview"("p_filter" "jsonb", "p_action" "jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql" STABLE
+    SET "search_path" TO 'public'
+    AS $$
+declare
+    v_user uuid := auth.uid();
+    v_type text := coalesce(p_action->>'type', '');
+    v_out  jsonb;
+begin
+    if v_user is null then
+        raise exception 'Not authenticated' using errcode = '28000';
+    end if;
+
+    with matched as (
+        select m.locked, ci.market_price, ci.list_price
+          from public.bulk_edit_match(v_user, p_filter) m
+          join public.collection_items ci on ci.id = m.item_id
+    ),
+    scored as (
+        select locked,
+               list_price,
+               public.bulk_edit_applicable(v_type, market_price, list_price) as applicable,
+               case v_type
+                   when 'price_market_pct' then public.bulk_edit_price(market_price * (1 + (p_action->>'pct')::numeric / 100), p_action)
+                   when 'price_list_pct'   then public.bulk_edit_price(list_price   * (1 + (p_action->>'pct')::numeric / 100), p_action)
+                   when 'clear_list_price' then null
+                   else list_price
+               end as new_price
+          from matched
+    )
+    select jsonb_build_object(
+        'matched',        count(*) filter (where not locked),
+        'locked',         count(*) filter (where locked),
+        'applicable',     count(*) filter (where not locked and applicable),
+        'skippedNoValue', count(*) filter (where not locked and not applicable),
+        'currentValue',   coalesce(sum(list_price) filter (where not locked and applicable), 0),
+        'projectedValue', coalesce(sum(new_price)  filter (where not locked and applicable), 0)
+    )
+    into v_out
+    from scored;
+
+    return v_out;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."bulk_edit_preview"("p_filter" "jsonb", "p_action" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."bulk_edit_price"("p_raw" numeric, "p_action" "jsonb") RETURNS numeric
+    LANGUAGE "sql" IMMUTABLE
+    AS $$
+    select case
+        when p_raw is null then null
+        else round(
+            greatest(
+                case coalesce(p_action->>'round', 'cent')
+                    when 'whole'       then round(p_raw)
+                    when 'half'        then round(p_raw * 2) / 2
+                    when 'quarter'     then round(p_raw * 4) / 4
+                    when 'ninety_nine' then greatest(round(p_raw) - 0.01, 0.01)
+                    else round(p_raw, 2)
+                end,
+                greatest(coalesce((p_action->>'floor')::numeric, 0.01), 0.01)
+            ),
+            2
+        )
+    end;
+$$;
+
+
+ALTER FUNCTION "public"."bulk_edit_price"("p_raw" numeric, "p_action" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."bulk_edit_undo"("p_batch_id" "uuid") RETURNS "jsonb"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
+    AS $$
+declare
+    v_user     uuid := auth.uid();
+    v_restored integer := 0;
+begin
+    if v_user is null then
+        raise exception 'Not authenticated' using errcode = '28000';
+    end if;
+
+    if not exists (
+        select 1 from public.bulk_edit_batches b
+         where b.id = p_batch_id and b.user_id = v_user and b.undone_at is null
+    ) then
+        raise exception 'Bulk edit not found or already undone' using errcode = 'P0002';
+    end if;
+
+    update public.collection_items ci
+       set list_price = (ch.prior->>'list_price')::numeric,
+           for_sale   = (ch.prior->>'for_sale')::boolean,
+           for_trade  = (ch.prior->>'for_trade')::boolean
+      from public.bulk_edit_item_changes ch
+     where ch.batch_id = p_batch_id
+       and ch.item_id  = ci.id
+       and ci.user_id  = v_user
+       and not ci.on_hold
+       and ci.transfer_status is null;
+
+    get diagnostics v_restored = row_count;
+
+    update public.bulk_edit_batches set undone_at = now() where id = p_batch_id;
+
+    return jsonb_build_object('restored', v_restored);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."bulk_edit_undo"("p_batch_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."check_user_badges"("p_user_id" "uuid") RETURNS "text"[]
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -694,63 +937,91 @@ CREATE OR REPLACE FUNCTION "public"."notify_wishlist_listing_match"() RETURNS "t
     SET "search_path" TO 'public'
     AS $$
 declare
-    v_api_id    text;
-    v_card_name text;
-    v_now_available  boolean;
-    v_was_available  boolean;
+    v_ids uuid[];
 begin
     -- "Available on the marketplace" mirrors the marketplace query:
-    -- (for_sale OR for_trade) AND NOT on_hold.
-    v_now_available := (coalesce(new.for_sale, false) or coalesce(new.for_trade, false))
-                       and not coalesce(new.on_hold, false);
-
-    if tg_op = 'UPDATE' then
-        v_was_available := (coalesce(old.for_sale, false) or coalesce(old.for_trade, false))
-                           and not coalesce(old.on_hold, false);
+    -- (for_sale OR for_trade) AND NOT on_hold. Only the transition *into*
+    -- availability counts, not later edits to an already-listed card.
+    if tg_op = 'INSERT' then
+        select array_agg(n.id) into v_ids
+          from new_rows n
+         where (coalesce(n.for_sale, false) or coalesce(n.for_trade, false))
+           and not coalesce(n.on_hold, false);
     else
-        v_was_available := false;
+        select array_agg(n.id) into v_ids
+          from new_rows n
+          join old_rows o on o.id = n.id
+         where (coalesce(n.for_sale, false) or coalesce(n.for_trade, false))
+           and not coalesce(n.on_hold, false)
+           and not ((coalesce(o.for_sale, false) or coalesce(o.for_trade, false))
+                    and not coalesce(o.on_hold, false));
     end if;
 
-    -- Only act on the transition into availability, not on every later edit
-    -- (e.g. a price change on an already-listed card).
-    if not v_now_available or v_was_available then
-        return new;
-    end if;
-
-    -- Resolve the listed card's cross-user identity + display name.
-    select c.game_data->>'pokemon_api_id', c.name
-      into v_api_id, v_card_name
-      from cards c
-     where c.id = new.card_id;
-
-    if v_api_id is null then
-        return new;  -- no shared identity key; nothing to match against
-    end if;
-
-    -- One notification per wisher (never the seller), skipping anyone already
-    -- told about this exact listing so relisting/unholding can't re-spam them.
-    insert into notifications (user_id, type, actor_id, data)
-    select w.user_id,
-           'wishlist_listing_match',
-           new.user_id,
-           jsonb_build_object('listing_id', new.id, 'card_name', v_card_name)
-      from wishlist_items w
-     where w.pokemon_api_id = v_api_id
-       and w.user_id <> new.user_id
-       and not exists (
-           select 1
-             from notifications n
-            where n.user_id = w.user_id
-              and n.type = 'wishlist_listing_match'
-              and n.data->>'listing_id' = new.id::text
-       );
-
-    return new;
+    perform public.notify_wishlist_matches(v_ids);
+    return null;
 end;
 $$;
 
 
 ALTER FUNCTION "public"."notify_wishlist_listing_match"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."notify_wishlist_matches"("p_item_ids" "uuid"[]) RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+begin
+    if p_item_ids is null or array_length(p_item_ids, 1) is null then
+        return;
+    end if;
+
+    with candidates as (
+        select ci.id                          as listing_id,
+               ci.user_id                     as seller_id,
+               c.game_data->>'pokemon_api_id' as api_id,
+               c.name                         as card_name
+          from public.collection_items ci
+          join public.cards c on c.id = ci.card_id
+         where ci.id = any(p_item_ids)
+           and c.game_data->>'pokemon_api_id' is not null
+    ),
+    matches as (
+        select w.user_id as wisher_id, cd.seller_id, cd.listing_id, cd.card_name
+          from candidates cd
+          join public.wishlist_items w on w.pokemon_api_id = cd.api_id
+         where w.user_id <> cd.seller_id
+           and not exists (
+               select 1 from public.wishlist_listing_notices ln
+                where ln.user_id = w.user_id and ln.listing_id = cd.listing_id
+           )
+    ),
+    -- Record coverage first; the join below means only genuinely-new pairs get
+    -- summarised, which keeps this correct under concurrent listings.
+    recorded as (
+        insert into public.wishlist_listing_notices (user_id, listing_id)
+        select wisher_id, listing_id from matches
+        on conflict (user_id, listing_id) do nothing
+        returning user_id, listing_id
+    )
+    insert into public.notifications (user_id, type, actor_id, data)
+    select m.wisher_id,
+           'wishlist_listing_match',
+           m.seller_id,
+           jsonb_build_object(
+               -- A representative card so the single-match payload is byte-for-byte
+               -- what it always was; match_count is what the UI branches on.
+               'listing_id',  (array_agg(m.listing_id order by m.card_name, m.listing_id))[1],
+               'card_name',   (array_agg(m.card_name  order by m.card_name, m.listing_id))[1],
+               'match_count', count(*)
+           )
+      from matches m
+      join recorded r on r.user_id = m.wisher_id and r.listing_id = m.listing_id
+     group by m.wisher_id, m.seller_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."notify_wishlist_matches"("p_item_ids" "uuid"[]) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."rls_auto_enable"() RETURNS "event_trigger"
@@ -868,6 +1139,36 @@ CREATE TABLE IF NOT EXISTS "public"."admin_audit_log" (
 
 
 ALTER TABLE "public"."admin_audit_log" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."bulk_edit_batches" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "filter" "jsonb" NOT NULL,
+    "action" "jsonb" NOT NULL,
+    "item_count" integer DEFAULT 0 NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "undone_at" timestamp with time zone
+);
+
+
+ALTER TABLE "public"."bulk_edit_batches" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."bulk_edit_batches" IS 'One row per applied bulk edit. Holds the filter + action for audit and powers one-click undo.';
+
+
+CREATE TABLE IF NOT EXISTS "public"."bulk_edit_item_changes" (
+    "batch_id" "uuid" NOT NULL,
+    "item_id" "uuid" NOT NULL,
+    "prior" "jsonb" NOT NULL
+);
+
+
+ALTER TABLE "public"."bulk_edit_item_changes" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."bulk_edit_item_changes" IS 'Pre-edit snapshot of every row a bulk edit touched (list_price, for_sale, for_trade), for undo.';
 
 
 CREATE TABLE IF NOT EXISTS "public"."card_add_events" (
@@ -1448,8 +1749,31 @@ CREATE TABLE IF NOT EXISTS "public"."wishlist_items" (
 ALTER TABLE "public"."wishlist_items" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."wishlist_listing_notices" (
+    "user_id" "uuid" NOT NULL,
+    "listing_id" "uuid" NOT NULL,
+    "notified_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."wishlist_listing_notices" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."wishlist_listing_notices" IS 'Which wisher has already been notified about which listing. Keeps the anti-respam guard exact now that one notification can summarise many listings.';
+
+
 ALTER TABLE ONLY "public"."admin_audit_log"
     ADD CONSTRAINT "admin_audit_log_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."bulk_edit_batches"
+    ADD CONSTRAINT "bulk_edit_batches_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."bulk_edit_item_changes"
+    ADD CONSTRAINT "bulk_edit_item_changes_pkey" PRIMARY KEY ("batch_id", "item_id");
 
 
 
@@ -1648,6 +1972,11 @@ ALTER TABLE ONLY "public"."wishlist_items"
 
 
 
+ALTER TABLE ONLY "public"."wishlist_listing_notices"
+    ADD CONSTRAINT "wishlist_listing_notices_pkey" PRIMARY KEY ("user_id", "listing_id");
+
+
+
 ALTER TABLE ONLY "public"."wishlist_items"
     ADD CONSTRAINT "wishlist_items_user_id_pokemon_api_id_key" UNIQUE ("user_id", "pokemon_api_id");
 
@@ -1662,6 +1991,10 @@ CREATE INDEX "admin_audit_log_created_idx" ON "public"."admin_audit_log" USING "
 
 
 CREATE INDEX "admin_audit_log_target_idx" ON "public"."admin_audit_log" USING "btree" ("target_user_id");
+
+
+
+CREATE INDEX "bulk_edit_batches_user_idx" ON "public"."bulk_edit_batches" USING "btree" ("user_id", "created_at" DESC);
 
 
 
@@ -1909,7 +2242,11 @@ CREATE OR REPLACE TRIGGER "push_dispatch_after_insert" AFTER INSERT ON "public".
 
 
 
-CREATE OR REPLACE TRIGGER "wishlist_listing_match_trigger" AFTER INSERT OR UPDATE OF "for_sale", "for_trade", "on_hold" ON "public"."collection_items" FOR EACH ROW EXECUTE FUNCTION "public"."notify_wishlist_listing_match"();
+CREATE OR REPLACE TRIGGER "wishlist_listing_match_insert_trigger" AFTER INSERT ON "public"."collection_items" REFERENCING NEW TABLE AS "new_rows" FOR EACH STATEMENT EXECUTE FUNCTION "public"."notify_wishlist_listing_match"();
+
+
+
+CREATE OR REPLACE TRIGGER "wishlist_listing_match_update_trigger" AFTER UPDATE ON "public"."collection_items" REFERENCING OLD TABLE AS "old_rows" NEW TABLE AS "new_rows" FOR EACH STATEMENT EXECUTE FUNCTION "public"."notify_wishlist_listing_match"();
 
 
 
@@ -1925,6 +2262,21 @@ ALTER TABLE ONLY "public"."admin_audit_log"
 
 ALTER TABLE ONLY "public"."admin_audit_log"
     ADD CONSTRAINT "admin_audit_log_target_user_id_fkey" FOREIGN KEY ("target_user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."bulk_edit_batches"
+    ADD CONSTRAINT "bulk_edit_batches_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."bulk_edit_item_changes"
+    ADD CONSTRAINT "bulk_edit_item_changes_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "public"."bulk_edit_batches"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."bulk_edit_item_changes"
+    ADD CONSTRAINT "bulk_edit_item_changes_item_id_fkey" FOREIGN KEY ("item_id") REFERENCES "public"."collection_items"("id") ON DELETE CASCADE;
 
 
 
@@ -2178,6 +2530,16 @@ ALTER TABLE ONLY "public"."wishlist_items"
 
 
 
+ALTER TABLE ONLY "public"."wishlist_listing_notices"
+    ADD CONSTRAINT "wishlist_listing_notices_listing_id_fkey" FOREIGN KEY ("listing_id") REFERENCES "public"."collection_items"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."wishlist_listing_notices"
+    ADD CONSTRAINT "wishlist_listing_notices_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
 CREATE POLICY "Approved reviews are publicly readable" ON "public"."reviews" FOR SELECT USING ((("approved" = true) OR ("auth"."uid"() = "user_id")));
 
 
@@ -2258,7 +2620,27 @@ CREATE POLICY "Users can add to their own collection" ON "public"."collection_it
 
 
 
+CREATE POLICY "Users can create their own bulk edit batches" ON "public"."bulk_edit_batches" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can create their own bulk edit changes" ON "public"."bulk_edit_item_changes" FOR INSERT WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."bulk_edit_batches" "b"
+  WHERE (("b"."id" = "bulk_edit_item_changes"."batch_id") AND ("b"."user_id" = "auth"."uid"())))));
+
+
+
 CREATE POLICY "Users can delete from their own collection" ON "public"."collection_items" FOR DELETE USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can delete their own bulk edit batches" ON "public"."bulk_edit_batches" FOR DELETE USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can delete their own bulk edit changes" ON "public"."bulk_edit_item_changes" FOR DELETE USING ((EXISTS ( SELECT 1
+   FROM "public"."bulk_edit_batches" "b"
+  WHERE (("b"."id" = "bulk_edit_item_changes"."batch_id") AND ("b"."user_id" = "auth"."uid"())))));
 
 
 
@@ -2290,6 +2672,10 @@ CREATE POLICY "Users can read own price history" ON "public"."price_history" FOR
 
 
 
+CREATE POLICY "Users can update their own bulk edit batches" ON "public"."bulk_edit_batches" FOR UPDATE USING (("auth"."uid"() = "user_id"));
+
+
+
 CREATE POLICY "Users can update their own collection" ON "public"."collection_items" FOR UPDATE USING (("auth"."uid"() = "user_id"));
 
 
@@ -2306,7 +2692,21 @@ CREATE POLICY "Users can update their own review" ON "public"."reviews" FOR UPDA
 
 
 
+CREATE POLICY "Users can view their own bulk edit batches" ON "public"."bulk_edit_batches" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can view their own bulk edit changes" ON "public"."bulk_edit_item_changes" FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM "public"."bulk_edit_batches" "b"
+  WHERE (("b"."id" = "bulk_edit_item_changes"."batch_id") AND ("b"."user_id" = "auth"."uid"())))));
+
+
+
 CREATE POLICY "Users can view their own collection" ON "public"."collection_items" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can view their own wishlist listing notices" ON "public"."wishlist_listing_notices" FOR SELECT USING (("auth"."uid"() = "user_id"));
 
 
 
@@ -2327,6 +2727,12 @@ CREATE POLICY "Users manage own showcase" ON "public"."profile_showcase" USING (
 
 
 ALTER TABLE "public"."admin_audit_log" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."bulk_edit_batches" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."bulk_edit_item_changes" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."card_add_events" ENABLE ROW LEVEL SECURITY;
@@ -2532,6 +2938,9 @@ ALTER TABLE "public"."watchlist" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."wishlist_items" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."wishlist_listing_notices" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "wishlists are publicly viewable" ON "public"."wishlist_items" FOR SELECT USING (true);
@@ -2749,6 +3158,46 @@ GRANT ALL ON FUNCTION "public"."auto_expire_offers"() TO "service_role";
 
 
 REVOKE ALL ON FUNCTION "public"."check_user_badges"("p_user_id" "uuid") FROM PUBLIC;
+-- These follow the project's default privileges (ALL to anon/authenticated/
+-- service_role, same as every other function here). anon reaching them is
+-- harmless: each entry point raises on a null auth.uid(), and bulk_edit_match
+-- pins p_user to the session identity.
+GRANT ALL ON FUNCTION "public"."bulk_edit_applicable"("p_type" "text", "p_market" numeric, "p_list" numeric) TO "anon";
+GRANT ALL ON FUNCTION "public"."bulk_edit_applicable"("p_type" "text", "p_market" numeric, "p_list" numeric) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."bulk_edit_applicable"("p_type" "text", "p_market" numeric, "p_list" numeric) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."bulk_edit_apply"("p_filter" "jsonb", "p_action" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."bulk_edit_apply"("p_filter" "jsonb", "p_action" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."bulk_edit_apply"("p_filter" "jsonb", "p_action" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."bulk_edit_match"("p_user" "uuid", "p_filter" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."bulk_edit_match"("p_user" "uuid", "p_filter" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."bulk_edit_match"("p_user" "uuid", "p_filter" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."bulk_edit_preview"("p_filter" "jsonb", "p_action" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."bulk_edit_preview"("p_filter" "jsonb", "p_action" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."bulk_edit_preview"("p_filter" "jsonb", "p_action" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."bulk_edit_price"("p_raw" numeric, "p_action" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."bulk_edit_price"("p_raw" numeric, "p_action" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."bulk_edit_price"("p_raw" numeric, "p_action" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."bulk_edit_undo"("p_batch_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."bulk_edit_undo"("p_batch_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."bulk_edit_undo"("p_batch_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."check_user_badges"("p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."check_user_badges"("p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."check_user_badges"("p_user_id" "uuid") TO "service_role";
@@ -2851,6 +3300,12 @@ GRANT ALL ON FUNCTION "public"."notify_wishlist_listing_match"() TO "service_rol
 
 
 
+GRANT ALL ON FUNCTION "public"."notify_wishlist_matches"("p_item_ids" "uuid"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."notify_wishlist_matches"("p_item_ids" "uuid"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."notify_wishlist_matches"("p_item_ids" "uuid"[]) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "anon";
 GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "service_role";
@@ -2905,6 +3360,18 @@ GRANT ALL ON FUNCTION "public"."vaultset_expire_stale_offers"() TO "service_role
 GRANT ALL ON TABLE "public"."admin_audit_log" TO "anon";
 GRANT ALL ON TABLE "public"."admin_audit_log" TO "authenticated";
 GRANT ALL ON TABLE "public"."admin_audit_log" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."bulk_edit_batches" TO "anon";
+GRANT ALL ON TABLE "public"."bulk_edit_batches" TO "authenticated";
+GRANT ALL ON TABLE "public"."bulk_edit_batches" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."bulk_edit_item_changes" TO "anon";
+GRANT ALL ON TABLE "public"."bulk_edit_item_changes" TO "authenticated";
+GRANT ALL ON TABLE "public"."bulk_edit_item_changes" TO "service_role";
 
 
 
@@ -3218,6 +3685,12 @@ GRANT ALL ON TABLE "public"."watchlist" TO "service_role";
 GRANT ALL ON TABLE "public"."wishlist_items" TO "anon";
 GRANT ALL ON TABLE "public"."wishlist_items" TO "authenticated";
 GRANT ALL ON TABLE "public"."wishlist_items" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."wishlist_listing_notices" TO "anon";
+GRANT ALL ON TABLE "public"."wishlist_listing_notices" TO "authenticated";
+GRANT ALL ON TABLE "public"."wishlist_listing_notices" TO "service_role";
 
 
 

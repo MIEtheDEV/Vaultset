@@ -131,13 +131,20 @@ export default async function NotificationsPage() {
                 </span>
               );
             } else if (n.type === "wishlist_listing_match") {
-              const data = n.data as { card_name?: string; listing_id?: string };
+              const data = n.data as { card_name?: string; listing_id?: string; match_count?: number };
+              // One notification can cover a whole bulk listing, so match_count
+              // may be > 1; card_name/listing_id are then a representative pick.
+              const extra = Math.max(0, Number(data.match_count ?? 1) - 1);
               icon = (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-gold">
                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                 </svg>
               );
-              href = data.listing_id ? `/marketplace/${data.listing_id}` : "/marketplace";
+              // A rollup points at the seller's storefront — a single listing
+              // would strand the other cards it covers.
+              href = extra > 0
+                ? (actorUsername ? `/marketplace/user/${actorUsername}` : "/marketplace")
+                : data.listing_id ? `/marketplace/${data.listing_id}` : "/marketplace";
               content = (
                 <span>
                   {actorUsername ? (
@@ -147,7 +154,15 @@ export default async function NotificationsPage() {
                     </>
                   ) : "Someone listed "}
                   <span className="font-medium text-foreground">{data.card_name ?? "a card"}</span>
-                  {" "}— a card on your wishlist
+                  {extra > 0 ? (
+                    <>
+                      {" "}and{" "}
+                      <span className="font-medium text-foreground">{extra} more</span>
+                      {" "}— cards on your wishlist
+                    </>
+                  ) : (
+                    <>{" "}— a card on your wishlist</>
+                  )}
                 </span>
               );
             } else if (n.type === "new_review") {

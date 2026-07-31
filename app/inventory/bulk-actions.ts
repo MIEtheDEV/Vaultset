@@ -11,6 +11,12 @@ import { priceApiId } from "@/lib/pricing/cardIdentity";
 import type { CardRef } from "@/lib/pricing/PriceProvider";
 import { PokemonTCGProvider } from "@/lib/search/PokemonTCGProvider";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
+import {
+  normalizeFilter,
+  normalizeAction,
+  describeAction,
+  type BulkPreview,
+} from "@/lib/bulk/types";
 
 export async function bulkSetForSale(itemIds: string[], value: boolean) {
   const supabase = await createClient();
@@ -144,6 +150,100 @@ export async function bulkMatchMarket(): Promise<number> {
 
   revalidatePath("/inventory");
   return updates.length;
+}
+
+// ── Bulk Edit (Pro) ─────────────────────────────────────────────────────────
+//
+// Filter-driven bulk updates. Unlike the checkbox actions above, these select
+// by predicate rather than by id list: the client sends a filter descriptor and
+// the database resolves it. That keeps "apply to everything matching" true past
+// whatever the client happens to have rendered, and makes the set unspoofable.
+//
+// Matching, price arithmetic, the pre-edit snapshot, and the update all happen
+// inside one transaction (`bulk_edit_apply`) so the previewed count and the
+// applied count can't drift, and undo can't miss a row it should have captured.
+
+/**
+ * Dry run — what would this filter + action actually do? Deliberately NOT
+ * Pro-gated: free users can build a filter and see the impact, and the paywall
+ * sits on apply. Feeling the value is the whole pitch.
+ */
+export async function previewBulkEdit(rawFilter: unknown, rawAction: unknown): Promise<BulkPreview> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const filter = normalizeFilter(rawFilter);
+  const action = normalizeAction(rawAction);
+
+  const { data, error } = await supabase.rpc("bulk_edit_preview", {
+    p_filter: filter,
+    p_action: action,
+  });
+  if (error) throw new Error(error.message);
+
+  const p = (data ?? {}) as Record<string, unknown>;
+  return {
+    matched:        Number(p.matched        ?? 0),
+    locked:         Number(p.locked         ?? 0),
+    applicable:     Number(p.applicable     ?? 0),
+    skippedNoValue: Number(p.skippedNoValue ?? 0),
+    currentValue:   Number(p.currentValue   ?? 0),
+    projectedValue: Number(p.projectedValue ?? 0),
+  };
+}
+
+/**
+ * Apply a bulk edit. Pro-gated here rather than only in the UI — server actions
+ * are directly callable, so a UI-only gate is no gate at all (same reasoning as
+ * refreshItemMarketValue).
+ *
+ * Returns the batch id, which the caller holds onto to offer undo.
+ */
+export async function applyBulkEdit(
+  rawFilter: unknown,
+  rawAction: unknown,
+): Promise<{ batchId: string | null; updated: number; description: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  if (!(await isPro(user.id))) throw new Error("Bulk edit is a Pro feature.");
+
+  const filter = normalizeFilter(rawFilter);
+  const action = normalizeAction(rawAction);
+
+  const { data, error } = await supabase.rpc("bulk_edit_apply", {
+    p_filter: filter,
+    p_action: action,
+  });
+  if (error) throw new Error(error.message);
+
+  const result = (data ?? {}) as Record<string, unknown>;
+
+  revalidatePath("/inventory");
+  return {
+    batchId:     (result.batchId as string | null) ?? null,
+    updated:     Number(result.updated ?? 0),
+    description: describeAction(action),
+  };
+}
+
+/**
+ * Revert a bulk edit, restoring every row it touched to its captured pre-edit
+ * state. Rows that became locked since the edit (pulled into an offer) are left
+ * alone rather than silently reverted.
+ */
+export async function undoBulkEdit(batchId: string): Promise<number> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  if (!(await isPro(user.id))) throw new Error("Bulk edit is a Pro feature.");
+
+  const { data, error } = await supabase.rpc("bulk_edit_undo", { p_batch_id: batchId });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/inventory");
+  return Number((data as Record<string, unknown>)?.restored ?? 0);
 }
 
 export async function bulkDelete(itemIds: string[]) {
