@@ -6,6 +6,36 @@
 
 export type PricePoint = { date: string; value: number };
 
+/** A row from the `portfolio_value_history` RPC. */
+export type PortfolioHistoryRow = {
+  snapshot_date: string;
+  total_value: number | string | null;
+};
+
+/**
+ * Adapt `portfolio_value_history` rows into chart points.
+ *
+ * The aggregation this replaces ran in JS over raw per-item `price_history`
+ * rows, which PostgREST silently truncated at 1000 — oldest-first, so the most
+ * recent weeks were the ones that went missing. Both the dashboard and the
+ * analytics page now read the same pre-aggregated series through here, so the
+ * two can't disagree about what the daily total is.
+ *
+ * Numeric comes back from PostgREST as a string; the sort is defensive (the
+ * function already orders by date).
+ */
+export function toPricePoints(
+  rows: PortfolioHistoryRow[] | null | undefined,
+): PricePoint[] {
+  return (rows ?? [])
+    .filter((r) => r.total_value != null)
+    .map((r) => ({
+      date: r.snapshot_date,
+      value: Math.round(Number(r.total_value) * 100) / 100,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 /** Today's date (YYYY-MM-DD) in UTC — matches the snapshot cron's `current_date`. */
 export function utcToday(): string {
   return new Date().toISOString().slice(0, 10);

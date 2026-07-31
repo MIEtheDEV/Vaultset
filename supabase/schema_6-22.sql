@@ -884,6 +884,28 @@ $$;
 ALTER FUNCTION "public"."handle_user_username_update"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."latest_prior_snapshots"("p_user_id" "uuid", "p_window_days" integer DEFAULT 30) RETURNS TABLE("collection_item_id" "uuid", "market_price" numeric)
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO 'public'
+    AS $$
+  select distinct on (ph.collection_item_id)
+    ph.collection_item_id,
+    ph.market_price
+  from price_history ph
+  where ph.user_id = p_user_id
+    and ph.market_price is not null
+    and ph.snapshotted_at < current_date
+    and ph.snapshotted_at >= current_date - p_window_days
+  order by ph.collection_item_id, ph.snapshotted_at desc;
+$$;
+
+
+ALTER FUNCTION "public"."latest_prior_snapshots"("p_user_id" "uuid", "p_window_days" integer) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."latest_prior_snapshots"("p_user_id" "uuid", "p_window_days" integer) IS 'Per-item latest price_history value strictly before today, within p_window_days. Feeds the day-over-day change ticker.';
+
+
 CREATE OR REPLACE FUNCTION "public"."notify_new_message"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1022,6 +1044,28 @@ $$;
 
 
 ALTER FUNCTION "public"."notify_wishlist_matches"("p_item_ids" "uuid"[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."portfolio_value_history"("p_user_id" "uuid") RETURNS TABLE("snapshot_date" "date", "total_value" numeric)
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO 'public'
+    AS $$
+  select
+    ph.snapshotted_at as snapshot_date,
+    round(sum(ph.market_price * coalesce(ci.quantity, 1))::numeric, 2) as total_value
+  from price_history ph
+  join collection_items ci on ci.id = ph.collection_item_id
+  where ph.user_id = p_user_id
+    and ph.market_price is not null
+  group by ph.snapshotted_at
+  order by ph.snapshotted_at;
+$$;
+
+
+ALTER FUNCTION "public"."portfolio_value_history"("p_user_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."portfolio_value_history"("p_user_id" "uuid") IS 'Daily total market value of a user''s singles, one row per snapshot date. Quantity-weighted by the item''s CURRENT quantity, matching the client-side aggregation it replaces.';
 
 
 CREATE OR REPLACE FUNCTION "public"."rls_auto_enable"() RETURNS "event_trigger"
@@ -3288,6 +3332,12 @@ GRANT ALL ON FUNCTION "public"."handle_user_username_update"() TO "service_role"
 
 
 
+GRANT ALL ON FUNCTION "public"."latest_prior_snapshots"("p_user_id" "uuid", "p_window_days" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."latest_prior_snapshots"("p_user_id" "uuid", "p_window_days" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."latest_prior_snapshots"("p_user_id" "uuid", "p_window_days" integer) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."notify_new_message"() TO "anon";
 GRANT ALL ON FUNCTION "public"."notify_new_message"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."notify_new_message"() TO "service_role";
@@ -3303,6 +3353,12 @@ GRANT ALL ON FUNCTION "public"."notify_wishlist_listing_match"() TO "service_rol
 GRANT ALL ON FUNCTION "public"."notify_wishlist_matches"("p_item_ids" "uuid"[]) TO "anon";
 GRANT ALL ON FUNCTION "public"."notify_wishlist_matches"("p_item_ids" "uuid"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."notify_wishlist_matches"("p_item_ids" "uuid"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."portfolio_value_history"("p_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."portfolio_value_history"("p_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."portfolio_value_history"("p_user_id" "uuid") TO "service_role";
 
 
 

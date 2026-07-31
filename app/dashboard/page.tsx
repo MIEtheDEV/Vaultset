@@ -11,7 +11,7 @@ import { ReviewPrompt } from "@/components/ReviewPrompt";
 import { InstallPwaCallout } from "@/components/InstallPwaCallout";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { isUserAdmin } from "@/lib/auth/admin";
-import { withLiveToday } from "@/lib/priceHistory";
+import { withLiveToday, toPricePoints } from "@/lib/priceHistory";
 import { timeAgo } from "@/lib/timeAgo";
 import { BADGE_MAP, computeEarnedSlugs, awardBadges, type BadgeSlug, type BadgeStats } from "@/lib/badges";
 import { nextMilestones } from "@/lib/badgeProgress";
@@ -29,7 +29,6 @@ import {
   computeVaultPulse,
   pulseChange,
   type VaultItem,
-  type SnapshotRow,
 } from "@/lib/vaultDaily";
 
 export const metadata: Metadata = {
@@ -155,7 +154,7 @@ export default async function DashboardPage() {
     { data: recentProducts },
     { data: recentMessages },
     { count: existingReviewCount },
-    { data: priceHistoryRaw },
+    { data: portfolioHistoryRows },
     { data: gradedRows },
     { count: userFollowerCount },
     { data: badgeData },
@@ -191,14 +190,11 @@ export default async function DashboardPage() {
     supabase.from("product_purchases").select("id, name, product_type, for_sale, for_trade, list_price, created_at").eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("messages").select("id, body, created_at, sender_id, conversation_id").neq("sender_id", user!.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("reviews").select("id", { count: "exact", head: true }).eq("user_id", user!.id),
-    supabase
-      .from("price_history")
-      // `collection_item_id` rides along so the same rows can seed both the
-      // portfolio chart (aggregated by date) and the per-card daily deltas,
-      // instead of scanning price_history twice.
-      .select("collection_item_id, snapshotted_at, market_price, collection_items(quantity)")
-      .eq("user_id", user!.id)
-      .order("snapshotted_at", { ascending: true }),
+    // Aggregated server-side, one row per date. This used to select the raw
+    // price_history rows (one per card per day) and sum them here, which
+    // PostgREST truncated at 1000 — oldest-first, so an established account
+    // silently lost its most RECENT weeks and the 7D window came back empty.
+    supabase.rpc("portfolio_value_history", { p_user_id: user!.id }),
     supabase
       .from("collection_items")
       .select("quantity")
@@ -279,12 +275,10 @@ export default async function DashboardPage() {
   const activeListings  = cardListings + (sealedListings ?? 0);
 
   // Vault pulse: today's movement plus the biggest individual movers. Reuses the
-  // holdings rows and price_history rows already loaded above, so this costs one
-  // extra query (card_prices for the provider's 24h figures) rather than three.
+  // holdings rows loaded above; the prior-day values and the provider's 24h
+  // figures cost one query each.
   const vaultItems = (quantityData ?? []) as unknown as VaultItem[];
-  const dailyChanges = await loadDailyChanges(supabase, user!.id, vaultItems, {
-    snapshots: (priceHistoryRaw ?? []) as unknown as SnapshotRow[],
-  });
+  const dailyChanges = await loadDailyChanges(supabase, user!.id, vaultItems);
   const pulse = computeVaultPulse(vaultItems, dailyChanges);
   const vaultChange = pulseChange(pulse);
 
@@ -475,15 +469,7 @@ export default async function DashboardPage() {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 15);
 
-  const portfolioSnapshots = Object.entries(
-    (priceHistoryRaw ?? []).reduce<Record<string, number>>((acc, row) => {
-      const qty = (row.collection_items as any)?.quantity ?? 1;
-      acc[row.snapshotted_at] = (acc[row.snapshotted_at] ?? 0) + Number(row.market_price) * qty;
-      return acc;
-    }, {})
-  )
-    .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const portfolioSnapshots = toPricePoints(portfolioHistoryRows);
   // Snapshots are written once daily (02:00 UTC); a manual refresh or an add/edit
   // moves the live value after that. Stamp the live value onto today so the series
   // ends at what the rest of the UI shows instead of lagging the snapshot.

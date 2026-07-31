@@ -14,7 +14,7 @@
 //      data" and "did not move" are different claims.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { apiDailyChange, utcToday, type Change } from "@/lib/priceHistory";
+import { apiDailyChange, type Change } from "@/lib/priceHistory";
 import { extractApiCardHistory } from "@/lib/pricing/cardHistory";
 import { priceApiId } from "@/lib/pricing/cardIdentity";
 
@@ -197,73 +197,47 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-export type SnapshotRow = {
-  collection_item_id: string;
-  market_price: number | string | null;
-  snapshotted_at: string;
-};
-
-/**
- * Each item's most recent snapshot *strictly before* today, from rows in any order.
- *
- * Today's row is excluded deliberately: once the 02:00 UTC cron has written it,
- * diffing against it would compare today with itself and report no movement.
+/*
+ * `prevValueFromSnapshots` / `SnapshotRow` lived here until the prior-day lookup
+ * moved into the `latest_prior_snapshots` RPC. Picking the newest row per item is
+ * now `distinct on` in SQL, which is both cheaper and immune to the row cap that
+ * the JS version silently suffered from.
  */
-export function prevValueFromSnapshots(
-  rows: SnapshotRow[],
-  today: string = utcToday(),
-): Map<string, number> {
-  const bestDate = new Map<string, string>();
-  const value = new Map<string, number>();
-
-  for (const r of rows) {
-    if (!r.collection_item_id || r.snapshotted_at >= today) continue;
-    if (r.market_price == null) continue;
-    const seen = bestDate.get(r.collection_item_id);
-    if (seen == null || r.snapshotted_at > seen) {
-      bestDate.set(r.collection_item_id, r.snapshotted_at);
-      value.set(r.collection_item_id, Number(r.market_price));
-    }
-  }
-
-  return value;
-}
 
 /**
  * Fetch the two inputs `computeDailyChanges` needs and apply it.
  *
- * Bounded on purpose: snapshots are limited to the last 30 days, and only the
- * `card_prices` rows for cards actually in `items` are read.
+ * Bounded on purpose: prior snapshots are limited to the last 30 days, and only
+ * the `card_prices` rows for cards actually in `items` are read.
  *
- * Pass `snapshots` when the caller has already loaded `price_history` for another
- * purpose (the dashboard loads it for the portfolio chart) — that skips the
- * snapshot query entirely rather than scanning the same table twice.
+ * The prior values come from the `latest_prior_snapshots` RPC rather than a raw
+ * `price_history` select. The old select pulled up to 30 days × every held item
+ * and leaned on descending order to keep the newest rows inside PostgREST's
+ * 1000-row cap — which quietly stopped holding for larger collections, dropping
+ * items out of the ticker entirely. `distinct on` returns exactly one row per
+ * item, so the cap is unreachable. (The same truncation, on the ascending query
+ * that fed the portfolio chart, is what made the 7D window come back empty.)
  */
 export async function loadDailyChanges(
   supabase: SupabaseClient,
   userId: string,
   items: VaultItem[],
-  { snapshots }: { snapshots?: SnapshotRow[] } = {},
 ): Promise<Record<string, Change>> {
   if (items.length === 0) return {};
 
-  let prevValue: Map<string, number>;
-  if (snapshots) {
-    prevValue = prevValueFromSnapshots(snapshots);
-  } else {
-    const windowStart = new Date(Date.now() - SNAPSHOT_WINDOW_DAYS * 86_400_000)
-      .toISOString()
-      .slice(0, 10);
+  const { data: priorRows } = await supabase.rpc("latest_prior_snapshots", {
+    p_user_id: userId,
+    p_window_days: SNAPSHOT_WINDOW_DAYS,
+  });
 
-    const { data: histRows } = await supabase
-      .from("price_history")
-      .select("collection_item_id, market_price, snapshotted_at")
-      .eq("user_id", userId)
-      .lt("snapshotted_at", utcToday())
-      .gte("snapshotted_at", windowStart)
-      .order("snapshotted_at", { ascending: false });
-
-    prevValue = prevValueFromSnapshots((histRows ?? []) as SnapshotRow[]);
+  const prevValue = new Map<string, number>();
+  for (const row of (priorRows ?? []) as {
+    collection_item_id: string;
+    market_price: number | string | null;
+  }[]) {
+    if (row.market_price != null) {
+      prevValue.set(row.collection_item_id, Number(row.market_price));
+    }
   }
 
   const apiIds = new Set<string>();

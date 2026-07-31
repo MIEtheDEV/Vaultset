@@ -4,7 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 import { PortfolioAnalyticsClient } from "@/components/PortfolioAnalyticsClient";
 import { ProUpsell } from "@/components/ProUpsell";
 import { isPro } from "@/lib/isPro";
-import { withLiveToday } from "@/lib/priceHistory";
+import { withLiveToday, toPricePoints } from "@/lib/priceHistory";
 
 export const metadata: Metadata = {
   title: "Portfolio Analytics",
@@ -44,7 +44,7 @@ export default async function PortfolioAnalyticsPage() {
     );
   }
 
-  const [{ data: collectionData }, { data: priceHistoryRaw }] = await Promise.all([
+  const [{ data: collectionData }, { data: portfolioHistoryRows }] = await Promise.all([
     supabase
       .from("collection_items")
       .select(
@@ -52,11 +52,10 @@ export default async function PortfolioAnalyticsPage() {
          cards ( name, set_name, card_number, image_url )`
       )
       .eq("user_id", user!.id),
-    supabase
-      .from("price_history")
-      .select("snapshotted_at, market_price, collection_items(quantity)")
-      .eq("user_id", user!.id)
-      .order("snapshotted_at", { ascending: true }),
+    // Aggregated server-side — see `toPricePoints`. The raw per-item select this
+    // replaces was truncated at PostgREST's 1000-row cap, oldest-first, so an
+    // established collection lost its most recent weeks of history silently.
+    supabase.rpc("portfolio_value_history", { p_user_id: user!.id }),
   ]);
 
   const items = collectionData ?? [];
@@ -81,16 +80,7 @@ export default async function PortfolioAnalyticsPage() {
   const cardsWithCostBasis = items.filter((r) => r.paid_price != null).length;
   const totalCards = items.length;
 
-  const portfolioSnapshots = Object.entries(
-    (priceHistoryRaw ?? []).reduce<Record<string, number>>((acc, row) => {
-      const qty = (row.collection_items as { quantity?: number } | null)?.quantity ?? 1;
-      acc[row.snapshotted_at] =
-        (acc[row.snapshotted_at] ?? 0) + Number(row.market_price) * qty;
-      return acc;
-    }, {})
-  )
-    .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const portfolioSnapshots = toPricePoints(portfolioHistoryRows);
   // End the series at the live "Current Value" so the chart matches the stat
   // (snapshots are daily; a refresh/edit moves the value after 02:00 UTC).
   const portfolioHistory = withLiveToday(portfolioSnapshots, totalMarketValue);
