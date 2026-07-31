@@ -24,8 +24,9 @@ function formatAxisDate(dateStr: string) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// Per-card market-value history. Mirrors PortfolioChart's styling; the series is a
-// single card's price_history (see lib/priceHistory).
+// Per-card market-value history. Mirrors the vault chart's styling (see
+// components/VaultPulse); the series is a single card's price_history
+// (see lib/priceHistory).
 export function CardValueChart({
   data = [],
   title = "Market Value",

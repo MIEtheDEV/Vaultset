@@ -10,11 +10,15 @@ export default function DashboardLoading() {
     <div className="space-y-8">
       <SkeletonHeader />
 
-      {/* Vault pulse / portfolio hero */}
+      {/* Vault pulse — headline, range control, and the page's one value chart */}
       <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
         <Skeleton className="h-3 w-28" />
         <Skeleton className="h-10 w-56" />
-        <Skeleton className="h-24 w-full" />
+        <div className="flex items-center justify-between gap-3">
+          <Skeleton className="h-3 w-40" />
+          <Skeleton className="h-8 w-48 rounded-full" />
+        </div>
+        <Skeleton className="h-[180px] w-full" />
       </div>
 
       <SkeletonStats />

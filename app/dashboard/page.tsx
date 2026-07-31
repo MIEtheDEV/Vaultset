@@ -7,12 +7,10 @@ import { RefreshMarketButton } from "@/components/RefreshMarketButton";
 import { SupporterBadge } from "@/components/SupporterBadge";
 import { ProBadge } from "@/components/ProBadge";
 import { isProSubscriber, hasProAccess } from "@/lib/proStatus";
-import { ProUpsell } from "@/components/ProUpsell";
 import { ReviewPrompt } from "@/components/ReviewPrompt";
 import { InstallPwaCallout } from "@/components/InstallPwaCallout";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { isUserAdmin } from "@/lib/auth/admin";
-import { PortfolioChart } from "@/components/PortfolioChart";
 import { withLiveToday } from "@/lib/priceHistory";
 import { timeAgo } from "@/lib/timeAgo";
 import { BADGE_MAP, computeEarnedSlugs, awardBadges, type BadgeSlug, type BadgeStats } from "@/lib/badges";
@@ -487,9 +485,15 @@ export default async function DashboardPage() {
     .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }))
     .sort((a, b) => a.date.localeCompare(b.date));
   // Snapshots are written once daily (02:00 UTC); a manual refresh or an add/edit
-  // moves the live value after that. Stamp the live "Market Value" onto today so the
-  // chart's headline matches the Market Value stat instead of lagging the snapshot.
-  const portfolioHistory = withLiveToday(portfolioSnapshots, collectionValue);
+  // moves the live value after that. Stamp the live value onto today so the series
+  // ends at what the rest of the UI shows instead of lagging the snapshot.
+  //
+  // Deliberately `singlesValue`, not `collectionValue`: `price_history` only ever
+  // snapshots `collection_items`, so every prior point is singles-only. Stamping
+  // the sealed-inclusive total onto today (which this used to do) drew a fake
+  // vertical step at the right edge equal to the user's entire sealed holdings.
+  // VaultPulse shows the true total as its headline and footnotes the difference.
+  const portfolioHistory = withLiveToday(portfolioSnapshots, singlesValue);
 
   const dashboardStats = [
     { ...stats[0], value: String(totalCards) },
@@ -567,15 +571,20 @@ export default async function DashboardPage() {
         static stat tiles whose numbers only change when you add a card, so two
         visits a week apart looked identical — nothing here answered "what
         happened since I was last on?".
+
+        It is also the page's only value chart: the separate `PortfolioChart` card
+        that used to sit below the stat tiles drew the same series from the same
+        array, so its range control moved in here and the card was removed.
       */}
       <VaultPulse
         totalValue={collectionValue}
         change={vaultChange}
-        series={portfolioHistory.slice(-30)}
+        series={portfolioHistory}
         streakDays={streakDays}
         canPro={canPro}
         coveredCount={pulse.covered}
         totalCount={pulse.total}
+        sealedValue={sealedValue}
       />
 
       {/* Renders nothing when no holding has a recorded move. */}
@@ -669,16 +678,6 @@ export default async function DashboardPage() {
           </div>
         ))}
       </div>
-
-      {/* Portfolio value chart — Pro feature */}
-      {canPro ? (
-        <PortfolioChart data={portfolioHistory} />
-      ) : (
-        <ProUpsell
-          title="Price history charts"
-          description="Track your portfolio's value over time with Pro — daily snapshots across 7D / 30D / 90D / All."
-        />
-      )}
 
       {/* Quick actions */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
