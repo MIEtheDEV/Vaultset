@@ -6,12 +6,23 @@
 // The dashboard needs the same numbers, so rather than keep a second copy the
 // logic now lives in one pure, testable place and both callers share it.
 //
-// Source precedence (unchanged from the inventory implementation):
-//   1. The provider's real 24h move (JustTCG `priceChange24hr`, off `card_prices.raw`),
-//      so a freshly-added card shows a real ticker immediately.
-//   2. Our own `price_history` snapshot diff (written daily at 02:00 UTC).
+// Source precedence:
+//   1. Our own `price_history` snapshot diff (written daily at 02:00 UTC). This is
+//      the series the value chart draws, so the ticker and the chart always agree.
+//   2. The provider's 24h move (JustTCG `priceChange24hr`, off `card_prices.raw`) —
+//      only for an item with no snapshot yet (freshly added), and only from a
+//      payload written in the last `API_CHANGE_MAX_AGE_MS`.
 //   3. Nothing — the item is excluded rather than reported as flat, because "no
 //      data" and "did not move" are different claims.
+//
+// The provider path used to win outright and carried no freshness check, which made
+// a stale `card_prices` row report the same phantom move every single day.
+// `priceChange24hr` measures the 24h *before `card_prices.updated_at`*, not the 24h
+// before now; nothing refreshes that row on a schedule, so once it goes cold its
+// percentage is a constant. Applied to an equally constant `market_price` it yielded
+// a fixed dollar figure that the daily digest re-reported forever. (Observed: a
+// 6-day-old −12.36% on a $7.73 × 2 holding pushed "down $2.18, led by Ampharos" six
+// days running, while `price_history` showed one real −$1.84 move and flat after.)
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { apiDailyChange, type Change } from "@/lib/priceHistory";
@@ -20,6 +31,22 @@ import { priceApiId } from "@/lib/pricing/cardIdentity";
 
 /** How far back to look for a prior snapshot to diff against. */
 const SNAPSHOT_WINDOW_DAYS = 30;
+
+/**
+ * How recent a `card_prices` row must be for its `priceChange24hr` to describe a
+ * window that overlaps today. Older than this and the percentage is a frozen
+ * historical figure, not a move that happened since yesterday.
+ */
+const API_CHANGE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** A `card_prices` row, with the timestamp needed to judge its 24h figure. */
+export type CachedPrice = { raw: unknown; updatedAt: string | null };
+
+function isFresh(updatedAt: string | null, now: number): boolean {
+  if (!updatedAt) return false;
+  const t = Date.parse(updatedAt);
+  return Number.isFinite(t) && now - t <= API_CHANGE_MAX_AGE_MS;
+}
 
 export type VaultCard = {
   id: string;
@@ -78,39 +105,45 @@ export function unwrapCard(cards: VaultCard | VaultCard[] | null): VaultCard | n
  * Per-item day-over-day change, keyed by `collection_items.id`.
  *
  * `prevValueByItemId` holds each item's most recent snapshot strictly before
- * today; `rawByApiId` holds `card_prices.raw` keyed by the pricing identity.
+ * today; `priceByApiId` holds `card_prices` rows keyed by the pricing identity.
  * Items with no usable signal are simply absent from the result.
  */
 export function computeDailyChanges(
   items: VaultItem[],
   prevValueByItemId: Map<string, number>,
-  rawByApiId: Map<string, unknown>,
+  priceByApiId: Map<string, CachedPrice>,
+  now: number = Date.now(),
 ): Record<string, Change> {
   const changes: Record<string, Change> = {};
 
   for (const it of items) {
     if (it.market_price == null) continue;
 
-    const card = unwrapCard(it.cards);
-    const gameData = (card?.game_data ?? {}) as Record<string, unknown>;
-    const apiId = card ? priceApiId(gameData, card.id) : null;
+    let change: Change | null = null;
 
-    const api = apiId
-      ? extractApiCardHistory(rawByApiId.get(apiId), {
+    const prev = prevValueByItemId.get(it.id);
+    if (prev != null && prev !== 0) {
+      const abs = it.market_price - prev;
+      change = { abs, pct: (abs / prev) * 100 };
+    }
+
+    // No snapshot to diff against — a card added since the last 02:00 UTC run.
+    // The provider's 24h figure gives it a real ticker on day one, but only while
+    // the payload it came from is recent enough to be talking about today.
+    if (!change) {
+      const card = unwrapCard(it.cards);
+      const gameData = (card?.game_data ?? {}) as Record<string, unknown>;
+      const apiId = card ? priceApiId(gameData, card.id) : null;
+      const cached = apiId ? priceByApiId.get(apiId) : undefined;
+
+      if (cached && isFresh(cached.updatedAt, now)) {
+        const api = extractApiCardHistory(cached.raw, {
           finish: it.finish,
           edition: (gameData.edition as string) ?? null,
           condition: it.condition,
           grader: it.grader,
-        })
-      : null;
-
-    let change = apiDailyChange(api?.change24hrPct, it.market_price);
-
-    if (!change) {
-      const prev = prevValueByItemId.get(it.id);
-      if (prev != null && prev !== 0) {
-        const abs = it.market_price - prev;
-        change = { abs, pct: (abs / prev) * 100 };
+        });
+        change = apiDailyChange(api?.change24hrPct, it.market_price);
       }
     }
 
@@ -247,14 +280,20 @@ export async function loadDailyChanges(
     if (id) apiIds.add(id);
   }
 
+  // `updated_at` is not decoration: it's the only thing that says whether the
+  // row's `priceChange24hr` describes today or some frozen day in the past.
+  type PriceRow = { card_api_id: string; raw: unknown; updated_at: string | null };
   const { data: priceRows } = apiIds.size
-    ? await supabase.from("card_prices").select("card_api_id, raw").in("card_api_id", [...apiIds])
-    : { data: [] as { card_api_id: string; raw: unknown }[] };
+    ? await supabase
+        .from("card_prices")
+        .select("card_api_id, raw, updated_at")
+        .in("card_api_id", [...apiIds])
+    : { data: [] as PriceRow[] };
 
-  const rawByApiId = new Map<string, unknown>();
-  for (const row of (priceRows ?? []) as { card_api_id: string; raw: unknown }[]) {
-    rawByApiId.set(row.card_api_id, row.raw);
+  const priceByApiId = new Map<string, CachedPrice>();
+  for (const row of (priceRows ?? []) as PriceRow[]) {
+    priceByApiId.set(row.card_api_id, { raw: row.raw, updatedAt: row.updated_at });
   }
 
-  return computeDailyChanges(items, prevValue, rawByApiId);
+  return computeDailyChanges(items, prevValue, priceByApiId);
 }
