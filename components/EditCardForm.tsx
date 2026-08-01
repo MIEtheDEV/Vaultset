@@ -70,10 +70,20 @@ interface Props {
     game: string;
     image_url: string;
   };
+  /**
+   * "page" (default) renders the standalone /inventory/[id]/edit screen.
+   * "modal" drops the page chrome (title, back arrow, Cancel-as-navigation) so the
+   * same form can be hosted in a dialog — e.g. editing an existing copy surfaced by
+   * the duplicate warning on the add screen. Saving still lands on /inventory either
+   * way, matching the add flow.
+   */
+  mode?: "page" | "modal";
+  onCancel?: () => void;
 }
 
-export function EditCardForm({ item, card }: Props) {
+export function EditCardForm({ item, card, mode = "page", onCancel }: Props) {
   const router = useRouter();
+  const isModal = mode === "modal";
 
   const [products,      setProducts]      = useState<{ id: string; name: string }[]>([]);
   const [linkedProduct, setLinkedProduct] = useState(item.product_purchase_id ?? "");
@@ -139,7 +149,8 @@ export function EditCardForm({ item, card }: Props) {
   }
 
   return (
-    <div className="space-y-8">
+    <div className={isModal ? "space-y-6" : "space-y-8"}>
+      {!isModal && (
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
         <Link href="/inventory" className="text-foreground-muted hover:text-foreground transition-colors">
@@ -162,8 +173,9 @@ export function EditCardForm({ item, card }: Props) {
           Cards
         </Link>
       </div>
+      )}
 
-      <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
+      <form onSubmit={handleSubmit} className={`space-y-6 ${isModal ? "" : "max-w-2xl"}`}>
 
         {/* Card identity — read only */}
         <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
@@ -196,7 +208,7 @@ export function EditCardForm({ item, card }: Props) {
               </select>
               {linkedProduct && (
                 <p className="mt-1.5 text-xs text-foreground-muted">
-                  Purchase price is optional — product cost covers this pull's investment.
+                  Purchase price is optional — product cost covers this pull&apos;s investment.
                 </p>
               )}
             </div>
@@ -340,11 +352,19 @@ export function EditCardForm({ item, card }: Props) {
           >
             {loading ? "Saving…" : "Save Changes"}
           </button>
-          <Link href="/inventory"
-            className="rounded-full border border-border px-8 py-3 text-sm font-semibold text-foreground-muted hover:text-foreground hover:border-gold/40 transition-colors"
-          >
-            Cancel
-          </Link>
+          {isModal ? (
+            <button type="button" onClick={onCancel}
+              className="rounded-full border border-border px-8 py-3 text-sm font-semibold text-foreground-muted hover:text-foreground hover:border-gold/40 transition-colors"
+            >
+              Cancel
+            </button>
+          ) : (
+            <Link href="/inventory"
+              className="rounded-full border border-border px-8 py-3 text-sm font-semibold text-foreground-muted hover:text-foreground hover:border-gold/40 transition-colors"
+            >
+              Cancel
+            </Link>
+          )}
         </div>
       </form>
     </div>

@@ -13,6 +13,8 @@ import { PokemonTCGProvider } from "@/lib/search/PokemonTCGProvider";
 import type { TcgPlayerData } from "@/lib/search/CardSearchProvider";
 import { deriveIsEx, isPromoCard } from "@/lib/cards/cardTraits";
 import { deriveFinishes, sortFinishes, FINISH_LABELS } from "@/lib/sets/setCardFinishes";
+import { DuplicateCardModal } from "@/components/DuplicateCardModal";
+import { EditCardForm } from "@/components/EditCardForm";
 
 // Instantiated once at module level — demonstrates encapsulation:
 // all game-specific rarity and search logic lives inside these classes.
@@ -95,6 +97,32 @@ const PROMO_VARIANTS = [
   { value: "vstar",                     label: "VSTAR" },
 ];
 
+
+// A copy of this card the collector already owns. Carries every field the edit form
+// needs, so tapping one in the duplicate modal opens it without a second round-trip.
+type VaultCopy = {
+  id: string;
+  condition: string | null;
+  finish: string | null;
+  quantity: number;
+  paid_price: number | null;
+  list_price: number | null;
+  market_price: number | null;
+  for_sale: boolean;
+  for_trade: boolean;
+  grader: string | null;
+  grade: number | null;
+  cert_number: string | null;
+  notes: string | null;
+  product_purchase_id: string | null;
+  cards: {
+    name: string;
+    set_name: string;
+    card_number: string | null;
+    game: string;
+    image_url: string | null;
+  } | null;
+};
 
 function inputClass() {
   return "w-full rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm text-foreground placeholder:text-foreground-muted focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors";
@@ -192,8 +220,13 @@ export default function AddCardPage() {
 
   const [loading, setLoading]               = useState(false);
   const [error, setError]                   = useState("");
-  const [duplicateWarning, setDuplicateWarning] = useState(false);
-  const [duplicateItems, setDuplicateItems] = useState<{ id: string; condition: string | null; grader: string | null; grade: number | null; quantity: number; finish: string | null }[]>([]);
+  // Ownership overlap with what's already in the vault. `dupMode` is "select" when the
+  // check ran the moment a card was picked (informational) and "submit" when the entry
+  // about to be created is identical to an existing one (confirm before saving).
+  const [dupMode, setDupMode]         = useState<"select" | "submit" | null>(null);
+  const [dupCopies, setDupCopies]     = useState<VaultCopy[]>([]);
+  const [editingCopy, setEditingCopy] = useState<VaultCopy | null>(null);
+  const dupReqRef = useRef(0); // guards against a slow lookup landing after a newer pick
 
   // Scanner telemetry: how the card was selected (scan/search/manual), which scan
   // result rank, and an identity snapshot to diff against the final saved values.
@@ -278,7 +311,27 @@ export default function AddCardPage() {
     images: { small: string; large: string };
     tcgplayer?: TcgPlayerData | null;
   }) {
-    setDuplicateWarning(false);
+    setDupMode(null);
+    setDupCopies([]);
+
+    // Tell the collector they already own this card the moment it's identified —
+    // waiting until save meant filling out the whole form first. Non-blocking: owning
+    // a second copy in another condition/grade/finish is normal, so the modal informs
+    // rather than stops. reqId guards a slow lookup landing after a newer selection.
+    const dupReq = ++dupReqRef.current;
+    findExistingCopies({
+      pokemonApiId: card.id.startsWith("tcg:") ? "" : card.id,
+      name: card.name,
+      cardSet: card.set.name,
+      cardNumber: card.number,
+    })
+      .then((copies) => {
+        if (dupReq !== dupReqRef.current) return; // superseded by a newer pick
+        setDupCopies(copies);
+        if (copies.length > 0) setDupMode("select");
+      })
+      .catch(() => { /* best-effort — a failed lookup must not block adding a card */ });
+
     // JustTCG-sourced results carry a "tcg:<productId>" id (no pokemon_api_id).
     if (card.id.startsWith("tcg:")) {
       setPokemonApiId("");
@@ -367,46 +420,69 @@ export default function AddCardPage() {
     };
   }
 
-  async function checkForDuplicate(): Promise<boolean> {
+  /**
+   * Every copy of this card already in the collector's vault, regardless of finish,
+   * condition or grade — those are shown so the collector can judge for themselves
+   * whether the card in their hand is really the same one. Identity is taken as a
+   * parameter rather than read from state because the on-select check runs in the
+   * same tick the state is being set.
+   */
+  async function findExistingCopies(identity: {
+    pokemonApiId: string; name: string; cardSet: string; cardNumber: string;
+  }): Promise<VaultCopy[]> {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
+    if (!user) return [];
 
     let matchingCardIds: string[] = [];
 
-    if (pokemonApiId) {
+    if (identity.pokemonApiId) {
       const { data } = await supabase
         .from("cards")
         .select("id")
-        .contains("game_data", { pokemon_api_id: pokemonApiId });
+        .contains("game_data", { pokemon_api_id: identity.pokemonApiId });
       matchingCardIds = data?.map((c) => c.id) ?? [];
-    } else if (name && cardSet) {
-      let q = supabase.from("cards").select("id").eq("name", name).eq("set_name", cardSet);
-      if (cardNumber) q = q.eq("card_number", cardNumber);
+    } else if (identity.name && identity.cardSet) {
+      let q = supabase.from("cards").select("id").eq("name", identity.name).eq("set_name", identity.cardSet);
+      if (identity.cardNumber) q = q.eq("card_number", identity.cardNumber);
       const { data } = await q;
       matchingCardIds = data?.map((c) => c.id) ?? [];
     }
 
-    if (matchingCardIds.length === 0) return false;
+    if (matchingCardIds.length === 0) return [];
 
-    // Finish is part of a copy's identity, not a detail of it — a holo and a
-    // reverse holo of the same card are different collectibles that occupy
-    // different master-set slots. Matching on card identity alone reported an
-    // existing holo as a duplicate of the reverse holo being added.
-    const base = supabase
+    const { data: existing } = await supabase
       .from("collection_items")
-      .select("id, condition, grader, grade, quantity, finish")
+      .select(`
+        id, condition, finish, quantity, paid_price, list_price, market_price,
+        for_sale, for_trade, grader, grade, cert_number, notes, product_purchase_id,
+        cards ( name, set_name, card_number, game, image_url )
+      `)
       .eq("user_id", user.id)
       .in("card_id", matchingCardIds)
-      .is("transfer_status", null);
+      .is("transfer_status", null)
+      .limit(10);
 
-    const { data: existing } = await (finish ? base.eq("finish", finish) : base.is("finish", null))
-      .limit(5);
+    return (existing ?? []).map((row) => ({
+      ...row,
+      cards: Array.isArray(row.cards) ? row.cards[0] ?? null : row.cards ?? null,
+    })) as unknown as VaultCopy[];
+  }
 
-    if ((existing ?? []).length === 0) return false;
-
-    setDuplicateItems(existing ?? []);
-    return true;
+  /**
+   * True when an existing copy is the *same entry* as the one being added — same
+   * finish, and same condition or same grade. Finish is part of a copy's identity,
+   * not a detail of it: a holo and a reverse holo of the same card are different
+   * collectibles occupying different master-set slots. Condition and grade likewise
+   * separate two legitimate rows, which is why the save-time confirmation only fires
+   * on a true match — the broader "you own this card" heads-up already fired on select.
+   */
+  function isSameEntry(copy: VaultCopy): boolean {
+    if ((copy.finish ?? "") !== finish) return false;
+    if (graded) {
+      return (copy.grader ?? "") === grader && (copy.grade ?? null) === (grade ? Number(grade) : null);
+    }
+    return !copy.grader && copy.grade == null && (copy.condition ?? "") === condition;
   }
 
   async function performSave() {
@@ -534,9 +610,11 @@ export default function AddCardPage() {
     e.preventDefault();
     setError("");
 
-    const isDuplicate = await checkForDuplicate();
-    if (isDuplicate) {
-      setDuplicateWarning(true);
+    const copies = await findExistingCopies({ pokemonApiId, name, cardSet, cardNumber });
+    const identical = copies.filter(isSameEntry);
+    if (identical.length > 0) {
+      setDupCopies(identical);
+      setDupMode("submit");
       return;
     }
 
@@ -544,8 +622,21 @@ export default function AddCardPage() {
   }
 
   async function handleAddAnyway() {
-    setDuplicateWarning(false);
+    setDupMode(null);
     await performSave();
+  }
+
+  /** Clears the identified card so the collector can scan or search for another. */
+  function clearSelection() {
+    dupReqRef.current++;
+    priceReqRef.current++;
+    setDupMode(null);
+    setDupCopies([]);
+    setPokemonApiId(""); setTcgplayerId("");
+    setName(""); setCardSet(""); setSetCode(""); setCardNumber(""); setImageUrl("");
+    setRarity(""); setVariant(""); setFinish(""); setIsEx(false);
+    setTcgplayerData(null); setConditionPrices(null); setPriceLoading(false);
+    selectionRef.current = null;
   }
 
   return (
@@ -586,6 +677,76 @@ export default function AddCardPage() {
           </div>
         </div>
       )}
+      {dupMode && dupCopies.length > 0 && !editingCopy && (
+        <DuplicateCardModal
+          mode={dupMode}
+          copies={dupCopies}
+          cardName={name}
+          setName={cardSet}
+          cardNumber={cardNumber}
+          imageUrl={imageUrl}
+          saving={loading}
+          onEdit={(id) => {
+            const copy = dupCopies.find((c) => c.id === id);
+            if (copy) { setDupMode(null); setEditingCopy(copy); }
+          }}
+          onContinue={() => (dupMode === "submit" ? handleAddAnyway() : setDupMode(null))}
+          onDismiss={() => (dupMode === "submit" ? setDupMode(null) : clearSelection())}
+        />
+      )}
+
+      {editingCopy && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4">
+          <div className="mx-auto my-8 w-full max-w-2xl rounded-2xl border border-border bg-surface p-6">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="font-semibold text-foreground">Edit Card</h3>
+                <p className="mt-0.5 text-sm text-foreground-muted">
+                  Update the copy you already own — saving takes you to your inventory.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setEditingCopy(null)}
+                className="rounded-full border border-border p-1.5 text-foreground-muted hover:border-gold/40 hover:text-foreground transition-colors"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <EditCardForm
+              mode="modal"
+              onCancel={() => setEditingCopy(null)}
+              item={{
+                id:           editingCopy.id,
+                condition:    editingCopy.condition ?? "",
+                finish:       editingCopy.finish ?? "",
+                quantity:     editingCopy.quantity,
+                paid_price:   editingCopy.paid_price,
+                list_price:   editingCopy.list_price,
+                market_price: editingCopy.market_price,
+                for_sale:     editingCopy.for_sale,
+                for_trade:    editingCopy.for_trade,
+                grader:       editingCopy.grader ?? "",
+                grade:        editingCopy.grade,
+                cert_number:  editingCopy.cert_number ?? "",
+                notes:        editingCopy.notes ?? "",
+                product_purchase_id: editingCopy.product_purchase_id,
+              }}
+              card={{
+                name:        editingCopy.cards?.name ?? name,
+                set_name:    editingCopy.cards?.set_name ?? cardSet,
+                card_number: editingCopy.cards?.card_number ?? cardNumber,
+                game:        editingCopy.cards?.game ?? "pokemon",
+                image_url:   editingCopy.cards?.image_url ?? imageUrl,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-4">
         <Link href="/inventory" className="text-foreground-muted hover:text-foreground transition-colors">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -878,73 +1039,18 @@ export default function AddCardPage() {
           </p>
         )}
 
-        {duplicateWarning && (
-          <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-5 space-y-4">
-            <div>
-              <p className="text-sm font-semibold text-yellow-400">
-                {finish
-                  ? `The ${(FINISH_LABELS[finish] ?? finish).toLowerCase()} printing of this card is already in your vault.`
-                  : "This card is already in your vault."}
-              </p>
-              <p className="mt-1 text-sm text-foreground-muted">
-                You can add another entry (e.g. a different condition, grade, or price) or go back to review your existing {duplicateItems.length === 1 ? "copy" : "copies"}.
-              </p>
-            </div>
-            {duplicateItems.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-xs font-medium text-foreground-muted uppercase tracking-wide">Existing {duplicateItems.length === 1 ? "copy" : "copies"}</p>
-                {duplicateItems.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={`/inventory/${item.id}`}
-                    className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-2.5 text-sm hover:border-gold/30 transition-colors"
-                  >
-                    <span className="text-foreground-muted capitalize">
-                      {item.finish ? `${FINISH_LABELS[item.finish] ?? item.finish} · ` : ""}
-                      {item.grader
-                        ? `${item.grader} ${item.grade}`
-                        : (item.condition?.replace(/_/g, " ") ?? "Unknown condition")}
-                      {item.quantity > 1 ? ` · ×${item.quantity}` : ""}
-                    </span>
-                    <span className="text-xs text-gold">View →</span>
-                  </Link>
-                ))}
-              </div>
-            )}
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={handleAddAnyway}
-                disabled={loading}
-                className="rounded-full bg-gold px-6 py-2.5 text-sm font-semibold text-background hover:bg-gold-light disabled:opacity-60 transition-colors"
-              >
-                {loading ? "Saving…" : "Add Anyway"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setDuplicateWarning(false)}
-                className="rounded-full border border-border px-6 py-2.5 text-sm font-semibold text-foreground-muted hover:text-foreground hover:border-gold/40 transition-colors"
-              >
-                Go Back
-              </button>
-            </div>
-          </div>
-        )}
-
-        {!duplicateWarning && (
-          <div className="flex gap-3">
-            <button type="submit" disabled={loading}
-              className="rounded-full bg-gold px-8 py-3 text-sm font-semibold text-background hover:bg-gold-light disabled:opacity-60 transition-colors"
-            >
-              {loading ? "Saving…" : "Add to Vault"}
-            </button>
-            <Link href="/inventory"
-              className="rounded-full border border-border px-8 py-3 text-sm font-semibold text-foreground-muted hover:text-foreground hover:border-gold/40 transition-colors"
-            >
-              Cancel
-            </Link>
-          </div>
-        )}
+        <div className="flex gap-3">
+          <button type="submit" disabled={loading}
+            className="rounded-full bg-gold px-8 py-3 text-sm font-semibold text-background hover:bg-gold-light disabled:opacity-60 transition-colors"
+          >
+            {loading ? "Saving…" : "Add to Vault"}
+          </button>
+          <Link href="/inventory"
+            className="rounded-full border border-border px-8 py-3 text-sm font-semibold text-foreground-muted hover:text-foreground hover:border-gold/40 transition-colors"
+          >
+            Cancel
+          </Link>
+        </div>
       </form>
     </div>
   );
