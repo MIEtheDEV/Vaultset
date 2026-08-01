@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { ListingDetail } from "@/components/ListingDetail";
 import { getListingSetSignal } from "@/lib/sets/masterset";
+import { hasProAccess } from "@/lib/proStatus";
 import { FINISH_LABELS } from "@/lib/sets/setCardFinishes";
 import { isOnVacation, vacationReturnDate } from "@/lib/vacation";
 import { mergeDailySeries, apiDailyChange, dailyChange, type PricePoint, type Change } from "@/lib/priceHistory";
@@ -113,11 +114,11 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
   // (Skip on the viewer's own listings.)
   const { data: viewerProfile } = await supabase
     .from("profiles")
-    .select("is_pro")
+    .select("is_pro, pro_plan, pro_expires_at, pro_auto_renews")
     .eq("id", user.id)
     .single();
   const setSignal =
-    (viewerProfile as any)?.is_pro && listing.user_id !== user.id
+    hasProAccess(viewerProfile as any) && listing.user_id !== user.id
       ? await getListingSetSignal(
           supabase,
           user.id,

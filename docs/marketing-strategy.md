@@ -52,23 +52,32 @@ that doesn't exist yet.
 card caps to manufacture upgrades. The work isn't redesigning the tiers — it's making the
 freemium column actually enforce, and making Pro deliver what it promises.
 
+*(Reconciled against the code 2026-07-31 — this list, the `/pricing` table, and the
+homepage FAQ must move together.)*
+
 ### Free (Common)
-Unlimited inventory & sealed products · current market value on every card · full
-buy/sell/trade & offers · unlimited marketplace listings · wishlist & price alerts · pack
-reveals, collections, storefronts · bulk CSV **import**.
+Unlimited inventory & sealed products · current market value on every card · **per-card**
+price-history charts (public card + listing pages) · master set tracking · scan-to-add ·
+full buy/sell/trade & offers · unlimited marketplace listings · wishlist & price alerts ·
+pack reveals, collections, storefronts · bulk CSV **import**.
 
 ### Freemium (Uncommon) — basic for all, Pro unlocks the full version
-- **Market refresh** — daily auto vs. on-demand
-- **Listing pause** — instant toggle vs. scheduled + auto-reply
-- **Alerts** — standard vs. "instant" delivery
+- **Market refresh** — daily auto vs. on-demand (bulk + per-item)
+- **Listing pause** — instant toggle vs. scheduled window + auto-reply
+- **Portfolio value chart** — 7-day window vs. 30D / 90D / All
+- **Bulk edit** — build a filter and preview the impact vs. apply & undo
 - **Showcase** — basic vs. foil / gold borders
 
 ### Pro (Rare) — no free version
-- Price history charts (7D–All)
 - Portfolio analytics & ROI
 - Bulk CSV **export** (tax / insurance)
-- Foil & holo showcase borders
-- Pro Seller badge (subscribers only)
+- Foil & gold showcase borders
+- Set-completion signal on marketplace listings
+- Pro Seller badge (subscribers only — one-time payers are excluded by design)
+
+**Sold but never built (do not re-add to copy without building it):** "instant" alert
+delivery for Pro (C4). The dispatch path has no tier branching and the claim has been
+removed from the UI.
 
 ---
 

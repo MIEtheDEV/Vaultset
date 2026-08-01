@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { stripe } from "@/utils/stripe";
+import { hasProAccess, type ProStatusFields } from "@/lib/proStatus";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -34,11 +35,14 @@ export async function POST(request: NextRequest) {
   const admin = createAdminClient();
   const { data: profile } = await admin
     .from("profiles")
-    .select("stripe_customer_id, is_pro")
+    .select("stripe_customer_id, is_pro, pro_plan, pro_expires_at, pro_auto_renews")
     .eq("id", user.id)
-    .single<{ stripe_customer_id: string | null; is_pro: boolean | null }>();
+    .single<{ stripe_customer_id: string | null } & ProStatusFields>();
 
-  if (profile?.is_pro) {
+  // Entitlement, not the raw flag. A lapsed one-time purchase leaves `is_pro`
+  // true (only `pro_expires_at`/`pro_auto_renews` mark it dead), so checking
+  // the flag alone locked expired one-time payers out of buying again.
+  if (hasProAccess(profile)) {
     return NextResponse.json({ error: "Already subscribed" }, { status: 400 });
   }
 

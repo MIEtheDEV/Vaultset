@@ -3,18 +3,19 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { stripe } from "@/utils/stripe";
 import { UserNav } from "@/components/UserNav";
+import { hasProAccess } from "@/lib/proStatus";
 import { PricingCheckout, type PricePlan } from "@/components/PricingCheckout";
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: "Upgrade to Vaultset Pro — price history charts, portfolio analytics, on-demand pricing, and more.",
+  description: "Upgrade to Vaultset Pro — portfolio analytics & ROI, bulk edit, bulk CSV export, on-demand pricing, and more.",
   alternates: { canonical: "/pricing" },
 };
 
 const FAQS = [
   { q: "Can I cancel anytime?", a: "Yes. Cancel from your account settings or the billing portal at any time. Your Pro access continues until the end of the current billing period." },
   { q: "What happens when I cancel?", a: "Nothing changes right away. Your membership stays active and simply stops auto-renewing — it ends on the date it would have renewed. Every Pro feature is preserved in full until that end date, so you keep everything you paid for through the rest of the period." },
-  { q: "What happens to my data if I downgrade?", a: "Nothing is deleted. You keep your full inventory and history. Features that require Pro (price charts, analytics) simply become inaccessible until you resubscribe." },
+  { q: "What happens to my data if I downgrade?", a: "Nothing is deleted. You keep your full inventory, your history, and any prices you set while on Pro. Features that require Pro — portfolio analytics, CSV export, applying bulk edits, on-demand refresh, scheduled vacation mode, and showcase borders — simply become inaccessible until you resubscribe, and your portfolio chart returns to the free 7-day window." },
   { q: "What is the One-Time plan?", a: "A single payment that gives you one month of Pro access with no subscription or auto-renewal. Great if you want to try Pro without committing to a recurring plan." },
   { q: "Do you offer refunds?", a: "Subscriptions can be cancelled anytime but are not refunded for the current billing period. The One-Time plan is non-refundable." },
 ];
@@ -26,24 +27,38 @@ const CHECK = (
 );
 const DASH = <span className="text-foreground-muted/40 text-sm">—</span>;
 
+/*
+  Keep this table honest — every row must match a real gate in the code:
+  refresh (`/api/market-refresh` + `refreshItemMarketValue`), analytics
+  (`/dashboard/analytics`), export (`/inventory/export`), bulk edit
+  (`applyBulkEdit`/`undoBulkEdit`), the portfolio chart window
+  (`FREE_RANGE_DAYS` in VaultPulse), showcase borders (`ShowcaseEditor`),
+  scheduled vacation (`VacationModeCard`), and the marketplace set signal
+  (`getListingSetSignal`). Per-card price history is public, so it is a
+  free row, not a Pro one.
+*/
 const FEATURES: { label: string; free: React.ReactNode; pro: React.ReactNode }[] = [
-  { label: "Card inventory",              free: "Unlimited",        pro: "Unlimited"  },
-  { label: "Current market value",        free: CHECK,              pro: CHECK        },
-  { label: "Buy, sell & trade",           free: CHECK,              pro: CHECK        },
-  { label: "Marketplace listings",        free: "Unlimited",        pro: "Unlimited"  },
-  { label: "Wishlist & price alerts",     free: CHECK,              pro: CHECK        },
-  { label: "Pack reveals",                free: CHECK,              pro: CHECK        },
-  { label: "Community & storefronts",     free: CHECK,              pro: CHECK        },
-  { label: "Collections",                 free: CHECK,              pro: CHECK        },
-  { label: "Bulk CSV import",             free: CHECK,              pro: CHECK        },
-  { label: "Listing pause",               free: "Basic",            pro: "Scheduled" },
-  { label: "Market price refresh",        free: "Daily",            pro: "On-demand" },
-  { label: "Price history charts",        free: DASH,               pro: CHECK        },
-  { label: "Portfolio analytics (ROI)",   free: DASH,               pro: CHECK        },
-  { label: "Collection showcase",         free: "Basic",            pro: "Advanced"  },
-  { label: "Foil & holo card borders",    free: DASH,               pro: CHECK        },
-  { label: "Bulk export (tax/insurance)", free: DASH,               pro: CHECK        },
-  { label: "Pro Seller badge",            free: DASH,               pro: CHECK        },
+  { label: "Card & sealed inventory",       free: "Unlimited",       pro: "Unlimited"      },
+  { label: "Current market value",          free: CHECK,             pro: CHECK            },
+  { label: "Card price history charts",     free: CHECK,             pro: CHECK            },
+  { label: "Master set tracking",           free: CHECK,             pro: CHECK            },
+  { label: "Buy, sell & trade",             free: CHECK,             pro: CHECK            },
+  { label: "Marketplace listings",          free: "Unlimited",       pro: "Unlimited"      },
+  { label: "Wishlist & price alerts",       free: CHECK,             pro: CHECK            },
+  { label: "Pack reveals",                  free: CHECK,             pro: CHECK            },
+  { label: "Community & storefronts",       free: CHECK,             pro: CHECK            },
+  { label: "Collections",                   free: CHECK,             pro: CHECK            },
+  { label: "Bulk CSV import",               free: CHECK,             pro: CHECK            },
+  { label: "Listing pause",                 free: "Instant toggle",  pro: "+ Scheduled & auto-reply" },
+  { label: "Market price refresh",          free: "Daily",           pro: "On-demand"      },
+  { label: "Portfolio value chart",         free: "7 days",          pro: "30D / 90D / All" },
+  { label: "Bulk edit (filter repricing)",  free: "Preview only",    pro: "Apply & undo"   },
+  { label: "Portfolio analytics (ROI)",     free: DASH,              pro: CHECK            },
+  { label: "Bulk export (tax/insurance)",   free: DASH,              pro: CHECK            },
+  { label: "Collection showcase",           free: "Basic",           pro: "Advanced"       },
+  { label: "Foil & gold showcase borders",  free: DASH,              pro: CHECK            },
+  { label: "Set-completion signal on listings", free: DASH,          pro: CHECK            },
+  { label: "Pro Seller badge *",            free: DASH,              pro: CHECK            },
 ];
 
 async function fetchPlans(): Promise<PricePlan[]> {
@@ -135,10 +150,13 @@ export default async function PricingPage() {
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("is_pro")
+      .select("is_pro, pro_plan, pro_expires_at, pro_auto_renews")
       .eq("id", user.id)
       .single();
-    isPro = !!(profile as any)?.is_pro;
+    // Entitlement, not the raw flag — an expired one-time payer still carries
+    // `is_pro: true` and must be able to buy again (matches the checkout route,
+    // which would otherwise reject the session this page just offered them).
+    isPro = hasProAccess(profile as any);
   }
 
   const plans = await fetchPlans();
@@ -211,6 +229,9 @@ export default async function PricingPage() {
                 </div>
               ))}
             </div>
+            <p className="text-xs text-foreground-muted text-center">
+              * The Pro Seller badge is shown for recurring plans. The One-Time plan unlocks every other Pro feature.
+            </p>
           </div>
 
           {/* FAQ */}

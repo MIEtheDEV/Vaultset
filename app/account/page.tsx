@@ -68,9 +68,11 @@ export default async function AccountPage({
   };
 
   const isSupporter     = profile?.is_supporter              ?? false;
-  const isPro           = (profile as any)?.is_pro           as boolean ?? false;
   const proExpiresAt    = (profile as any)?.pro_expires_at   as string | null ?? null;
   const proAutoRenews   = (profile as any)?.pro_auto_renews  as boolean ?? false;
+  // Entitlement, not the raw `is_pro` flag: a lapsed one-time purchase leaves
+  // `is_pro` true, and reading it directly showed those users "Vaultset Pro —
+  // ends <a past date>" with no way to buy again.
   const canPro          = hasProAccess(profile as any); // entitlement (expiry-aware)
   // is_admin isn't exposed to the authenticated role (column-level grants);
   // read it authoritatively via the service-role helper instead of the SELECT.
@@ -124,7 +126,7 @@ export default async function AccountPage({
           <div>
             <h2 className="text-sm font-semibold text-foreground">Subscription</h2>
             <p className="mt-0.5 text-xs text-foreground-muted">
-              {isPro
+              {canPro
                 ? proExpiresAt
                   ? `Vaultset Pro — ${proAutoRenews ? "renews" : "ends"} ${new Date(proExpiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`
                   : "You're on Vaultset Pro."
@@ -132,7 +134,7 @@ export default async function AccountPage({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {isPro ? (
+            {canPro ? (
               <>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-gold/10 px-3 py-1 text-xs font-semibold text-gold">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>

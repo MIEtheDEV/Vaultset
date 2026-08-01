@@ -99,7 +99,7 @@ const faqs: { q: string; a: string; link?: { href: string; label: string }; inst
   },
   {
     q: "Is Vaultset free?",
-    a: "Yes — all the essentials are free, including unlimited inventory with current market values, the full marketplace with unlimited listings (buy, sell, trade, and counter-offers), price alerts, pack reveals, bulk CSV import, collections, wishlist, and the whole community. A Pro plan unlocks advanced tools for serious collectors — portfolio price-history charts, the detailed P&L / ROI analytics report, advanced collection showcase with foil &amp; holo card borders, on-demand price refreshes, scheduled vacation mode, a Pro Seller badge, and bulk CSV export.",
+    a: "Yes — all the essentials are free, including unlimited inventory with current market values, per-card price history, master set tracking, the full marketplace with unlimited listings (buy, sell, trade, and counter-offers), price alerts, pack reveals, bulk CSV import, collections, wishlist, and the whole community. A Pro plan unlocks advanced tools for serious collectors — the detailed P&L / ROI analytics report, longer portfolio value history (free covers 7 days), bulk CSV export, filter-driven bulk editing of your inventory, on-demand price refreshes, scheduled vacation mode with an auto-reply, set-completion signals on marketplace listings, advanced collection showcase with foil &amp; gold card borders, and a Pro Seller badge.",
     link: { href: "/pricing", label: "Compare Free & Pro plans" },
   },
   {
