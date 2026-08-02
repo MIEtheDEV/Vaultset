@@ -4035,3 +4035,59 @@ COMMENT ON COLUMN "public"."profiles"."onboarding_dismissed_at" IS 'When the fir
 -- is null, and every Pro/supporter flag derived from it reads false.
 GRANT SELECT ("last_active_on", "streak_days", "streak_best", "onboarding_dismissed_at")
   ON TABLE "public"."profiles" TO "anon", "authenticated";
+
+
+-- ============================================================================
+-- Real name + name visibility (added 2026-08-01; applied to production via MCP).
+-- Appended manually — regenerate with `supabase db dump` to normalize ordering.
+-- ============================================================================
+
+-- An optional real name, with the user choosing how much of it is public.
+--
+-- `display_name_public` is a STORED GENERATED column so the public string can
+-- never drift from the setting that produced it, and so the raw parts never
+-- have to be readable in order to render it.
+ALTER TABLE "public"."profiles"
+  ADD COLUMN IF NOT EXISTS "first_name" "text",
+  ADD COLUMN IF NOT EXISTS "last_name" "text",
+  ADD COLUMN IF NOT EXISTS "name_visibility" "text" DEFAULT 'hidden'::"text" NOT NULL;
+
+ALTER TABLE "public"."profiles"
+  DROP CONSTRAINT IF EXISTS "profiles_name_visibility_check";
+
+ALTER TABLE "public"."profiles"
+  ADD CONSTRAINT "profiles_name_visibility_check"
+  CHECK (("name_visibility" = ANY (ARRAY['hidden'::"text", 'first'::"text", 'first_initial'::"text", 'full'::"text"])));
+
+ALTER TABLE "public"."profiles"
+  ADD COLUMN IF NOT EXISTS "display_name_public" "text"
+  GENERATED ALWAYS AS (
+    CASE
+        WHEN ("name_visibility" = 'hidden'::"text") THEN NULL::"text"
+        WHEN (("first_name" IS NULL) OR ("btrim"("first_name") = ''::"text")) THEN NULL::"text"
+        WHEN ("name_visibility" = 'first'::"text") THEN "btrim"("first_name")
+        WHEN ("name_visibility" = 'first_initial'::"text") THEN ("btrim"("first_name") ||
+        CASE
+            WHEN (("last_name" IS NULL) OR ("btrim"("last_name") = ''::"text")) THEN ''::"text"
+            ELSE ((' '::"text" || "upper"("left"("btrim"("last_name"), 1))) || '.'::"text")
+        END)
+        WHEN ("name_visibility" = 'full'::"text") THEN ("btrim"("first_name") ||
+        CASE
+            WHEN (("last_name" IS NULL) OR ("btrim"("last_name") = ''::"text")) THEN ''::"text"
+            ELSE (' '::"text" || "btrim"("last_name"))
+        END)
+        ELSE NULL::"text"
+    END
+  ) STORED;
+
+COMMENT ON COLUMN "public"."profiles"."first_name" IS 'Optional real first name. Private: no anon/authenticated SELECT grant — reachable only via the service role or the owner''s own settings page.';
+COMMENT ON COLUMN "public"."profiles"."last_name" IS 'Optional real last name. Private: no anon/authenticated SELECT grant — see first_name.';
+COMMENT ON COLUMN "public"."profiles"."name_visibility" IS 'How much of the real name is public: hidden | first | first_initial | full. Drives display_name_public.';
+COMMENT ON COLUMN "public"."profiles"."display_name_public" IS 'Generated public form of the real name, derived from first_name/last_name/name_visibility. The ONLY name column granted to anon/authenticated, and the only one collector search matches — so a hidden name part can never be confirmed by searching for it.';
+
+-- DELIBERATELY NARROW: only the generated column is readable by anon/authenticated.
+-- `profiles` grants SELECT per column, so withholding first_name/last_name/
+-- name_visibility is the entire mechanism that stops a signed-in user from
+-- reading — off the REST API — a name its owner chose to hide. The owner's own
+-- settings page reads the raw values through the service-role client instead.
+GRANT SELECT ("display_name_public") ON TABLE "public"."profiles" TO "anon", "authenticated";

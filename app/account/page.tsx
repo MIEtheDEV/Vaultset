@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
+import { isNameVisibility, type NameVisibility } from "@/lib/collectors";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { ProfileSettingsForm } from "@/components/ProfileSettingsForm";
 import { PasswordSettingsForm } from "@/components/PasswordSettingsForm";
@@ -31,7 +33,7 @@ export default async function AccountPage({
   const email       = user.email ?? "";
   const pendingEmail = (user as any).new_email as string | null ?? null;
 
-  const [{ data: profile }, { data: rawItems }, { data: existingReview }, { data: notifPrefs }] = await Promise.all([
+  const [{ data: profile }, { data: rawItems }, { data: existingReview }, { data: notifPrefs }, { data: nameRow }] = await Promise.all([
     supabase
       .from("profiles")
       .select("is_supporter, is_pro, pro_expires_at, pro_auto_renews, bio, specialty, city, featured_item_id, avatar_url, avatar_color, followers_only_offers, vacation_mode, vacation_message, vacation_starts_at, vacation_ends_at, pwa_installed_at")
@@ -55,7 +57,21 @@ export default async function AccountPage({
       .select("*")
       .eq("user_id", user.id)
       .maybeSingle(),
+    // Raw name parts, read with the service role and pinned to the signed-in
+    // user's own row. They carry no `authenticated` SELECT grant — that's what
+    // stops any other signed-in user reading a name its owner chose to hide —
+    // so the owner's own settings form can't load them through `supabase` above.
+    createAdminClient()
+      .from("profiles")
+      .select("first_name, last_name, name_visibility")
+      .eq("id", user.id)
+      .maybeSingle(),
   ]);
+
+  const firstName      = (nameRow?.first_name as string | null) ?? "";
+  const lastName       = (nameRow?.last_name  as string | null) ?? "";
+  const rawVisibility  = nameRow?.name_visibility;
+  const nameVisibility: NameVisibility = isNameVisibility(rawVisibility) ? rawVisibility : "hidden";
 
   // Opt-out model: no row (or a column that predates a migration) means on.
   const notificationPrefs = {
@@ -173,6 +189,9 @@ export default async function AccountPage({
           initialBio={bio}
           initialSpecialty={specialty}
           initialCity={city}
+          initialFirstName={firstName}
+          initialLastName={lastName}
+          initialNameVisibility={nameVisibility}
           initialFeaturedItemId={featuredItemId}
           initialAvatarUrl={avatarUrl}
           initialAvatarColor={avatarColor}

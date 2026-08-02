@@ -9,6 +9,7 @@ import { AvatarColorPicker } from "@/components/AvatarColorPicker";
 import { checkText } from "@/lib/moderation";
 import { resolveAvatarColor } from "@/lib/avatarColors";
 import { likeEscape } from "@/lib/username";
+import { NAME_VISIBILITY_OPTIONS, formatDisplayName, type NameVisibility } from "@/lib/collectors";
 
 function inputClass() {
   return "w-full rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm text-foreground placeholder:text-foreground-muted focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold transition-colors";
@@ -24,6 +25,9 @@ interface Props {
   initialBio:                string;
   initialSpecialty:          string;
   initialCity:               string;
+  initialFirstName:          string;
+  initialLastName:           string;
+  initialNameVisibility:     NameVisibility;
   initialFeaturedItemId:     string | null;
   initialAvatarUrl:          string | null;
   initialAvatarColor:        string | null;
@@ -40,6 +44,9 @@ export function ProfileSettingsForm({
   initialBio,
   initialSpecialty,
   initialCity,
+  initialFirstName,
+  initialLastName,
+  initialNameVisibility,
   initialFeaturedItemId,
   initialAvatarUrl,
   initialAvatarColor,
@@ -56,11 +63,19 @@ export function ProfileSettingsForm({
   const [bio,            setBio]            = useState(initialBio);
   const [specialty,      setSpecialty]      = useState(initialSpecialty);
   const [city,           setCity]           = useState(initialCity);
+  const [firstName,      setFirstName]      = useState(initialFirstName);
+  const [lastName,       setLastName]       = useState(initialLastName);
+  const [nameVisibility, setNameVisibility] = useState<NameVisibility>(initialNameVisibility);
   const [featuredItemId,       setFeaturedItemId]       = useState<string | null>(initialFeaturedItemId);
   const [followersOnlyOffers, setFollowersOnlyOffers] = useState(initialFollowersOnlyOffers);
   const [avatarColor,    setAvatarColor]    = useState<string>(
     initialAvatarColor ?? resolveAvatarColor(null, username)
   );
+
+  // Preview mirrors the `display_name_public` generated column, so what the user
+  // is promised here is exactly what the database will publish.
+  const namePreview = formatDisplayName(firstName, lastName, nameVisibility);
+  const nameEntered = firstName.trim().length > 0;
 
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError,   setSaveError]   = useState("");
@@ -75,11 +90,14 @@ export function ProfileSettingsForm({
     const bioChanged           = bio.trim() !== initialBio.trim();
     const specialtyChanged     = specialty.trim() !== initialSpecialty.trim();
     const cityChanged          = city.trim() !== initialCity.trim();
+    const firstNameChanged     = firstName.trim() !== initialFirstName.trim();
+    const lastNameChanged      = lastName.trim()  !== initialLastName.trim();
+    const visibilityChanged    = nameVisibility !== initialNameVisibility;
     const featuredChanged          = featuredItemId !== initialFeaturedItemId;
     const initialColor             = initialAvatarColor ?? resolveAvatarColor(null, username);
     const colorChanged             = avatarColor !== initialColor;
     const followersOnlyChanged     = followersOnlyOffers !== initialFollowersOnlyOffers;
-    const profilesChanged          = bioChanged || specialtyChanged || cityChanged || featuredChanged || colorChanged || followersOnlyChanged;
+    const profilesChanged          = bioChanged || specialtyChanged || cityChanged || firstNameChanged || lastNameChanged || visibilityChanged || featuredChanged || colorChanged || followersOnlyChanged;
     const profileChanged       = authChanged || profilesChanged;
 
     if (!profileChanged) {
@@ -90,9 +108,13 @@ export function ProfileSettingsForm({
     const bioViolation       = bio.trim()       ? checkText(bio.trim())       : null;
     const specialtyViolation = specialty.trim() ? checkText(specialty.trim()) : null;
     const cityViolation      = city.trim()      ? checkText(city.trim())      : null;
+    const firstNameViolation = firstName.trim() ? checkText(firstName.trim()) : null;
+    const lastNameViolation  = lastName.trim()  ? checkText(lastName.trim())  : null;
     if (bioViolation)       { setSaveError(`Bio: ${bioViolation}`);       return; }
     if (specialtyViolation) { setSaveError(`Specialty: ${specialtyViolation}`); return; }
     if (cityViolation)      { setSaveError(`City: ${cityViolation}`);      return; }
+    if (firstNameViolation) { setSaveError(`First name: ${firstNameViolation}`); return; }
+    if (lastNameViolation)  { setSaveError(`Last name: ${lastNameViolation}`);  return; }
 
     setSaveLoading(true);
     const supabase = createClient();
@@ -131,6 +153,9 @@ export function ProfileSettingsForm({
       if (bioChanged)           patch.bio                   = bio.trim()             || null;
       if (specialtyChanged)     patch.specialty              = specialty.trim()        || null;
       if (cityChanged)          patch.city                   = city.trim()             || null;
+      if (firstNameChanged)     patch.first_name             = firstName.trim()        || null;
+      if (lastNameChanged)      patch.last_name              = lastName.trim()         || null;
+      if (visibilityChanged)    patch.name_visibility        = nameVisibility;
       if (featuredChanged)      patch.featured_item_id       = featuredItemId          ?? null;
       if (colorChanged)         patch.avatar_color           = avatarColor;
       if (followersOnlyChanged) patch.followers_only_offers  = followersOnlyOffers;
@@ -214,6 +239,76 @@ export function ProfileSettingsForm({
         <p className="mt-1.5 text-xs text-foreground-muted">
           Changing your email sends a confirmation link to the new address.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface-raised/40 p-4 space-y-4">
+        <div>
+          <p className="text-sm font-medium text-foreground">Your name</p>
+          <p className="mt-1 text-xs text-foreground-muted leading-relaxed">
+            Optional. Adding your name lets other collectors find you by name in community
+            search — handy when someone knows you from a local shop or a trade but not your
+            username. You choose how much of it is public below, and{" "}
+            <span className="text-foreground">only that version is ever shown or searchable.</span>
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className={labelClass()}>First name</label>
+            <input
+              type="text"
+              maxLength={40}
+              autoComplete="given-name"
+              placeholder="Alex"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              className={inputClass()}
+            />
+          </div>
+          <div>
+            <label className={labelClass()}>Last name</label>
+            <input
+              type="text"
+              maxLength={40}
+              autoComplete="family-name"
+              placeholder="Morgan"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              className={inputClass()}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className={labelClass()}>Show my name as</label>
+          <select
+            value={nameVisibility}
+            onChange={(e) => setNameVisibility(e.target.value as NameVisibility)}
+            className={inputClass()}
+          >
+            {NAME_VISIBILITY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+
+          {namePreview ? (
+            <p className="mt-2 text-xs text-foreground-muted">
+              Shown on your profile and in search as{" "}
+              <span className="font-medium text-foreground">{namePreview}</span>
+            </p>
+          ) : nameEntered ? (
+            // The saved name is real but invisible — say so plainly rather than
+            // letting someone assume typing it was enough.
+            <p className="mt-2 text-xs text-amber-400">
+              Your name is saved but hidden — no one can see or search it. Pick one of the
+              options above to make it visible.
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-foreground-muted">
+              Add a first name above to turn this on.
+            </p>
+          )}
+        </div>
       </div>
 
       <div>
