@@ -5,9 +5,17 @@ import { useState } from "react";
 interface Props {
   src: string;
   alt: string;
+  /**
+   * Padding around the art. The `p-8` default suits the wide containers on the
+   * grids and the listing hero; narrow containers (the card detail page's 256px
+   * rail) pass something tighter so the card isn't shrunk to fit the inset.
+   * Keep it non-zero — the hover scale needs room or it clips against the
+   * parent's `overflow-hidden`.
+   */
+  inset?: string;
 }
 
-export function CardImage({ src, alt }: Props) {
+export function CardImage({ src, alt, inset = "p-8" }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -15,7 +23,7 @@ export function CardImage({ src, alt }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="group/img relative h-full w-full flex items-center justify-center p-8"
+        className={`group/img relative h-full w-full flex items-center justify-center ${inset}`}
         aria-label="Enlarge card image"
       >
         <img

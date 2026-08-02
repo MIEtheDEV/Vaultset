@@ -4091,3 +4091,184 @@ COMMENT ON COLUMN "public"."profiles"."display_name_public" IS 'Generated public
 -- reading — off the REST API — a name its owner chose to hide. The owner's own
 -- settings page reads the raw values through the service-role client instead.
 GRANT SELECT ("display_name_public") ON TABLE "public"."profiles" TO "anon", "authenticated";
+
+
+-- ============================================================================
+-- Card-level price history (added 2026-08-02; applied to production via MCP).
+-- Appended manually — regenerate with `supabase db dump` to normalize ordering.
+-- ============================================================================
+
+-- Why this exists alongside `price_history`: that table snapshots one row per
+-- *held collection item*, and `collection_items.market_price` is copy-specific
+-- (condition multipliers for raw, slab medians for graded), so it cannot be
+-- aggregated into a per-card series without blending a PSA 10 with a damaged
+-- raw. It also only covers cards somebody owns.
+--
+-- This table is keyed by the card, at the same (finish, condition) grain the
+-- card detail page's condition selector works in. It is the only source that
+-- accumulates a real rolling history: JustTCG's free tier returns at most a
+-- 7-day window frozen inside the cached `raw` blob, and pokemontcg.io bedrock
+-- payloads carry no history at all (~68% of the cache).
+
+CREATE TABLE IF NOT EXISTS "public"."card_price_history" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "card_api_id" "text" NOT NULL,
+    "finish" "text" NOT NULL,
+    "condition" "text" DEFAULT 'unspecified'::"text" NOT NULL,
+    "market_price" numeric NOT NULL,
+    "snapshotted_at" "date" DEFAULT CURRENT_DATE NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+ALTER TABLE "public"."card_price_history" OWNER TO "postgres";
+
+COMMENT ON TABLE "public"."card_price_history" IS 'Daily market price per card per finish/condition. Feeds the card detail value chart. Written nightly by snapshot_card_price_history().';
+COMMENT ON COLUMN "public"."card_price_history"."condition" IS 'near_mint | lightly_played | moderately_played | heavily_played | damaged, or ''unspecified'' for sources with no condition dimension (pokemontcg.io bedrock). Never NULL — see card_price_history_unique.';
+COMMENT ON COLUMN "public"."card_price_history"."finish" IS 'pokemontcg.io-style finish key (normal | holofoil | reverseHolofoil | 1stEdition*), mirroring lib/pricing/justtcgVariants.finishKey().';
+
+ALTER TABLE ONLY "public"."card_price_history"
+    ADD CONSTRAINT "card_price_history_pkey" PRIMARY KEY ("id");
+
+-- A sentinel 'unspecified' rather than NULL: NULLs compare as distinct in a
+-- unique index, so a nullable condition would let the nightly job insert a
+-- duplicate row for the same card/day on every run.
+ALTER TABLE ONLY "public"."card_price_history"
+    ADD CONSTRAINT "card_price_history_unique" UNIQUE ("card_api_id", "finish", "condition", "snapshotted_at");
+
+CREATE INDEX IF NOT EXISTS "card_price_history_card_date_idx"
+    ON "public"."card_price_history" USING "btree" ("card_api_id", "snapshotted_at");
+
+ALTER TABLE "public"."card_price_history" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Card price history is publicly readable"
+    ON "public"."card_price_history" FOR SELECT USING (true);
+
+GRANT SELECT ON TABLE "public"."card_price_history" TO "anon";
+GRANT SELECT ON TABLE "public"."card_price_history" TO "authenticated";
+GRANT ALL ON TABLE "public"."card_price_history" TO "service_role";
+
+
+-- SQL mirrors of the TypeScript mappings in lib/pricing/justtcgVariants.ts.
+-- Kept as functions (not inline CASEs) so the nightly snapshot and the seed
+-- backfill can't drift from each other. If you change finishKey()/CONDITION_MAP
+-- in TS, change these too.
+CREATE OR REPLACE FUNCTION "public"."justtcg_finish_key"("printing" "text") RETURNS "text"
+    LANGUAGE "sql" IMMUTABLE
+    AS $_$
+  select case lower(btrim(coalesce(printing, '')))
+    when 'normal'                 then 'normal'
+    when 'holofoil'               then 'holofoil'
+    when 'holo'                   then 'holofoil'
+    when 'reverse holofoil'       then 'reverseHolofoil'
+    when 'reverse holo'           then 'reverseHolofoil'
+    when '1st edition normal'     then '1stEditionNormal'
+    when '1st edition'            then '1stEditionNormal'
+    when '1st edition holofoil'   then '1stEditionHolofoil'
+    else 'holofoil'
+  end;
+$_$;
+
+ALTER FUNCTION "public"."justtcg_finish_key"("text") OWNER TO "postgres";
+
+-- Returns NULL for anything that isn't one of the five raw conditions, which is
+-- how callers filter out rows they shouldn't snapshot.
+CREATE OR REPLACE FUNCTION "public"."justtcg_condition_key"("condition" "text") RETURNS "text"
+    LANGUAGE "sql" IMMUTABLE
+    AS $_$
+  select case lower(btrim(coalesce(condition, '')))
+    when 'near mint'         then 'near_mint'
+    when 'lightly played'    then 'lightly_played'
+    when 'moderately played' then 'moderately_played'
+    when 'heavily played'    then 'heavily_played'
+    when 'damaged'           then 'damaged'
+    else null
+  end;
+$_$;
+
+ALTER FUNCTION "public"."justtcg_condition_key"("text") OWNER TO "postgres";
+
+-- Nightly card-level price snapshot. Two source shapes, because the price cache
+-- has two tiers:
+--   * JustTCG rows carry `raw->'variants'` with a real (printing, condition,
+--     price) triple — snapshotted at full grain.
+--   * pokemontcg.io bedrock rows have no variants; `prices` is keyed by printing
+--     only, with no condition dimension. Those land as condition='unspecified'
+--     rather than being mislabelled 'near_mint' — the same distinction the card
+--     detail page makes when it drops the "(NM)" qualifier.
+--
+-- Idempotent: re-running on the same day overwrites that day's rows, so a manual
+-- run or a cron retry can't double-insert.
+CREATE OR REPLACE FUNCTION "public"."snapshot_card_price_history"() RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+declare
+  v_variant_rows integer;
+  v_bedrock_rows integer;
+begin
+  insert into card_price_history (card_api_id, finish, condition, market_price, snapshotted_at)
+  select
+    cp.card_api_id,
+    public.justtcg_finish_key(var->>'printing'),
+    public.justtcg_condition_key(var->>'condition'),
+    (var->>'price')::numeric,
+    current_date
+  from card_prices cp
+  cross join lateral jsonb_array_elements(
+    case when jsonb_typeof(cp.raw->'variants') = 'array' then cp.raw->'variants' else '[]'::jsonb end
+  ) var
+  where (var->>'price') is not null
+    and public.justtcg_condition_key(var->>'condition') is not null
+  on conflict (card_api_id, finish, condition, snapshotted_at)
+    do update set market_price = excluded.market_price;
+
+  get diagnostics v_variant_rows = row_count;
+
+  -- Restricted to cards with no variant array, so a JustTCG-priced card never
+  -- grows a duplicate 'unspecified' series alongside its real per-condition ones.
+  insert into card_price_history (card_api_id, finish, condition, market_price, snapshotted_at)
+  select
+    cp.card_api_id,
+    pk.key,
+    'unspecified',
+    (pk.value->>'market')::numeric,
+    current_date
+  from card_prices cp
+  cross join lateral jsonb_each(
+    case when jsonb_typeof(cp.prices) = 'object' then cp.prices else '{}'::jsonb end
+  ) pk
+  where (pk.value->>'market') is not null
+    and jsonb_typeof(cp.raw->'variants') is distinct from 'array'
+  on conflict (card_api_id, finish, condition, snapshotted_at)
+    do update set market_price = excluded.market_price;
+
+  get diagnostics v_bedrock_rows = row_count;
+
+  return v_variant_rows + v_bedrock_rows;
+end;
+$_$;
+
+ALTER FUNCTION "public"."snapshot_card_price_history"() OWNER TO "postgres";
+
+REVOKE ALL ON FUNCTION "public"."snapshot_card_price_history"() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION "public"."snapshot_card_price_history"() TO "service_role";
+
+-- Scheduled 30 min after daily-price-snapshot so the two don't contend:
+--   select cron.schedule('daily-card-price-snapshot', '30 2 * * *',
+--                        $$select public.snapshot_card_price_history();$$);
+--
+-- One-time seed, replaying every cached JustTCG priceHistory point into the
+-- table so it was not empty on day one (19,248 rows / 690 cards). ON CONFLICT DO
+-- NOTHING so a re-run never overwrites a real snapshot with a stale replay:
+--   insert into public.card_price_history (card_api_id, finish, condition, market_price, snapshotted_at)
+--   select cp.card_api_id,
+--          public.justtcg_finish_key(var->>'printing'),
+--          public.justtcg_condition_key(var->>'condition'),
+--          (pt->>'p')::numeric,
+--          to_timestamp((pt->>'t')::bigint)::date
+--   from public.card_prices cp
+--   cross join lateral jsonb_array_elements(cp.raw->'variants') var
+--   cross join lateral jsonb_array_elements(var->'priceHistory') pt
+--   where (pt->>'p') is not null and (pt->>'t') is not null
+--     and public.justtcg_condition_key(var->>'condition') is not null
+--   on conflict (card_api_id, finish, condition, snapshotted_at) do nothing;

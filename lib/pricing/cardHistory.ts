@@ -132,7 +132,11 @@ const dateStr = (v: unknown): string | null =>
 export function extractApiCardStats(raw: unknown, item: CardHistoryItem): ApiCardStats | null {
   const m = matchVariant(raw, item);
   if (!m) return null;
-  const v = m.variant as RawVariant & Record<string, unknown>;
+  return statsFromVariant(m.variant);
+}
+
+function statsFromVariant(variant: RawVariant): ApiCardStats {
+  const v = variant as RawVariant & Record<string, unknown>;
   const cov30 = num(v.covPrice30d);
   return {
     current:         num(v.price),
@@ -170,6 +174,83 @@ export interface ApiVariant {
 }
 
 /** Every raw JustTCG variant (finish × condition) with its price, movement, and history. */
+/** One selectable condition for a card, with the full stat block behind it. */
+export interface ConditionStats {
+  conditionKey: string;
+  price: number | null;
+  stats: ApiCardStats;
+  /** Daily series for this exact condition. Safe to chart — same price scale. */
+  points: PricePoint[];
+}
+
+/**
+ * Every condition that *genuinely exists* for the item's resolved finish, each
+ * with its own stats and history.
+ *
+ * Deliberately not "call `extractApiCardStats` once per condition": `matchVariant`
+ * falls back to a different variant when the requested condition is absent, so
+ * that approach happily returns a "Damaged" entry whose numbers are really the
+ * Near Mint ones. Here the variant list is the source of truth — a condition the
+ * source doesn't carry simply isn't offered.
+ *
+ * Returns [] for bedrock (pokemontcg.io) payloads, which have no `variants` at all.
+ */
+/**
+ * Merge our own accumulating `card_price_history` into per-condition series.
+ *
+ * The provider's history is a frozen 7-day window inside the cached `raw` blob;
+ * ours grows every night and covers bedrock cards that have no provider history
+ * at all. Our snapshots win on shared days — they're what we actually recorded —
+ * and the provider points backfill earlier days, exactly like `mergeDailySeries`.
+ */
+export function mergeConditionHistory(
+  options: ConditionStats[],
+  ownByCondition: Map<string, PricePoint[]>,
+): ConditionStats[] {
+  return options.map((o) => {
+    const own = ownByCondition.get(o.conditionKey);
+    if (!own?.length) return o;
+    const byDate = new Map<string, number>();
+    for (const p of o.points) byDate.set(p.date, p.value);
+    for (const p of own) byDate.set(p.date, p.value);
+    return {
+      ...o,
+      points: [...byDate.entries()]
+        .map(([date, value]) => ({ date, value }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    };
+  });
+}
+
+export function extractApiConditionStats(raw: unknown, item: CardHistoryItem): ConditionStats[] {
+  const anchor = matchVariant(raw, item);
+  if (!anchor) return [];
+
+  // Pin to the finish the page is already pricing, so switching condition never
+  // silently switches printing too.
+  const targetFinish = finishKey(anchor.variant.printing);
+  const variants = (raw as { variants?: RawVariant[] } | null)?.variants ?? [];
+
+  const out: ConditionStats[] = [];
+  for (const v of variants) {
+    if (finishKey(v.printing) !== targetFinish) continue;
+    const conditionKey = CONDITION_TO_KEY[(v.condition ?? "").toLowerCase().trim()];
+    if (!conditionKey || out.some((o) => o.conditionKey === conditionKey)) continue;
+    out.push({
+      conditionKey,
+      price: num(v.price),
+      stats: statsFromVariant(v),
+      points: dedupeByDate(
+        (v.priceHistory ?? [])
+          .filter((pt): pt is { p: number; t: number } =>
+            !!pt && typeof pt.p === "number" && typeof pt.t === "number")
+          .map((pt) => ({ date: new Date(pt.t * 1000).toISOString().slice(0, 10), value: pt.p })),
+      ),
+    });
+  }
+  return out;
+}
+
 export function extractApiVariants(raw: unknown): ApiVariant[] {
   const variants = (raw as { variants?: (RawVariant & Record<string, unknown>)[] } | null)?.variants;
   if (!Array.isArray(variants)) return [];

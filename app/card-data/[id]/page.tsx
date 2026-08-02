@@ -5,11 +5,17 @@ import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { CardValueChart } from "@/components/CardValueChart";
-import { DailyChange } from "@/components/DailyChange";
+import { CardImage } from "@/components/CardImage";
 import { readGradedPrices } from "@/lib/pricing/gradedPrices";
-import { extractApiCardHistory, extractApiCardStats, extractApiVariants } from "@/lib/pricing/cardHistory";
-import { mergeDailySeries, apiDailyChange, type PricePoint } from "@/lib/priceHistory";
+import { invertedConditions, THIN_MARKET_NOTE } from "@/lib/pricing/conditionAnomaly";
+import { extractApiCardHistory, extractApiCardStats, extractApiConditionStats, extractApiVariants, mergeConditionHistory } from "@/lib/pricing/cardHistory";
+import {
+  CardPricingProvider,
+  MarketValueBlock,
+  ConditionValueChart,
+  PriceInsightsBlock,
+} from "@/components/CardConditionPricing";
+import { mergeDailySeries, type PricePoint } from "@/lib/priceHistory";
 import { PokemonRaritySystem } from "@/lib/rarity/PokemonRaritySystem";
 import { RarityLabel } from "@/components/RaritySymbol";
 import { speciesName, speciesSlug } from "@/lib/cards/species";
@@ -240,30 +246,47 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
     Object.values(srPrices).map((p) => p?.market).find((m) => m != null) ?? null;
   const current = stats?.current ?? marketFromPrices ?? fallbackMarket ?? null;
 
-  const valueHistory: PricePoint[] = mergeDailySeries(historyPoints, [], current);
-  const change24h = apiDailyChange(stats?.change24hrPct, current);
   const conditionPrices = ((priceRow as any)?.condition_prices ?? {}) as Record<string, Record<string, number>>;
 
-  // Per-variant data (finish × condition): powers the condition-table movement column
-  // and the chart's condition/printing switcher.
+  // Per-variant data (finish × condition) — powers the condition table's movement column.
   const variants = extractApiVariants(raw);
   const variantByKey = new Map(variants.map((v) => [`${v.finishKey}|${v.conditionKey}`, v] as const));
-  const chartSeries: { label: string; points: PricePoint[] }[] = [{ label: "Near Mint", points: valueHistory }];
-  for (const v of variants) {
-    if (v.points.length >= 2 && v.conditionKey !== "near_mint") {
-      chartSeries.push({
-        label: `${FINISH_LABEL[v.finishKey] ?? v.finishKey} · ${COND_LABEL[v.conditionKey] ?? v.conditionKey}`,
-        points: v.points,
-      });
-    }
+
+  // Our own accumulating daily history for this card (card_price_history, written
+  // nightly). This is the series that actually grows: the provider's priceHistory
+  // is a 7-day window frozen inside the cached `raw` blob, and bedrock-priced
+  // cards — ~2/3 of the cache — have no provider history at all.
+  const { data: ownHistoryRows } = await admin
+    .from("card_price_history")
+    .select("condition, market_price, snapshotted_at")
+    .eq("card_api_id", id)
+    .order("snapshotted_at", { ascending: true });
+
+  const ownByCondition = new Map<string, PricePoint[]>();
+  for (const r of ownHistoryRows ?? []) {
+    const key = r.condition as string;
+    const list = ownByCondition.get(key) ?? [];
+    list.push({ date: r.snapshotted_at as string, value: Number(r.market_price) });
+    ownByCondition.set(key, list);
   }
 
-  // Where the current price sits within the 30-day range (0 = low, 1 = high).
-  const pos30 =
-    stats?.posIn30d != null ? Math.max(0, Math.min(1, stats.posIn30d))
-    : stats?.low30d != null && stats?.high30d != null && stats.high30d > stats.low30d && current != null
-      ? Math.max(0, Math.min(1, (current - stats.low30d) / (stats.high30d - stats.low30d)))
-      : null;
+  // Selectable conditions for THIS card's finish, each carrying its own stats and
+  // history. Empty for bedrock-priced cards, which have no per-condition data —
+  // the pricing blocks then fall back to the condition-agnostic market price and
+  // drop the condition qualifier instead of mislabelling it "(NM)".
+  const conditionOptions = mergeConditionHistory(
+    extractApiConditionStats(raw, { finish, condition: "near_mint" }),
+    ownByCondition,
+  );
+
+  // Bedrock cards have no condition dimension, so their series is stored under
+  // the 'unspecified' sentinel — that's what the fallback chart draws.
+  const valueHistory: PricePoint[] = mergeDailySeries(
+    historyPoints,
+    ownByCondition.get("unspecified") ?? [],
+    current,
+  );
+  const pricingFallback = { current, stats, points: valueHistory };
 
   // Marketplace availability across all copies of this card.
   const { data: listingRows } = cardIds.length
@@ -391,6 +414,10 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
   };
 
   return (
+    // The provider owns the selected condition so every price-derived block —
+    // headline, chart, insights — reads the same one and can't disagree. Server
+    // children below stay server-rendered; they're passed through as `children`.
+    <CardPricingProvider options={conditionOptions} fallback={pricingFallback}>
     <div className="space-y-10">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
@@ -407,7 +434,10 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
         <div className="mx-auto w-full max-w-[16rem] md:mx-0 md:w-64 md:shrink-0 space-y-3">
           <div className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-2xl bg-surface-raised border border-border">
             {card.image_url ? (
-              <Image src={card.image_url} alt={card.name} fill sizes="256px" className="object-contain" />
+              // Click to enlarge, same as the grids and the listing hero. This
+              // page is the card's home, so it was the odd one out in being the
+              // only place the art couldn't be viewed larger.
+              <CardImage src={card.image_url} alt={card.name} inset="p-2" />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-foreground-muted">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
@@ -453,32 +483,8 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
             )}
           </div>
 
-          {/* Market value */}
-          <div className="rounded-2xl border border-border bg-surface p-5">
-            <div className="flex items-end justify-between gap-3 flex-wrap">
-              <div>
-                <p className="text-xs font-medium text-foreground-muted uppercase tracking-wide">Market Value <span className="normal-case">(NM)</span></p>
-                <p className="mt-1 text-4xl font-bold text-gold leading-none">{money(current)}</p>
-              </div>
-              {change24h && (
-                <span className="flex items-center gap-1.5 text-xs text-foreground-muted">
-                  <span>24h</span>
-                  <DailyChange change={change24h} href="#value-chart" />
-                </span>
-              )}
-            </div>
-
-            {stats ? (
-              <div className="mt-4 grid grid-cols-4 gap-2">
-                <PctChip label="24h" pct={stats.change24hrPct} />
-                <PctChip label="7d" pct={stats.change7dPct} />
-                <PctChip label="30d" pct={stats.change30dPct} />
-                <PctChip label="90d" pct={stats.change90dPct} />
-              </div>
-            ) : (
-              <p className="mt-3 text-xs text-foreground-muted">Detailed price movement isn&apos;t available for this card&apos;s price source yet.</p>
-            )}
-          </div>
+          {/* Market value — condition-aware */}
+          <MarketValueBlock />
 
           {/* Availability */}
           {(forSale.length > 0 || forTrade.length > 0) && (
@@ -498,59 +504,13 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      {/* Value over time */}
+      {/* Value over time — follows the selected condition */}
       <div id="value-chart" className="scroll-mt-24">
-        <CardValueChart series={chartSeries} title="Market Value Over Time" />
+        <ConditionValueChart />
       </div>
 
-      {/* Price insights */}
-      {stats && (
-        <div className="rounded-2xl border border-border bg-surface p-6 space-y-5">
-          <h2 className="font-semibold text-foreground">Price Insights</h2>
-
-          {pos30 != null && stats.low30d != null && stats.high30d != null && (
-            <div>
-              <div className="flex items-center justify-between text-xs mb-1.5">
-                <span className="text-foreground-muted">30-day range</span>
-                <span className="text-foreground-muted">{Math.round(pos30 * 100)}% of range</span>
-              </div>
-              <div className="relative h-2 rounded-full bg-surface-raised">
-                <div
-                  className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-gold border-2 border-surface shadow"
-                  style={{ left: `calc(${pos30 * 100}% - 7px)` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-xs mt-1.5">
-                <span className="font-medium text-foreground">{money(stats.low30d)}</span>
-                <span className="font-medium text-foreground">{money(stats.high30d)}</span>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3 border-t border-border pt-4 text-xs">
-            <Stat label="30d range" value={priceRange(stats.low30d, stats.high30d)} />
-            <Stat label="90d range" value={priceRange(stats.low90d, stats.high90d)} />
-            <Stat label="1-year range" value={priceRange(stats.low1y, stats.high1y)} />
-            <Stat label="30d average" value={money(stats.avg30d)} />
-            <Stat label="All-time low" value={stats.allTimeLow != null ? `${money(stats.allTimeLow)}${stats.allTimeLowDate ? ` · ${fmtDate(stats.allTimeLowDate)}` : ""}` : "—"} />
-            <Stat label="All-time high" value={stats.allTimeHigh != null ? `${money(stats.allTimeHigh)}${stats.allTimeHighDate ? ` · ${fmtDate(stats.allTimeHighDate)}` : ""}` : "—"} />
-          </div>
-
-          {(stats.volatility30dPct != null || stats.repricings30d != null || (stats.trend30d != null && stats.trend30d !== 0)) && (
-            <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-              {stats.volatility30dPct != null && (
-                <Chip label="Volatility" value={volLabel(stats.volatility30dPct)} tone={volTone(stats.volatility30dPct)} />
-              )}
-              {stats.repricings30d != null && (
-                <Chip label="Activity" value={liqLabel(stats.repricings30d)} tone="muted" />
-              )}
-              {stats.trend30d != null && stats.trend30d !== 0 && (
-                <Chip label="30d trend" value={stats.trend30d > 0 ? "Rising" : "Falling"} tone={stats.trend30d > 0 ? "up" : "down"} />
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Price insights — follows the selected condition */}
+      <PriceInsightsBlock />
 
       {/* Price by condition */}
       {Object.keys(conditionPrices).length > 0 && (
@@ -565,16 +525,23 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(conditionPrices).map(([fk, byCond]) => (
+                {Object.entries(conditionPrices).map(([fk, byCond]) => {
+                  // Prices above a better grade get flagged, not corrected — see
+                  // lib/pricing/conditionAnomaly.ts for why we don't clamp.
+                  const thin = invertedConditions(byCond);
+                  return (
                   <tr key={fk} className="border-b border-border/50 last:border-0">
                     <td className="py-2 pr-4 text-foreground align-top">{FINISH_LABEL[fk] ?? fk}</td>
                     {COND_ORDER.map((c) => {
                       const chg = variantByKey.get(`${fk}|${c}`)?.change24hrPct;
+                      const isThin = thin.has(c);
                       return (
                         <td key={c} className="py-2 px-3 text-right align-top">
                           {byCond[c] != null ? (
                             <div className="flex flex-col items-end leading-tight">
-                              <span className="text-foreground">{money(byCond[c])}</span>
+                              <span className={isThin ? "text-amber-400" : "text-foreground"} title={isThin ? THIN_MARKET_NOTE : undefined}>
+                                {money(byCond[c])}{isThin && <span aria-hidden="true">*</span>}
+                              </span>
                               {chg != null && chg !== 0 && (
                                 <span className={`text-[10px] ${chg > 0 ? "text-emerald-400" : "text-red-400"}`}>
                                   {chg > 0 ? "+" : ""}{chg.toFixed(1)}%
@@ -588,10 +555,17 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
                       );
                     })}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          {Object.values(conditionPrices).some((byCond) => invertedConditions(byCond).size > 0) && (
+            <p className="text-xs text-amber-400/80">
+              <span aria-hidden="true">*</span> Thin market — {THIN_MARKET_NOTE}
+            </p>
+          )}
         </div>
       )}
 
@@ -781,20 +755,12 @@ export default async function CardDataPage({ params }: { params: Promise<{ id: s
         {updatedAt ? `Updated ${new Date(updatedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.` : ""}
       </p>
     </div>
+    </CardPricingProvider>
   );
 }
 
-function PctChip({ label, pct }: { label: string; pct: number | null }) {
-  const up = pct != null && pct > 0;
-  const down = pct != null && pct < 0;
-  const color = up ? "text-emerald-400" : down ? "text-red-400" : "text-foreground-muted";
-  return (
-    <div className="rounded-xl border border-border bg-surface-raised px-2 py-2 text-center">
-      <p className="text-xs text-foreground-muted">{label}</p>
-      <p className={`text-sm font-semibold ${color}`}>{pct == null ? "—" : `${up ? "+" : ""}${pct.toFixed(1)}%`}</p>
-    </div>
-  );
-}
+// PctChip / Chip / priceRange / volatility labels moved to CardConditionPricing.tsx
+// with the blocks that use them, when those became condition-aware client components.
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -815,36 +781,7 @@ function ActivityTile({ label, value, sub }: { label: string; value: string; sub
   );
 }
 
-function priceRange(lo: number | null, hi: number | null): string {
-  if (lo == null && hi == null) return "—";
-  return `${money(lo)} – ${money(hi)}`;
-}
-
 function fmtDate(d: string): string {
   return new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-type Tone = "up" | "down" | "warn" | "muted";
-function volLabel(pct: number): string {
-  return pct < 8 ? "Low" : pct < 20 ? "Medium" : "High";
-}
-function volTone(pct: number): Tone {
-  return pct < 8 ? "up" : pct < 20 ? "warn" : "down";
-}
-function liqLabel(n: number): string {
-  return n > 30 ? "Very active" : n > 8 ? "Active" : n > 0 ? "Light" : "Quiet";
-}
-
-function Chip({ label, value, tone = "muted" }: { label: string; value: string; tone?: Tone }) {
-  const cls =
-    tone === "up" ? "text-emerald-400 border-emerald-400/20 bg-emerald-400/5"
-    : tone === "down" ? "text-red-400 border-red-400/20 bg-red-400/5"
-    : tone === "warn" ? "text-gold border-gold/20 bg-gold/5"
-    : "text-foreground-muted border-border bg-surface-raised";
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${cls}`}>
-      <span className="opacity-70">{label}</span>
-      <span className="font-medium">{value}</span>
-    </span>
-  );
-}
