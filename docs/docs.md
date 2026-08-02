@@ -104,7 +104,7 @@ graph TD
 | `/notifications` | Auth | New follower, offer, and price alert notifications |
 | `/reveals` | Auth | Community pull reveal feed |
 | `/reveals/log` | Auth | Log a new pack reveal |
-| `/community` | Public | Collector directory with leaderboard |
+| `/community` | Public | Collector directory — search, new-collector welcome, leaderboard |
 | `/account` | Auth | Profile, password, followers-only-offers setting |
 | `/profile/[username]` | Public | Public profile — listings, collection, wishlist, follows |
 | `/profile/[username]/followers` | Public | List of followers |
@@ -446,13 +446,127 @@ Browser push is delivered via the VAPID/web-push stack. Devices register the ser
 ### Row-Level Security
 All tables enforce RLS. Users read/write only their own data. Marketplace listings and profiles are readable by all authenticated users. Conversations are readable only by their two participants. Notifications are readable only by their recipient.
 
+Note the "by all **authenticated** users" part — public pages have no session, so anything they
+must render has to come through a service-role read. See *Public read paths* below.
+
 ### Admin Client for Privileged Writes
 Operations that span multiple users (offer acceptance, cancellation, inventory transfer) use the service-role client from `utils/supabase/admin.ts` to bypass RLS safely within server actions.
+
+### Public read paths (`collection_items` / `product_purchases`)
+
+RLS on these two tables exposes a row **only** to its owner, or — to *signed-in* visitors only —
+when it is `for_sale`/`for_trade`. That policy is correct for the REST API and must stay: the
+tables carry `paid_price`, `cert_number`, `acquired_at`, and `product_purchases.cost`, none of
+which may ever become world-readable.
+
+But it means any **public** page that reads them through the request-scoped client silently
+renders empty. Symptoms this caused, all fixed by reading through `createAdminClient()` with an
+explicit public column list:
+
+| Page | Bug |
+|---|---|
+| `/profile/[username]` | Vault/listings/graded/featured showed **0 to everyone but the owner** — a collector with nothing listed read as an empty vault |
+| `/profile/[username]` metadata | `N-card collection` was always absent (crawlers have no session) |
+| `/profile/[username]/card` | Collector-card stats counted only the *listed* slice |
+| `/marketplace` | **"No listings match this filter." for every logged-out visitor and crawler** |
+| `/marketplace/user/[username]` | Storefront empty for logged-out visitors |
+
+Rules when touching these pages:
+
+1. Data **about the profile owner / the public feed** → `createAdminClient()`, columns named
+   explicitly. Never `select("*")`.
+2. Data **about the viewer** (watchlist, follow state, their own wishlist) → the request-scoped
+   client, so RLS keeps scoping it to the caller.
+3. **Never** `.eq`/`.neq` a uuid column against `user?.id ?? ""`. PostgREST forwards the empty
+   string and Postgres raises `22P02 invalid input syntax for type uuid`, which fails the whole
+   query rather than matching everything. Guard with `if (user)` instead. This bug sat latent in
+   `/marketplace` behind the RLS one — fixing RLS alone left the page empty for exactly the same
+   visitors.
+
+**Consequence to be aware of:** an unlisted card in someone's vault is now visible on their public
+profile. That is intended (profiles are collector showcases), but it is a change in posture for
+cards added before this — a per-user "private vault" toggle is the natural follow-up if anyone
+objects.
 
 > **Security review:** A security audit (admin authorization, RLS column-level writes, offer-item
 > ownership) was performed and its fixes applied in-app. Re-run the review before releases with the
 > `/security-review` skill on the pending diff; paywall-enforcement specifics live in
 > [`marketing-strategy.md`](./marketing-strategy.md) §3.
+
+### Card detail pricing is condition-scoped
+
+`/card-data/[id]` lets the visitor pick a condition, and **every** price-derived block —
+headline value, 24h/7d/30d/90d chips, the chart, and Price Insights (30d range, averages,
+all-time high/low, volatility) — reads from that one selection via `CardPricingProvider`
+(`components/CardConditionPricing.tsx`). They share state specifically so they cannot disagree.
+
+- **Options come from `extractApiConditionStats`, not from calling `extractApiCardStats` per
+  condition.** `matchVariant` falls back to a *different* variant when the asked-for condition
+  is absent, so the per-condition-call approach happily produces a "Damaged" entry whose numbers
+  are really the Near Mint ones. The variant list is the source of truth: a condition the source
+  doesn't carry is never offered. Options are also pinned to the card's resolved finish, so
+  changing condition never silently changes printing.
+- **The `(NM)` qualifier is conditional.** Only ~1/3 of cached cards (the JustTCG-sourced ones)
+  have per-condition variants at all; pokemontcg.io bedrock payloads have no `variants` key, so
+  the price falls back to `tcgplayer.prices[printing].market`, which has **no condition
+  dimension**. Those pages show no selector and read plain "Market Value". Previously the label
+  said "(NM)" unconditionally — asserting a precision the data didn't have on the majority of
+  card pages.
+- The **Price by Condition** table below is separate: it shows the full finish × condition
+  matrix from `card_prices.condition_prices`, and only renders when that data exists.
+
+#### Thin-market flag (inverted condition prices)
+
+Roughly **35% of per-condition rows price a *worse* grade above a better one** — e.g. `me5-43`
+Normal at NM $0.04 / LP $0.10, or `me5-101` at NM $14.12 / LP $18.11. Verified as upstream data,
+not a mapping bug: `justtcg_finish_key` produces zero printing collisions across the cache, and
+`condition_prices` mirrors `raw.variants` exactly.
+
+It concentrates in the newest sets — me2pt5 46%, me5 46%, me3 29%, me4 17% — which fits the
+likely mechanism: TCGplayer's market price is a trailing average of completed sales per
+condition, and right after release NM has enormous supply while played copies barely exist, so a
+handful of played sales can average above a heavily-supplied NM.
+
+`invertedConditions()` (`lib/pricing/conditionAnomaly.ts`) flags any condition priced **strictly
+above** a better grade — strictly, because equal prices are common on cheap cards and would bury
+the signal. Surfaced three ways: an amber note in the market-value block for the selected
+condition, an `*` on the affected condition chips (so it's visible *before* clicking), and amber
+cells plus a legend in the condition table.
+
+**Do not clamp the ladder monotonic.** It would invent prices we have no evidence for, and these
+same numbers value real user inventory through `getMarketPrice` — an LP holding of `me5-101` is
+genuinely marked at $18.11 today.
+
+#### Where the value-over-time chart gets its data
+
+Three sources, merged per condition by `mergeConditionHistory()`:
+
+1. **`card_price_history`** (ours, nightly) — the only series that actually grows. Written by
+   `snapshot_card_price_history()` at **02:30 UTC** (`daily-card-price-snapshot`, 30 min after
+   the item-level `daily-price-snapshot` so the two don't contend). Keyed by
+   `card_api_id + finish + condition`, so it feeds the condition selector directly.
+   JustTCG-priced cards get real per-condition rows; bedrock cards have no condition dimension
+   and are stored under the **`'unspecified'`** sentinel.
+2. **The provider's `raw.priceHistory`** — backfills days before we started recording. It is a
+   **frozen ≤7-day window**, not a rolling one: it lives inside the cached `raw` blob and only
+   advances when the card is re-priced.
+3. **Today's live price**, stamped on by `mergeDailySeries`.
+
+Ours wins on any shared day — it's what we actually recorded.
+
+**Why a card-level table rather than reusing `price_history`:** that one is keyed by
+`collection_item_id`, and `collection_items.market_price` is *copy-specific* (condition
+multipliers for raw, slab medians for graded). Aggregating it per card would average a PSA 10
+with a damaged raw into one meaningless line, and it only covers cards somebody owns.
+
+Seeded once by replaying every cached `raw.priceHistory` point (19,248 rows / 690 cards) so it
+wasn't empty on launch — see the commented backfill at the bottom of the schema snapshot. The
+job is idempotent (`ON CONFLICT DO UPDATE` on the day's rows), so a cron retry or manual run
+can't double-insert.
+
+**Known limitation:** history only accrues forward. Bedrock cards (~2/3 of the cache) started
+from zero on 2026-08-02 and show "Not enough data yet" until they have two days. There is no way
+to recover history we never recorded short of a paid data tier.
 
 ### Card Search
 Search merges two catalogs via `/api/pokemon-cards`:
@@ -653,7 +767,15 @@ Log pack openings from sealed products. Each reveal can include a caption and vi
 Every user has a public profile at `/profile/[username]` showing:
 - Avatar, username, join date, city, bio, specialty
 - Follower / following counts (clickable)
-- Tabs: Listings · Collection · Wishlist
+- Tabs: Showcase · Vault · Listings · Collections · Wishlist (only the active tab renders)
+
+Every card on a profile — Vault tile, Showcase tile, and the Featured Card — is a link to that
+card's detail page, via the shared `components/VaultCardTile.tsx`. The href comes from
+`cardDataHref()`, which reuses `priceApiId` so all three identity shapes resolve:
+`pokemon_api_id` → `tcg:<productId>` → `manual:<cardRowId>`. **The id must be
+percent-encoded** (`tcg%3A590072`): `/card-data/[id]` decodes once on entry, and a raw colon
+misses its `startsWith("tcg:")` check and 404s. A card with no addressable id renders as an
+unlinked tile rather than a dead link. Covered by `__tests__/lib/cardDataHref.test.ts`.
 
 **Editing your profile** — go to Account Settings to update bio, specialty, city, avatar, featured card, and offer privacy settings.
 
@@ -661,7 +783,33 @@ Every user has a public profile at `/profile/[username]` showing:
 
 ### Community
 
-Lists all collectors with follower counts. Includes a **Top Collectors** leaderboard ranked by follower count.
+The collector directory at `/community`:
+
+- **Find a Collector** — type-ahead search over username, public display name, city, and
+  specialty. Backed by `/api/collectors`; the page itself stays static/ISR because the search
+  runs client-side.
+
+  **Ranking:** relevance is the outer sort (exact handle/name → prefix → substring → matched
+  only on city/specialty), and the social graph is the tiebreak *within* a tier — mutual
+  follow → one-way follow → city matches the query → city matches the searcher's own city →
+  alphabetical. Deliberately not the other way round: ranking every mutual follow above
+  everything would mean searching `goat` returns your friend `goatfarm` ahead of the actual
+  `@goat`, breaking the search box's primary job. Location comparison is string-based
+  (`sameArea` in `lib/collectors.ts`) and is the single seam a real geocode would replace.
+
+  **Caching:** signed-out responses are identical for everyone and use a shared edge cache;
+  signed-in responses are ordered by who the caller follows and are therefore
+  `private, no-store`. Never widen that — a shared cache would hand one user's social
+  ordering to the next visitor.
+- **Welcome our newest collectors** — the six most recent signups (falling back to the six
+  newest overall if nobody has joined in the last 30 days), so new members get seen instead of
+  being buried under the leaderboard.
+- **Top Collectors** — leaderboard scored on followers (0.6), collection value (0.25), and
+  collection size (0.15), each log-scaled and normalized.
+- **Market Snapshot** — most active sets and most listed cards across all public listings.
+
+Every collector card on the page is a single link to `/profile/<username>` — the whole card,
+not just the name.
 
 ---
 
@@ -669,7 +817,8 @@ Lists all collectors with follower counts. Includes a **Top Collectors** leaderb
 
 | Setting | Description |
 |---|---|
-| Username | Your display name across the platform |
+| Username | Your handle across the platform |
+| Name | Optional real name (first + last) with a visibility level — see below |
 | Email | Used for login and notifications |
 | Bio | Short description on your profile |
 | Specialty | Collecting focus shown as a badge |
@@ -679,6 +828,37 @@ Lists all collectors with follower counts. Includes a **Top Collectors** leaderb
 | Followers-only offers | Restrict offer buttons to your followers |
 | Password | Change your login password |
 | Delete Account | Permanently removes your account and all data |
+
+#### Real name & visibility
+
+A collector can add a first and last name so other people can find them by name — useful when
+someone knows you from a local shop or a trade but not your handle. **Visibility** is theirs to
+set: `hidden` (default), `first`, `first_initial`, or `full`.
+
+The security model is worth understanding before touching it:
+
+- `profiles.display_name_public` is a **STORED GENERATED column** computed from
+  `first_name` / `last_name` / `name_visibility`. The public string therefore cannot drift from
+  the setting that produced it. `formatDisplayName()` in `lib/collectors.ts` is a TypeScript
+  mirror used only for the settings-page live preview; the cases in
+  `__tests__/lib/collectors.test.ts` are the same ones the SQL was verified against — **change
+  one, change both.**
+- `first_name`, `last_name`, and `name_visibility` have **no `anon`/`authenticated` SELECT
+  grant.** `profiles` grants SELECT per column, so withholding them is the entire mechanism
+  preventing a signed-in user from reading — straight off the REST API — a name its owner chose
+  to hide. Verified: `select=last_name` as `anon` returns `42501 permission denied`, while
+  `select=display_name_public` succeeds.
+- **Search matches `display_name_public` only.** Someone showing "Alex M." is findable as
+  "Alex" or "Alex M"; searching their actual surname does not surface them. If search matched
+  the raw columns, the visibility setting would be cosmetic — a searcher could confirm a hidden
+  surname by typing it and watching the user appear.
+- The owner's own settings page can't read the raw values through the normal authenticated
+  client for the same reason, so `app/account/page.tsx` fetches them with the service-role
+  client pinned to `auth.uid()`.
+
+Real names are deliberately **not** added to the profile page's JSON-LD, which still publishes
+only the handle — showing a name to collectors on the site is a different decision from feeding
+it to search-engine indexes.
 
 ---
 
