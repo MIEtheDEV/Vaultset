@@ -27,8 +27,11 @@ export const metadata: Metadata = {
       { url: "/icon-32.png", sizes: "32x32", type: "image/png" },
     ],
   },
+  // Brand first on the homepage: Google weights the leading terms of a title, and
+  // the brand query ("vaultset") was surfacing species hubs above the homepage.
+  // Interior pages keep brand-last via the template — there the topic should lead.
   title: {
-    default: "Track, Value & Trade Your Pokémon Card Collection — Vaultset",
+    default: "Vaultset — Track, Value & Trade Your Pokémon Card Collection",
     template: "%s — Vaultset",
   },
   description:
@@ -45,18 +48,19 @@ export const metadata: Metadata = {
     googleBot: { index: true, follow: true },
   },
   openGraph: {
-    title: "Track, Value & Trade Your Pokémon Card Collection — Vaultset",
+    title: "Vaultset — Track, Value & Trade Your Pokémon Card Collection",
     description:
       "Free Pokémon TCG collection tracker, card inventory & master set tracker. Follow live market prices and buy, sell & trade with collectors.",
     url: "https://www.vaultset.app",
     type: "website",
     siteName: "Vaultset",
+    locale: "en_US",
     images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Vaultset — Pokémon TCG collection tracker, master set tracker & marketplace" }],
   },
   twitter: {
     card: "summary_large_image",
     site: "@vaultsetapp",
-    title: "Track, Value & Trade Your Pokémon Card Collection — Vaultset",
+    title: "Vaultset — Track, Value & Trade Your Pokémon Card Collection",
     description:
       "Free Pokémon TCG collection tracker, card inventory & master set tracker. Follow live market prices and buy, sell & trade with collectors.",
     images: ["/opengraph-image"],

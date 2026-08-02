@@ -7,6 +7,8 @@ import { getPokemonSets } from "@/lib/sets/getPokemonSets";
 import { splitSecretRares } from "@/lib/sets/setDisplay";
 import { HubCardGrid } from "@/components/hubs/HubCardGrid";
 import { ChaseCards } from "@/components/hubs/ChaseCards";
+import { HubFaq } from "@/components/hubs/HubFaq";
+import { cardLabel, formatReleaseMonth, formatUsd, mostValuable } from "@/lib/hubs/hubFacts";
 
 export const revalidate = 86400;
 export const dynamicParams = true;
@@ -42,6 +44,9 @@ export default async function SetDetailPage({ params }: { params: Promise<{ setC
 
   const name = meta?.name ?? cards[0]?.setName ?? setCode;
   const { regular, secret } = splitSecretRares(meta?.total ?? cards.length, meta?.printedTotal);
+  const released = formatReleaseMonth(meta?.releaseDate ?? cards[0]?.releaseDate);
+  const topCard = mostValuable(cards);
+  const totalCards = regular + secret;
   const breadcrumbLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -77,10 +82,26 @@ export default async function SetDetailPage({ params }: { params: Promise<{ setC
         </div>
       </div>
 
-      <p className="text-foreground-muted max-w-2xl">
-        The full {name} card list with live market values where available. Click any card for its
-        price history, condition breakdown, graded prices, and marketplace availability.
-      </p>
+      <div className="space-y-3 text-foreground-muted max-w-2xl leading-relaxed">
+        <p>
+          {name} is a Pokémon Trading Card Game expansion
+          {meta?.series ? ` from the ${meta.series} series` : ""}
+          {released ? `, released in ${released}` : ""}. The set contains {regular}{" "}
+          {regular === 1 ? "card" : "cards"} in the main numbering
+          {secret > 0 ? (
+            <> plus {secret} secret {secret === 1 ? "rare" : "rares"} printed beyond the
+              official set total, for {totalCards} cards in all</>
+          ) : null}
+          .
+        </p>
+        <p>
+          Below is the complete {name} checklist in collector-number order, with the current
+          market value of each card where we have pricing for it. Click any card to see its full
+          price history, what it sells for by condition, graded values for PSA, BGS, and CGC
+          slabs, and whether another collector currently has one listed. You can tick cards off
+          as you go and track both your Complete Set and your Master Set for free.
+        </p>
+      </div>
 
       <ChaseCards cards={cards} />
 
@@ -110,6 +131,81 @@ export default async function SetDetailPage({ params }: { params: Promise<{ setC
       )}
 
       <HubCardGrid cards={cards} />
+
+      <HubFaq
+        heading={`${name} — Frequently Asked Questions`}
+        items={[
+          {
+            q: `How many cards are in the ${name} set?`,
+            a: (
+              <>
+                There are {regular} {regular === 1 ? "card" : "cards"} in the main {name}{" "}
+                numbering
+                {secret > 0
+                  ? `, plus ${secret} secret ${secret === 1 ? "rare" : "rares"} numbered above the printed set total — ${totalCards} cards in total`
+                  : ""}
+                . A Master Set is larger still, because it counts every finish of every card
+                (reverse holos, promos, and alternate printings) rather than one copy of each
+                card number.
+              </>
+            ),
+          },
+          ...(topCard?.value != null
+            ? [
+                {
+                  q: `What is the most valuable ${name} card?`,
+                  a: (
+                    <>
+                      Of the {name} cards we currently have pricing for, {cardLabel(topCard)} is
+                      the highest at {formatUsd(topCard.value)} for a near-mint raw copy. Graded
+                      copies sell for considerably more, and values move with the market — open
+                      the card to see its recent price history before you buy or sell.
+                    </>
+                  ),
+                },
+              ]
+            : []),
+          {
+            q: "What is the difference between a Complete Set and a Master Set?",
+            a: (
+              <>
+                A Complete Set means one copy of every card number in the expansion. A Master Set
+                means every printed variation of every card — including reverse holos, holo and
+                non-holo versions of the same card, and set-specific promos. Master Sets are
+                significantly harder and more expensive to finish. Vaultset tracks{" "}
+                <Link href={`/masterset/${encodeURIComponent(setCode)}`} className="text-gold hover:text-gold-light transition-colors">
+                  your {name} progress
+                </Link>{" "}
+                against both targets at the same time.
+              </>
+            ),
+          },
+          {
+            q: `How are ${name} card prices calculated?`,
+            a: (
+              <>
+                Prices shown here are market values — what copies have actually been selling for
+                recently, not what sellers are asking. We pull live data for raw cards by
+                condition and, for slabs, real sold medians by grading company. Cards with no
+                recent sales data show no price rather than a guess.
+              </>
+            ),
+          },
+          {
+            q: `Where can I buy, sell, or trade ${name} cards?`,
+            a: (
+              <>
+                Vaultset has a collector marketplace with no fees and no middleman. You can{" "}
+                <Link href={`/marketplace/sets/${encodeURIComponent(setCode)}`} className="text-gold hover:text-gold-light transition-colors">
+                  browse {name} cards listed for sale and trade
+                </Link>
+                , send cash or trade offers directly to other collectors, and build a wishlist
+                that alerts you when a card you want gets listed.
+              </>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }
