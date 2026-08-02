@@ -6,6 +6,10 @@ import { BADGE_MAP, type BadgeSlug } from "@/lib/badges";
 import { ProBadge } from "@/components/ProBadge";
 import { SupporterBadge } from "@/components/SupporterBadge";
 import { isProSubscriber } from "@/lib/proStatus";
+import { timeAgo } from "@/lib/timeAgo";
+import { CollectorCard } from "@/components/CollectorCard";
+import { CollectorSearch } from "@/components/CollectorSearch";
+import { isNewCollector, toCollectorSummary } from "@/lib/collectors";
 
 export const metadata: Metadata = {
   title: "Community",
@@ -22,7 +26,7 @@ export default async function CommunityPage() {
 
   const { data: allProfiles } = await supabase
     .from("profiles")
-    .select("id, username, created_at, city, is_pro, pro_plan, pro_expires_at, is_supporter")
+    .select("id, username, display_name_public, created_at, city, specialty, avatar_url, avatar_color, is_pro, pro_plan, pro_expires_at, is_supporter")
     .eq("banned", false)
     .order("username");
 
@@ -134,6 +138,26 @@ export default async function CommunityPage() {
     .slice(0, 10)
     .map((x) => x.p);
 
+  // ── Newest collectors ──────────────────────────────────────────────────────
+  // Sorted off the profiles the page already loaded — no extra query. Anyone who
+  // joined inside the window gets the welcome row; if nobody has, we fall back to
+  // the newest few so the section never renders empty on a quiet month. The page
+  // is ISR (1h), so "joined just now" is accurate to a revalidation window.
+  const byNewest = [...candidates].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+  const recentJoins = byNewest.filter((p) => isNewCollector(p.created_at));
+  const newCollectors = (recentJoins.length > 0 ? recentJoins : byNewest)
+    .slice(0, 6)
+    .map((p) =>
+      toCollectorSummary(p, {
+        followers: followerCountMap.get(p.id) ?? 0,
+        cards:     sizeMap.get(p.id) ?? 0,
+        listings:  listingCountMap.get(p.id) ?? 0,
+      })
+    );
+  const hasRecentJoins = recentJoins.length > 0;
+
   // ── Pricing stats ──────────────────────────────────────────────────────────
 
   const setStatsMap = new Map<string, { count: number; prices: number[] }>();
@@ -206,6 +230,44 @@ export default async function CommunityPage() {
           </div>
         ))}
       </div>
+
+      {/* Collector search */}
+      <div className="space-y-3">
+        <h2 className="font-semibold text-foreground">Find a Collector</h2>
+        <CollectorSearch />
+      </div>
+
+      {/* Newest collectors — the welcome mat */}
+      {newCollectors.length > 0 && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-gold/25 bg-gold/5 px-5 py-4">
+            <h2 className="flex items-center gap-2 font-semibold text-foreground">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gold" aria-hidden="true">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <line x1="19" y1="8" x2="19" y2="14" />
+                <line x1="22" y1="11" x2="16" y2="11" />
+              </svg>
+              {hasRecentJoins ? "Welcome our newest collectors" : "Meet the community"}
+            </h2>
+            <p className="mt-1 text-sm text-foreground-muted">
+              {hasRecentJoins
+                ? "These collectors just joined Vaultset. Say hello, give them a follow, and take a look at what they're building."
+                : "Browse collector profiles to see their vaults, badges, and what they have up for trade."}
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {newCollectors.map((collector) => (
+              <CollectorCard
+                key={collector.id}
+                collector={collector}
+                note={`Joined ${timeAgo(collector.created_at)}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Top Collectors Leaderboard */}
       {topCollectors.length > 0 && (
