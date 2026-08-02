@@ -120,13 +120,36 @@ card) alongside a **Complete Set** tier (one of each card number).
 - **Catalog:** a shared, service-role-written `set_cards` table (one row per `set_code +
   card_number`, with a derived `finishes text[]` and a `variant_fidelity` flag), built by
   `pnpm sets:index` (`scripts/build-set-cards.ts`) from pokemontcg.io per-set card lists +
-  a gap-fill sweep of our own `cards` table. **Re-run after each new set release.** This
-  cache-table approach is what makes the feature reliable (an earlier per-user live-fetch
-  version was reverted for incompleteness — see `docs/docs.md`).
+  a TCGdex backstop + a gap-fill sweep of our own `cards` table. **Re-run after each new set
+  release.** This cache-table approach is what makes the feature reliable (an earlier
+  per-user live-fetch version was reverted for incompleteness — see `docs/docs.md`).
 - **Finish derivation (`lib/sets/setCardFinishes.ts`):** per-card legit finishes from
   `tcgplayer.prices` keys + the rarity→finish lock from `PokemonRaritySystem`. SV-era (2023+)
   and price-less cards are flagged `partial` (special Poké Ball / Master Ball reverses aren't
   enumerable from free data); the UI says so rather than undercounting silently.
+- **TCGdex backstop (`lib/sets/tcgdex.ts`, build-time only):** pokemontcg.io has degraded for
+  recent sets in two ways, both silent, both caught in step 2b of the build. (1) It stopped
+  populating `tcgplayer` for ME-era expansions — with no price keys `deriveFinishes` falls
+  back to ONE guessed finish per card, so reverse holos vanish and the master total collapses
+  to the card count (Chaos Rising read 122 instead of 198; me2pt5/me3/me4/me5 were all
+  affected). (2) It serves fewer cards than its own declared `total` — me2pt5 says 295 but
+  lists 255, dropping the whole #250–295 secret-rare tail. TCGdex has both, with the real
+  TCGplayer printing keys under `variants_detailed[].pricing.tcgplayer` (its top-level
+  `variants.reverse` boolean is **wrong** for these sets — don't use it). Keys are translated
+  to pokemontcg.io spelling and fed through the SAME `deriveFinishes`. Guards worth knowing:
+  it's consulted **only** for a set showing one of the two symptoms (a `--full` rebuild would
+  otherwise fire ~20k requests); TCGdex-sourced cards get `pokemon_api_id = null` (inventing an
+  id pokemontcg.io doesn't serve would poison the price cache key and 400 the bedrock `id:`
+  query), so they count toward completion but stay unpriced; and a **numbering-alignment gate**
+  (`numberingAlignment` ≥ 0.9) rejects the whole source when the two catalogs number a set
+  differently — TCGdex calls Celebrations: Classic Collection CC001–CC025 while pokemontcg.io
+  keeps each card's original set number, and without the gate the gap-fill appended all 25 as
+  "missing" and turned a 25-card set into 47.
+- **pokemontcg.io is flaky.** It goes through multi-minute windows of blanket 500s, and its
+  `/v2/sets/<id>` route 500s *persistently* for the newest sets while `/v2/sets?q=id:<id>`
+  serves them fine — the build uses the query form for that reason. Fetches retry with
+  exponential backoff (~4 min), and a set that still fails is skipped with a `--set` re-run
+  line printed at the end rather than aborting the whole run.
 - **Completion (`lib/sets/masterset.ts`):** ownership matched on normalized `card_number`
   within a set (`set_code`, with a set-name→code fallback — **not** `pokemon_api_id`).
   `getMasterSetView` (per-set), `getSetCompletionSummaries` (index, via the

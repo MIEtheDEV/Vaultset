@@ -125,11 +125,16 @@ export function MasterSetGrid({
         <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-raised">
           <div className="h-full rounded-full bg-gold transition-all duration-500" style={{ width: `${pct}%` }} />
         </div>
+        {/* Standard reverse holos ARE counted now (they come from the TCGplayer
+            printing keys, with TCGdex backstopping sets pokemontcg.io stopped
+            pricing). What's still not enumerable from free data is the SPECIAL
+            patterned reverses — so say that, rather than implying reverse holos
+            are missing wholesale. */}
         {mode === "master" && hasPartial && (
           <p className="text-xs text-foreground-muted">
-            Some cards in this set have special reverse-holo variants (e.g. Poké Ball / Master Ball
-            patterns) that our data can&apos;t fully enumerate yet — the master-set total may be an
-            undercount.
+            Normal, holo and reverse-holo printings are all counted. Scarlet &amp; Violet–era sets
+            also have special patterned reverses (Poké Ball / Master Ball) that free data
+            doesn&apos;t list separately, so this total can still run slightly low.
           </p>
         )}
       </div>
@@ -189,6 +194,25 @@ export function MasterSetGrid({
   );
 }
 
+/** A single variant slot: filled = that printing is in the collection. */
+function VariantCheck({ finish, owned }: { finish: string; owned: boolean }) {
+  const label = FINISH_LABELS[finish] ?? finish;
+  return (
+    <span
+      title={`${label} — ${owned ? "collected" : "still needed"}`}
+      // The empty slot sits on card art that can be any colour, so it needs its
+      // own opaque backdrop — a translucent surface tint disappears over a
+      // bright full-art.
+      className={`rounded-full w-5 h-5 flex items-center justify-center shadow ${
+        owned ? "bg-gold text-background" : "bg-background/85 text-foreground-muted ring-1 ring-inset ring-foreground-muted/50"
+      }`}
+    >
+      <span className="sr-only">{`${label}: ${owned ? "collected" : "needed"}`}</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+    </span>
+  );
+}
+
 function MasterSetTile({ card, showFinishes }: { card: CardStatus; showFinishes: boolean }) {
   const owned = card.ownedComplete;
   const ownedSet = new Set(card.ownedFinishes);
@@ -209,15 +233,35 @@ function MasterSetTile({ card, showFinishes }: { card: CardStatus; showFinishes:
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
           </div>
         )}
+        {/* One check per printing the card exists in, so a card you own in only
+            one of its three finishes reads as unfinished at a glance. Hidden
+            entirely until the card is owned — an untouched card is already
+            greyed out, and five empty circles on every tile is just noise. */}
         {owned && (
-          <div className="absolute top-1.5 right-1.5 rounded-full bg-gold text-background w-5 h-5 flex items-center justify-center shadow">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+          <div
+            className="absolute top-1.5 right-1.5 flex gap-1"
+            aria-label={`${card.ownedFinishes.length} of ${card.finishes.length} variant${card.finishes.length !== 1 ? "s" : ""} collected`}
+          >
+            {card.finishes.map((f) => (
+              <VariantCheck key={f} finish={f} owned={ownedSet.has(f)} />
+            ))}
           </div>
         )}
       </div>
       <div className="p-3 space-y-1">
         <p className={`text-sm font-medium truncate ${owned ? "text-foreground" : "text-foreground-muted"}`}>{card.name}</p>
-        <p className="text-xs text-foreground-muted truncate">#{card.card_number}</p>
+        <p className="text-xs text-foreground-muted truncate">
+          #{card.card_number}
+          {card.finishes.length > 0 && (
+            <>
+              {" · "}
+              <span className={card.ownedMaster ? "text-gold" : undefined}>
+                {card.ownedFinishes.length}/{card.finishes.length}
+              </span>
+              {" variant"}{card.finishes.length !== 1 ? "s" : ""}
+            </>
+          )}
+        </p>
         {showFinishes && card.finishes.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-0.5">
             {card.finishes.map((f) => {

@@ -21,7 +21,8 @@
       "mcp__supabase__execute_sql",
       "mcp__supabase__list_tables",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://api.pokemontcg.io/v2/cards/sv4pt5-86\")",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(node *)"
     ]
   }
 }

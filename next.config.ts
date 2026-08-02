@@ -40,6 +40,11 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "**.pokemontcg.io",
       },
+      // Cards TCGdex supplies that pokemontcg.io omits (lib/sets/tcgdex.ts).
+      {
+        protocol: "https",
+        hostname: "assets.tcgdex.net",
+      },
       // JustTCG-sourced cards use TCGplayer's image CDN.
       {
         protocol: "https",

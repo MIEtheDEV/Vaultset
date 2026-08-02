@@ -4,7 +4,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { loadOwnedIndex, getMasterSetView } from "@/lib/sets/masterset";
-import { splitSecretRares } from "@/lib/sets/setDisplay";
+import { splitSecretRares, tallyFinishes } from "@/lib/sets/setDisplay";
 import { recordAndAwardCompletion } from "@/lib/sets/setCompletion";
 import { MasterSetGrid } from "@/components/masterset/MasterSetGrid";
 import { ChaseCards } from "@/components/masterset/ChaseCards";
@@ -47,12 +47,25 @@ export default async function MasterSetDetailPage({
           <h1 className="text-3xl font-bold text-foreground">{view.setName}</h1>
           {(() => {
             const { regular, secret } = splitSecretRares(view.complete.total, view.printedTotal);
+            // The card count and the master-set total are different numbers and
+            // the gap is all variants, so spell the variants out rather than
+            // leaving "122 cards" next to "198" unexplained.
+            const tally = tallyFinishes(view.cards);
             return (
-              <p className="mt-1 text-sm text-foreground-muted">
-                {view.series ? `${view.series} · ` : ""}
-                {regular} cards{secret > 0 ? ` + ${secret} secret rare${secret !== 1 ? "s" : ""}` : ""}
-                {view.releaseDate ? ` · released ${view.releaseDate}` : ""}
-              </p>
+              <>
+                <p className="mt-1 text-sm text-foreground-muted">
+                  {view.series ? `${view.series} · ` : ""}
+                  {regular} cards{secret > 0 ? ` + ${secret} secret rare${secret !== 1 ? "s" : ""}` : ""}
+                  {view.releaseDate ? ` · released ${view.releaseDate}` : ""}
+                </p>
+                {tally.length > 0 && (
+                  <p className="mt-1 text-xs text-foreground-muted">
+                    <span className="text-foreground">{view.master.total} printings</span> in a master set
+                    {" — "}
+                    {tally.map((t) => `${t.count} ${t.label}`).join(" · ")}
+                  </p>
+                )}
+              </>
             );
           })()}
         </div>
