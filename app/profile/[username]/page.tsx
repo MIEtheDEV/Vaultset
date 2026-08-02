@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { MarketplaceGrid } from "@/components/MarketplaceGrid";
 import { SealedProductsGrid } from "@/components/SealedProductsGrid";
 import { SupporterBadge } from "@/components/SupporterBadge";
@@ -21,6 +22,15 @@ import { timeAgo } from "@/lib/timeAgo";
 import { parseBio } from "@/lib/parseBio";
 import { likeEscape } from "@/lib/username";
 import { isUserAdmin } from "@/lib/auth/admin";
+import { VaultCardTile, cardDataHref } from "@/components/VaultCardTile";
+
+/** Makes the featured-card block a link when the card has an addressable detail page. */
+function FeaturedWrapper({ href, children }: { href: string | null; children: React.ReactNode }) {
+  const className = "flex items-center gap-4 rounded-xl transition-colors";
+  return href
+    ? <Link href={href} className={`${className} -m-2 p-2 hover:bg-surface-raised`}>{children}</Link>
+    : <div className={className}>{children}</div>;
+}
 
 // ── Metadata ───────────────────────────────────────────────────────────────────
 
@@ -32,13 +42,19 @@ export async function generateMetadata({
   const { username } = await params;
   const supabase = await createClient();
 
+  // Metadata is rendered for crawlers, i.e. with no session — so the card count
+  // has to come from the service-role client for the same reason the page body
+  // does (see the note on `publicRead` below). Read through `supabase` it was
+  // always 0, and every profile description silently dropped its collection size.
+  const publicRead = createAdminClient();
+
   const [{ data: profile }, { data: cardRows }] = await Promise.all([
     supabase
       .from("profiles")
       .select("username, bio, specialty, city")
       .ilike("username", likeEscape(username))
       .single(),
-    supabase
+    publicRead
       .from("collection_items")
       .select("quantity")
       .eq("user_id",
@@ -96,7 +112,7 @@ export default async function ProfilePage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, username, created_at, is_supporter, is_pro, pro_plan, pro_expires_at, bio, specialty, city, featured_item_id, avatar_url, avatar_color, showcase_border")
+    .select("id, username, display_name_public, created_at, is_supporter, is_pro, pro_plan, pro_expires_at, bio, specialty, city, featured_item_id, avatar_url, avatar_color, showcase_border")
     .ilike("username", likeEscape(username))
     .eq("banned", false)
     .single();
@@ -110,9 +126,26 @@ export default async function ProfilePage({
   const bio            = (profile as any).bio              as string | null;
   const specialty      = (profile as any).specialty        as string | null;
   const city           = (profile as any).city             as string | null;
+  // Already reduced to the owner's chosen visibility by the generated column —
+  // the raw name parts never leave the database.
+  const displayName    = (profile as any).display_name_public as string | null;
   const featuredItemId = (profile as any).featured_item_id as string | null;
   const avatarUrl      = (profile as any).avatar_url        as string | null;
   const storedColor    = (profile as any).avatar_color      as string | null;
+
+  // A profile is a public page, but `collection_items` / `product_purchases` are
+  // not publicly readable: RLS exposes a row only to its owner, or — to signed-in
+  // visitors only — when it is for sale/trade. Read through `supabase` and a
+  // logged-out visitor sees an empty vault for EVERYONE, while a signed-in
+  // visitor sees only the listed slice, so a collector with nothing for sale
+  // reads as "0 cards" to everybody but themselves.
+  //
+  // So the owner's own public data is read with the service role, and each select
+  // below names its columns: `paid_price`, `cert_number`, and `acquired_at` are
+  // private and must never appear in a profile query. Viewer-specific reads
+  // (watchlist, follow state, the visitor's own wishlist) deliberately stay on
+  // `supabase` so RLS keeps scoping them to the caller.
+  const publicRead = createAdminClient();
 
   const [
     { data: allItems },
@@ -132,14 +165,16 @@ export default async function ProfilePage({
     { data: showcaseData },
   ] = await Promise.all([
     // All collection items — used for stats and vault tab display
-    supabase
+    // `cards.id` + `game_data` are what `cardDataHref` needs to address the card's
+    // detail page (pokemon_api_id → tcg:<id> → manual:<row id>).
+    publicRead
       .from("collection_items")
-      .select("id, quantity, condition, finish, grader, grade, for_sale, for_trade, cards(name, set_name, image_url)")
+      .select("id, quantity, condition, finish, grader, grade, for_sale, for_trade, cards(id, name, set_name, image_url, game_data)")
       .eq("user_id", profile.id)
       .order("created_at", { ascending: false }),
 
     // Card listings (for_sale or for_trade)
-    supabase
+    publicRead
       .from("collection_items")
       .select(`
         id, user_id, condition, finish, for_sale, for_trade,
@@ -150,10 +185,11 @@ export default async function ProfilePage({
       .or("for_sale.eq.true,for_trade.eq.true")
       .order("created_at", { ascending: false }),
 
-    // Sealed product listings
-    supabase
+    // Sealed product listings. `cost` (what the owner paid) is deliberately not
+    // selected — the grid never rendered it, and this read is now public.
+    publicRead
       .from("product_purchases")
-      .select("id, user_id, name, product_type, cost, for_sale, for_trade, list_price, purchased_at, notes")
+      .select("id, user_id, name, product_type, for_sale, for_trade, list_price, purchased_at, notes")
       .eq("user_id", profile.id)
       .or("for_sale.eq.true,for_trade.eq.true")
       .order("purchased_at", { ascending: false }),
@@ -164,7 +200,7 @@ export default async function ProfilePage({
       : Promise.resolve({ data: null, error: null }),
 
     // Graded items for Collection spotlight (up to 6, best grades first)
-    supabase
+    publicRead
       .from("collection_items")
       .select("id, grader, grade, condition, cards(name, set_name, card_number, image_url)")
       .eq("user_id", profile.id)
@@ -174,10 +210,13 @@ export default async function ProfilePage({
 
     // Featured card (conditional — resolves to null if none set)
     featuredItemId
-      ? supabase
+      ? publicRead
           .from("collection_items")
-          .select("id, condition, grader, grade, cards(name, set_name, card_number, image_url, game_data)")
+          .select("id, condition, grader, grade, cards(id, name, set_name, card_number, image_url, game_data)")
           .eq("id", featuredItemId)
+          // Pinned by its owner, but the id comes off the profile row — pin it to
+          // this user so a stale/foreign id can never surface someone else's card.
+          .eq("user_id", profile.id)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
 
@@ -353,6 +392,10 @@ export default async function ProfilePage({
       })()
     : null;
 
+  // The featured card is a collection card like any other, so it opens the same
+  // detail page the vault tiles do rather than being the one dead card on the page.
+  const featuredHref = cardDataHref(featuredCard);
+
   // ── Spotlight items (graded, for Collection tab) ───────────────────────────
 
   const spotlight = (spotlightItems ?? []).map((item) => {
@@ -393,41 +436,12 @@ export default async function ProfilePage({
               const raw  = (item as any).cards;
               const card = Array.isArray(raw) ? raw[0] ?? null : raw ?? null;
               return (
-                <div
+                <VaultCardTile
                   key={(item as any).id}
-                  className="rounded-xl border border-border bg-surface p-2 flex flex-col gap-2 hover:border-gold/30 transition-colors"
-                >
-                  <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-surface-raised">
-                    {card?.image_url ? (
-                      <Image
-                        src={card.image_url}
-                        alt={card.name ?? "Card"}
-                        fill
-                        sizes="(max-width: 640px) 33vw, (max-width: 1024px) 25vw, 16vw"
-                        className="object-contain"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-foreground-muted text-sm font-medium">
-                        {card?.name?.[0] ?? "?"}
-                      </div>
-                    )}
-                    {((item as any).for_sale || (item as any).for_trade) && (
-                      <div className="absolute bottom-1 left-1 flex gap-0.5">
-                        {(item as any).for_sale  && <span className="rounded-sm bg-emerald-500/80 px-1 py-0.5 text-[9px] font-semibold text-white leading-none">$</span>}
-                        {(item as any).for_trade && <span className="rounded-sm bg-blue-500/80    px-1 py-0.5 text-[9px] font-semibold text-white leading-none">T</span>}
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-xs font-medium text-foreground truncate leading-tight">{card?.name ?? "—"}</p>
-                    <p className="text-xs text-foreground-muted truncate">{card?.set_name ?? "—"}</p>
-                    {(item as any).grader ? (
-                      <p className="text-xs text-gold">{(item as any).grader} {(item as any).grade}</p>
-                    ) : (item as any).condition ? (
-                      <p className="text-xs text-foreground-muted capitalize">{((item as any).condition as string).replace(/_/g, " ")}</p>
-                    ) : null}
-                  </div>
-                </div>
+                  item={item as any}
+                  card={card}
+                  showAvailability
+                />
               );
             })}
           </div>
@@ -450,35 +464,12 @@ export default async function ProfilePage({
           const raw  = (item as any).cards;
           const card = Array.isArray(raw) ? raw[0] ?? null : raw ?? null;
           return (
-            <div
+            <VaultCardTile
               key={(item as any).id}
-              className={`rounded-xl border border-border bg-surface p-2 flex flex-col gap-2 ${showcaseBorderClass}`}
-            >
-              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-surface-raised">
-                {card?.image_url ? (
-                  <Image
-                    src={card.image_url}
-                    alt={card.name ?? "Card"}
-                    fill
-                    sizes="(max-width: 640px) 33vw, (max-width: 1024px) 25vw, 16vw"
-                    className="object-contain"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-foreground-muted text-sm font-medium">
-                    {card?.name?.[0] ?? "?"}
-                  </div>
-                )}
-              </div>
-              <div className="space-y-0.5">
-                <p className="text-xs font-medium text-foreground truncate leading-tight">{card?.name ?? "—"}</p>
-                <p className="text-xs text-foreground-muted truncate">{card?.set_name ?? "—"}</p>
-                {(item as any).grader ? (
-                  <p className="text-xs text-gold">{(item as any).grader} {(item as any).grade}</p>
-                ) : (item as any).condition ? (
-                  <p className="text-xs text-foreground-muted capitalize">{((item as any).condition as string).replace(/_/g, " ")}</p>
-                ) : null}
-              </div>
-            </div>
+              item={item as any}
+              card={card}
+              className={showcaseBorderClass}
+            />
           );
         })}
       </div>
@@ -708,6 +699,7 @@ export default async function ProfilePage({
             </div>
           )}
           <p className="mt-0.5 text-sm text-foreground-muted flex items-center gap-3 flex-wrap">
+            {displayName && <span className="font-medium text-foreground">{displayName}</span>}
             <span>Joined {timeAgo(profile.created_at)}</span>
             {city && (
               <span className="flex items-center gap-1">
@@ -812,7 +804,7 @@ export default async function ProfilePage({
             </svg>
             <span className="text-xs font-medium text-foreground-muted uppercase tracking-wide">Featured Card</span>
           </div>
-          <div className="flex items-center gap-4">
+          <FeaturedWrapper href={featuredHref}>
             {featuredCard.image_url ? (
               <div className="relative h-28 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-surface-raised">
                 <Image
@@ -842,7 +834,7 @@ export default async function ProfilePage({
                 ) : null}
               </div>
             </div>
-          </div>
+          </FeaturedWrapper>
         </div>
       )}
 

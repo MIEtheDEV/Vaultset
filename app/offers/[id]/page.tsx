@@ -153,10 +153,13 @@ export default async function OfferDetailPage({
               {OFFER_TYPE_LABEL[offerType] ?? offerType}
             </h1>
             <p className="mt-1 text-sm text-foreground-muted">
-              {isSender
-                ? <>To <span className="text-gold">@{recipientUsername}</span></>
-                : <>From <span className="text-gold">@{senderUsername}</span></>
-              }
+              {isSender ? "To " : "From "}
+              <Link
+                href={`/profile/${otherUsername}`}
+                className="text-gold hover:text-gold-light transition-colors"
+              >
+                @{otherUsername}
+              </Link>
               {" · "}
               {timeAgo(offer.created_at as string)}
             </p>

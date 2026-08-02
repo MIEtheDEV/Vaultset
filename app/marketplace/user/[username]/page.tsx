@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import Link from "next/link";
 import { MarketplaceGrid } from "@/components/MarketplaceGrid";
 import { SupporterBadge } from "@/components/SupporterBadge";
@@ -56,7 +57,10 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
   const isOwner    = user?.id === seller.id;
   const returnDate = vacationReturnDate(seller as any);
 
-  const { data: listings } = await supabase
+  // Storefronts are publicly crawlable, but RLS only shows a listed row to
+  // signed-in visitors — so through `supabase` this page was empty for every
+  // logged-out visitor and every crawler. Service-role read, public columns only.
+  const { data: listings } = await createAdminClient()
     .from("collection_items")
     .select(`
       id, user_id, condition, finish, for_sale, for_trade,
@@ -105,7 +109,13 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
             </Link>
           </div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2 flex-wrap">
-            Listings by <span className="text-gold">@{seller.username}</span>
+            Listings by{" "}
+            <Link
+              href={`/profile/${seller.username}`}
+              className="text-gold hover:text-gold-light transition-colors"
+            >
+              @{seller.username}
+            </Link>
             {isProSubscriber(seller as any) && <ProBadge />}
             {seller.is_supporter && <SupporterBadge />}
           </h1>
@@ -117,6 +127,12 @@ export default async function UserListingsPage({ params }: { params: Promise<{ u
           <p className="mt-1 text-sm text-foreground-muted">
             Member since {joinedDate} · {activeCopies} active {activeCopies === 1 ? "listing" : "listings"}
           </p>
+          <Link
+            href={`/profile/${seller.username}`}
+            className="mt-1 inline-flex items-center gap-1 text-sm text-gold hover:text-gold-light transition-colors"
+          >
+            View profile →
+          </Link>
         </div>
       </div>
 

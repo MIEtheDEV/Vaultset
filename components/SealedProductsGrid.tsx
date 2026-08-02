@@ -11,7 +11,8 @@ export interface SealedListing {
   seller_username: string;
   name:            string;
   product_type:    string;
-  cost:            number;
+  // No `cost` here on purpose: what the seller paid is private, this grid never
+  // rendered it, and its callers are public pages read with the service role.
   for_sale:        boolean;
   for_trade:       boolean;
   list_price:      number | null;

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { CardStudio } from "@/components/CardStudio";
 import type { ProfileCardData } from "@/components/ProfileCardVisual";
 import type { CardTheme } from "@/components/ProfileCardVisual";
@@ -49,13 +50,18 @@ export default async function ProfileCardPage({
 
   const featuredItemId = (profile as any).featured_item_id as string | null;
 
+  // Same RLS caveat as the profile page: a visitor can only see another user's
+  // *listed* rows, so a collector card built through `supabase` reported the
+  // listed slice as the whole collection. Public stat columns only.
+  const publicRead = createAdminClient();
+
   const [
     { data: allItems },
     { count: serialCount },
     { data: thumbListings },
     featuredResult,
   ] = await Promise.all([
-    supabase
+    publicRead
       .from("collection_items")
       .select("quantity, grader, for_sale, for_trade")
       .eq("user_id", profile.id),
@@ -65,7 +71,7 @@ export default async function ProfileCardPage({
       .select("*", { count: "exact", head: true })
       .lte("created_at", profile.created_at),
 
-    supabase
+    publicRead
       .from("collection_items")
       .select("cards(image_url)")
       .eq("user_id", profile.id)
@@ -74,10 +80,11 @@ export default async function ProfileCardPage({
       .limit(3),
 
     featuredItemId
-      ? supabase
+      ? publicRead
           .from("collection_items")
           .select("cards(image_url)")
           .eq("id", featuredItemId)
+          .eq("user_id", profile.id)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
   ]);

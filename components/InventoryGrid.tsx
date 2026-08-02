@@ -393,7 +393,18 @@ export function InventoryGrid({ items, proposedItemIds = [], canRefresh = false,
                 {/* Card info */}
                 <div className="p-4 space-y-2">
                   <div>
-                    <p className="font-semibold text-foreground leading-tight">{card.name}</p>
+                    {/* Not a link while selecting — the tile's click belongs to the
+                        checkbox then, and navigating away mid-selection would lose it. */}
+                    {!selectMode && cardApiId ? (
+                      <Link
+                        href={`/card-data/${encodeURIComponent(cardApiId)}`}
+                        className="block font-semibold text-foreground leading-tight hover:text-gold transition-colors"
+                      >
+                        {card.name}
+                      </Link>
+                    ) : (
+                      <p className="font-semibold text-foreground leading-tight">{card.name}</p>
+                    )}
                     <p className="text-xs text-foreground-muted mt-0.5">
                       {card.set_name}{card.card_number ? ` · ${card.card_number}` : ""}{card.year ? ` · ${card.year}` : ""}
                     </p>

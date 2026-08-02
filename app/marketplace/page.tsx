@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { MarketplaceGrid } from "@/components/MarketplaceGrid";
 import { SealedProductsGrid } from "@/components/SealedProductsGrid";
 import { isProSubscriber } from "@/lib/proStatus";
@@ -34,15 +35,32 @@ export default async function MarketplacePage({
     cards ( id, game, name, set_name, card_number, year, image_url, game_data )
   `;
 
+  // The public listing feed is read with the service role. RLS only exposes a
+  // listed row to signed-in visitors ("Listed items are viewable by authenticated
+  // users"), so through `supabase` this page rendered "No listings match this
+  // filter." to every logged-out visitor and every crawler — an empty storefront
+  // on the one page that is supposed to be indexed. `listingSelect` names only
+  // public listing columns; the private ones (paid_price, cert_number) are absent.
+  // "Your Listings" below stays on `supabase`, scoped by RLS to the caller.
+  const publicRead = createAdminClient();
+
+  // "Everything except my own listings" — but only when there IS a viewer.
+  // `.neq("user_id", "")` sends an empty string to a uuid column, which Postgres
+  // rejects outright (22P02), erroring the whole query rather than matching
+  // everything. That was invisible while RLS returned nothing to logged-out
+  // visitors anyway; with the service-role read above it would be the new reason
+  // the page renders empty.
+  const othersListings = publicRead
+    .from("collection_items")
+    .select(listingSelect)
+    .or("for_sale.eq.true,for_trade.eq.true")
+    .eq("on_hold", false)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (user) othersListings.neq("user_id", user.id);
+
   const [{ data: listings }, { data: myListingsRaw }] = await Promise.all([
-    supabase
-      .from("collection_items")
-      .select(listingSelect)
-      .or("for_sale.eq.true,for_trade.eq.true")
-      .eq("on_hold", false)
-      .neq("user_id", user?.id ?? "")
-      .order("created_at", { ascending: false })
-      .limit(200),
+    othersListings,
     user
       ? supabase
           .from("collection_items")
@@ -80,13 +98,16 @@ export default async function MarketplacePage({
     seller_username: user ? (profileMap.get(user.id) ?? "Unknown") : "Unknown",
   }));
 
-  // Sealed product listings
-  const { data: sealedListings } = await supabase
+  // Sealed product listings — same RLS shape as card listings, so same fix.
+  // `cost` (what the seller paid) is not selected: it was never rendered, and
+  // this read is public.
+  const sealedQuery = publicRead
     .from("product_purchases")
-    .select("id, user_id, name, product_type, cost, for_sale, for_trade, list_price, purchased_at, notes")
+    .select("id, user_id, name, product_type, for_sale, for_trade, list_price, purchased_at, notes")
     .or("for_sale.eq.true,for_trade.eq.true")
-    .neq("user_id", user?.id ?? "")
     .order("created_at", { ascending: false });
+  if (user) sealedQuery.neq("user_id", user.id); // see the uuid note above
+  const { data: sealedListings } = await sealedQuery;
 
   const sealedUserIds = [...new Set(sealedListings?.map((l) => l.user_id) ?? [])];
   const { data: sealedProfiles } = sealedUserIds.length
@@ -110,7 +131,11 @@ export default async function MarketplacePage({
     { data: myFollowsData },
     { data: allFollowRows },
   ] = await Promise.all([
-    supabase.from("watchlist").select("item_id").eq("user_id", user?.id ?? ""),
+    // Guarded like its siblings: `eq("user_id", "")` on a uuid column is a 22P02
+    // error, not an empty result.
+    user
+      ? supabase.from("watchlist").select("item_id").eq("user_id", user.id)
+      : Promise.resolve({ data: [] }),
     user
       ? supabase.from("wishlist_items").select("pokemon_api_id").eq("user_id", user.id)
       : Promise.resolve({ data: [] }),

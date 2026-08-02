@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { RemoveWishlistButton } from "@/components/RemoveWishlistButton";
 import { WishlistCardDrawer, type WishlistDrawerCard } from "@/components/WishlistCardDrawer";
 
@@ -59,23 +60,41 @@ export function WishlistGrid({ items }: { items: WishlistGridItem[] }) {
             </button>
 
             <div className="p-3 flex flex-col gap-2 flex-1">
-              <button type="button" onClick={() => setActive(item)} className="flex-1 space-y-0.5 text-left">
-                <p className="text-xs font-semibold text-foreground leading-tight">{item.card_name}</p>
-                <p className="text-xs text-foreground-muted truncate">{item.set_name}</p>
-                {item.card_number && (
-                  <p className="text-xs text-foreground-muted">#{item.card_number}</p>
+              {/* The name goes to the card's detail page; everything else (and the
+                  image) still opens the "who has this listed" drawer, which is the
+                  point of a wishlist. An anchor can't live inside that button, so
+                  the name sits outside it. Wishlist rows carry no card_id, so
+                  `pokemon_api_id` is the only addressable key — without one the
+                  name stays plain text rather than linking to a 404. */}
+              <div className="flex-1">
+                {item.pokemon_api_id ? (
+                  <Link
+                    href={`/card-data/${encodeURIComponent(item.pokemon_api_id)}`}
+                    className="block text-xs font-semibold text-foreground leading-tight hover:text-gold transition-colors"
+                  >
+                    {item.card_name}
+                  </Link>
+                ) : (
+                  <p className="text-xs font-semibold text-foreground leading-tight">{item.card_name}</p>
                 )}
-                {item.notes && (
-                  <p className="text-xs text-foreground-muted italic leading-tight pt-1 border-t border-border mt-1">
-                    {item.notes}
-                  </p>
-                )}
-                {item.target_price != null && (
-                  <p className="text-xs text-gold font-medium pt-1">
-                    Alert: ≤${Number(item.target_price).toFixed(2)}
-                  </p>
-                )}
-              </button>
+
+                <button type="button" onClick={() => setActive(item)} className="mt-0.5 w-full space-y-0.5 text-left">
+                  <p className="text-xs text-foreground-muted truncate">{item.set_name}</p>
+                  {item.card_number && (
+                    <p className="text-xs text-foreground-muted">#{item.card_number}</p>
+                  )}
+                  {item.notes && (
+                    <p className="text-xs text-foreground-muted italic leading-tight pt-1 border-t border-border mt-1">
+                      {item.notes}
+                    </p>
+                  )}
+                  {item.target_price != null && (
+                    <p className="text-xs text-gold font-medium pt-1">
+                      Alert: ≤${Number(item.target_price).toFixed(2)}
+                    </p>
+                  )}
+                </button>
+              </div>
               <RemoveWishlistButton id={item.id} />
             </div>
           </div>
